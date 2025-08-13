@@ -10,7 +10,7 @@ assets:
   repository:
     type: blob.asset
     data:
-      url: 'https://github.com/iotsound/iotsound'
+      url: 'https://github.com/JaragonCR/iotsound'
   logo:
     type: blob.asset
     data:
