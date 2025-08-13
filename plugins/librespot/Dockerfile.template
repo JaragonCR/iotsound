@@ -14,4 +14,6 @@ WORKDIR /go-librespot
 
 RUN go build -v ./cmd/daemon
 ENV PULSE_SERVER=tcp:localhost:4317
-CMD ["./daemon"]
+COPY start.sh /usr/src/
+
+CMD [ "/bin/sh", "/usr/src/start.sh" ]
