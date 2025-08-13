@@ -65,7 +65,7 @@ services:
       - spotifycache:/var/cache/raspotify
 
   librespot:
-    build: https://github.com/devgianlu/go-librespot.git
+    build: ./plugins/librespot
     restart: unless-stopped
     privileged: true
     network_mode: host
