@@ -10,6 +10,11 @@ SOUND_DEVICE_NAME=${SOUND_DEVICE_NAME}-test
 SOUND_SPOTIFY_BITRATE=${SOUND_SPOTIFY_BITRATE:-160}
 LOG_LEVEL=${LOG_LEVEL:-info}
 
+if [ "$SOUND_SPOTIFY_DISABLE_NORMALISATION" = "1" ]; then
+  NORMALISATION_BOOL=true
+else
+  NORMALISATION_BOOL=false
+fi
 
 AUTH_TYPE="zeroconf"
 if [[ -n "$SOUND_SPOTIFY_USERNAME" && -n "$SOUND_SPOTIFY_PASSWORD" ]]; then
@@ -22,7 +27,7 @@ device_name: $SOUND_DEVICE_NAME
 device_type: speaker
 audio_backend: pulseaudio
 bitrate: $SOUND_SPOTIFY_BITRATE
-normalisation_disabled: ${SOUND_SPOTIFY_DISABLE_NORMALISATION:-false}
+normalisation_disabled: $NORMALISATION_BOOL
 credentials:
   type: "$AUTH_TYPE"
 EOF
