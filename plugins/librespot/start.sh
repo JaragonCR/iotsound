@@ -42,4 +42,4 @@ fi
 echo "Generated config:"
 cat "$CONFIG_PATH"
 
-exec /go-librespot/daemon --config_dir $CONFIG_DIR
+exec /usr/src/daemon --config_dir $CONFIG_DIR
