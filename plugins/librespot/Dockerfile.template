@@ -1,0 +1,53 @@
+# ----------------------
+# Stage 1: Build go-librespot
+# ----------------------
+FROM golang:1.22-alpine AS builder
+
+# Build dependencies only
+RUN apk add --no-cache \
+    git \
+    build-base \
+    pkgconf \
+    alsa-lib-dev \
+    libogg-dev \
+    libvorbis-dev
+
+# Clone and build
+RUN git clone https://github.com/devgianlu/go-librespot.git /go-librespot
+WORKDIR /go-librespot
+
+# Cache Go modules
+RUN go mod download
+
+# Build daemon
+RUN go build -v -o /daemon ./cmd/daemon
+
+# ----------------------
+# Stage 2: Runtime image
+# ----------------------
+FROM alpine:latest
+
+# Runtime dependencies only (no build tools)
+RUN apk add --no-cache \
+    libpulse \
+    avahi \
+    libgcc \
+    gcompat \
+    alsa-lib \
+    curl
+
+ENV PULSE_SERVER=tcp:localhost:4317
+
+# Install balena alsa-bridge
+RUN curl -skL https://raw.githubusercontent.com/balena-io-experimental/audio/master/scripts/alsa-bridge/alpine-setup.sh | sh \
+ && apk del curl
+
+# Copy binary from builder stage
+COPY --from=builder /daemon /usr/src/daemon
+
+# Copy startup script
+COPY start.sh /usr/src/
+
+WORKDIR /usr/src/
+
+CMD ["/bin/sh", "/usr/src/start.sh"]

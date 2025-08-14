@@ -35,7 +35,7 @@ services:
   multiroom-client:
     build: ./core/multiroom/client
     restart: on-failure
-
+  
   # Plugins
   # -- Additional plugins can be added.
   # -- Remove unwanted plugins as needed
@@ -64,6 +64,12 @@ services:
     volumes:
       - spotifycache:/var/cache/raspotify
 
+  librespot:
+    build: ./plugins/librespot
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+   
   # https://github.com/balenablocks/hostname
   hostname:
     build: ./core/hostname
