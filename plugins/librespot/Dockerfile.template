@@ -21,6 +21,9 @@ WORKDIR /go-librespot
 RUN go mod download
 RUN go build -v ./cmd/daemon
 ENV PULSE_SERVER=tcp:localhost:4317
+RUN apk update && apk add --no-cache supervisor curl~=7 && \
+  curl -skL https://raw.githubusercontent.com/balena-io-experimental/audio/master/scripts/alsa-bridge/alpine-setup.sh | sh \
+  && apk del curl
 COPY start.sh /usr/src/
 
 CMD [ "/bin/sh", "/usr/src/start.sh" ]
