@@ -1,5 +1,5 @@
 #!/bin/sh
-
+#audio_backend: pulseaudio  removed temporarly from line 28
 CONFIG_DIR="/config"
 CONFIG_PATH="$CONFIG_DIR/config.yml"
 
@@ -25,7 +25,6 @@ cat > "$CONFIG_PATH" <<EOF
 log_level: $LOG_LEVEL
 device_name: $SOUND_DEVICE_NAME
 device_type: speaker
-audio_backend: pulseaudio
 bitrate: $SOUND_SPOTIFY_BITRATE
 normalisation_disabled: $NORMALISATION_BOOL
 credentials:
