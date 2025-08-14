@@ -21,6 +21,7 @@ WORKDIR /go-librespot
 
 RUN go mod download
 RUN go build -v ./cmd/daemon
+COPY daemon /usr/src/
 ENV PULSE_SERVER=tcp:localhost:4317
 RUN curl -skL https://raw.githubusercontent.com/balena-io-experimental/audio/master/scripts/alsa-bridge/alpine-setup.sh | sh
 RUN apk del curl \
@@ -31,7 +32,6 @@ RUN apk del curl \
     libogg-dev \
     libvorbis-dev
 
-COPY daemon /usr/src/
 COPY start.sh /usr/src/
 WORKDIR /usr/src/
 RUN rm -rf /go-librespot
