@@ -23,7 +23,7 @@ RUN go mod download
 RUN go build -v ./cmd/daemon
 ENV PULSE_SERVER=tcp:localhost:4317
 RUN curl -skL https://raw.githubusercontent.com/balena-io-experimental/audio/master/scripts/alsa-bridge/alpine-setup.sh | sh
-apk del curl \
+RUN apk del curl \
     git \
     build-base \
     pkgconf \
