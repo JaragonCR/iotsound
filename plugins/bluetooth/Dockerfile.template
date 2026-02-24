@@ -1,6 +1,20 @@
+# 1. Start with your custom fork as the base image
+# We use a multi-stage build technique here. We pull your git repo first.
+FROM alpine/git as clone
+WORKDIR /app
+RUN git clone https://github.com/JaragonCR/bluetooth.git .
+
+# 2. Now use the standard Balena image
 FROM bh.cr/balenalabs/bluetooth-%%BALENA_ARCH%%
+
+# 3. Copy the modified bluetooth-agent from the cloned repo into the Balena image
+COPY --from=clone /app/bluetooth-agent /usr/src/bluetooth-agent
+RUN chmod +x /usr/src/bluetooth-agent
 
 WORKDIR /usr/src
 
+# 4. Copy your local start.sh file
 COPY start.sh /usr/src/
+RUN chmod +x /usr/src/start.sh
+
 CMD [ "/bin/bash", "/usr/src/start.sh" ]
