@@ -2,6 +2,8 @@
 # We use a multi-stage build technique here. We pull your git repo first.
 FROM alpine/git as clone
 WORKDIR /app
+# CACHE BUSTER: Change this value to force a fresh git pull!
+ARG CACHE_BUSTER=1
 RUN git clone https://github.com/JaragonCR/bluetooth.git .
 
 # 2. Now use the standard Balena image
