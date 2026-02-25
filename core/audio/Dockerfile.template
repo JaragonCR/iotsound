@@ -4,4 +4,10 @@ FROM bh.cr/balenalabs/audio-%%BALENA_ARCH%%
 WORKDIR /usr/src
 COPY . .
 
+# Tell PulseAudio we are completely headless to bypass X11/DBus warnings
+ENV DBUS_SESSION_BUS_ADDRESS=/dev/null
+
+# Ensure the script is always executable, regardless of host OS
+RUN chmod +x /usr/src/start.sh
+
 CMD [ "/bin/bash", "/usr/src/start.sh" ]
