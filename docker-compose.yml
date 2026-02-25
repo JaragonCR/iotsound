@@ -1,4 +1,4 @@
-version: "2"
+version: "2.1"
 
 volumes:
   spotifycache:
@@ -14,6 +14,11 @@ services:
       io.balena.features.dbus: 1
     ports:
       - 4317:4317
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 4317 || exit 1"]
+      interval: 5s      # Check every 5 seconds
+      timeout: 2s       # Give up if no response in 2 seconds
+      retries: 5        # Try 5 times before marking as "unhealthy"
 
   sound-supervisor:
     build:
@@ -23,6 +28,9 @@ services:
     labels:
       io.balena.features.balena-api: "1"
       io.balena.features.supervisor-api: 1
+    depends_on:
+      audio:
+        condition: service_healthy
 
   multiroom-server:
     build: ./core/multiroom/server
