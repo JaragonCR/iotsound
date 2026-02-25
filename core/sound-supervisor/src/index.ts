@@ -28,8 +28,8 @@ const fleetSubscriber: cote.Subscriber = new cote.Subscriber({ name: 'balenaSoun
 init()
 async function init() {
   await soundAPI.listen(constants.port)
-  console.log('Giving the audio block 5 seconds to initialize PulseAudio...')
-  await timeout(5000)
+  console.log('Giving the audio block 10 seconds to initialize PulseAudio...')
+  await timeout(10000)
   await audioBlock.listen()
   await audioBlock.setVolume(constants.volume)
 
