@@ -61,6 +61,8 @@ services:
     restart: unless-stopped
     privileged: true
     network_mode: host
+    depends_on:
+      - audio
    
   # https://github.com/balenablocks/hostname
   hostname:
