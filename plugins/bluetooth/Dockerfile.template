@@ -16,5 +16,5 @@ WORKDIR /usr/src
 # 4. Copy your local start.sh file
 COPY start.sh /usr/src/
 RUN chmod +x /usr/src/start.sh
-
+ENV PYTHONUNBUFFERED=1
 CMD [ "/bin/bash", "/usr/src/start.sh" ]
