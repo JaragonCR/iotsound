@@ -1,5 +1,5 @@
 import * as cote from 'cote'
-import BalenaAudio from 'balena-audio'
+import PulseAudioWrapper from './PulseAudioWrapper'
 import SoundAPI from './SoundAPI'
 import SoundConfig from './SoundConfig'
 import { constants } from './constants'
@@ -7,7 +7,7 @@ import { getSdk } from 'balena-sdk'
 
 // balenaSound core
 const config: SoundConfig = new SoundConfig()
-const audioBlock: BalenaAudio = new BalenaAudio(`tcp:${config.device.ip}:4317`)
+const audioBlock: PulseAudioWrapper = new PulseAudioWrapper(`tcp:${config.device.ip}:4317`)
 const soundAPI: SoundAPI = new SoundAPI(config, audioBlock)
 config.bindAudioBlock(audioBlock)
 

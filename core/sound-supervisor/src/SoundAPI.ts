@@ -2,7 +2,7 @@ import * as path from 'path'
 import * as express from 'express'
 import { Application } from 'express'
 import SoundConfig from './SoundConfig'
-import BalenaAudio from 'balena-audio'
+import PulseAudioWrapper from './PulseAudioWrapper'
 import * as asyncHandler from 'express-async-handler'
 import { constants } from './constants'
 import { restartDevice, rebootDevice, shutdownDevice } from './utils'
@@ -17,7 +17,7 @@ export default class SoundAPI {
   private api: Application
   private sdk: BalenaSDK
 
-  constructor(public config: SoundConfig, public audioBlock: BalenaAudio) {
+  constructor(public config: SoundConfig, public audioBlock: PulseAudioWrapper) {
     this.sdk = getSdk({ apiUrl: 'https://api.balena-cloud.com/' })
     this.sdk.auth.logout()
     this.sdk.auth.loginWithToken(process.env.BALENA_API_KEY!) // Asserted by io.balena.features.balena-api: '1'
