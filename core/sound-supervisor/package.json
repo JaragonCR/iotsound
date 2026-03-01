@@ -14,7 +14,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@tmigone/pulseaudio": "^0.1.8",
-    "axios": "^0.24.0",
+    "axios": "^0.30.3",
     "balena-audio": "0.0.2",
     "balena-sdk": "^15.39.1",
     "cote": "^1.0.0",
