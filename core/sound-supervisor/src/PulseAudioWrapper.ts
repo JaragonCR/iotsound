@@ -23,12 +23,7 @@ const execAsync = promisify(exec)
 
 // PulseAudio native protocol constants
 const PA_TAG_U32 = 0x4c        // 'L' — 32-bit unsigned int
-const PA_TAG_BOOLEAN_TRUE = 0x31   // '1'
-const PA_TAG_BOOLEAN_FALSE = 0x30  // '0'
 const PA_COMMAND_AUTH = 1
-const PA_COMMAND_SET_CLIENT_NAME = 2
-const PA_COMMAND_SUBSCRIBE = 0x24
-const PA_EVENT_SINK_INPUT = 0x0050 // sink-input change bitmask
 
 // How long to wait before retrying connection (ms)
 const RECONNECT_DELAY_MS = 3000
@@ -41,14 +36,12 @@ export interface AudioBlockSink {
 }
 
 export class PulseAudioWrapper extends EventEmitter {
-  private address: string
   private host: string
   private port: number
   private socket: net.Socket | null = null
   private retryCount = 0
   private connected = false
   private _currentVolume = 75  // sensible default
-  private cookie: Buffer
 
   constructor(address: string) {
     super()
@@ -56,11 +49,6 @@ export class PulseAudioWrapper extends EventEmitter {
     const parts = address.replace('tcp:', '').split(':')
     this.host = parts[0]
     this.port = parseInt(parts[1] || '4317', 10)
-    this.address = address
-
-    // PA auth cookie — for a local/trusted setup the cookie can be all-zeros
-    // The audio block runs with auth-anonymous=1 so this is fine
-    this.cookie = Buffer.alloc(256, 0)
   }
 
   get currentVolume(): number {
@@ -277,6 +265,75 @@ export class PulseAudioWrapper extends EventEmitter {
       console.warn(`[PulseAudioWrapper] getVolume failed: ${(err as Error).message}`)
     }
     return this._currentVolume
+  }
+
+
+  /**
+   * Get PulseAudio server info.
+   * Equivalent to the original balena-audio getInfo() method.
+   * Returns a parsed object from `pactl info`.
+   */
+  async getInfo(): Promise<Record<string, string>> {
+    try {
+      const { stdout } = await execAsync(
+        `pactl --server tcp:${this.host}:${this.port} info`
+      )
+      const info: Record<string, string> = {}
+      for (const line of stdout.trim().split('\n')) {
+        const [key, ...rest] = line.split(':')
+        if (key && rest.length) {
+          info[key.trim()] = rest.join(':').trim()
+        }
+      }
+      return info
+    } catch (err) {
+      console.warn(`[PulseAudioWrapper] getInfo failed: ${(err as Error).message}`)
+      return {}
+    }
+  }
+
+  /**
+   * Get list of PulseAudio sinks.
+   * Equivalent to the original balena-audio getSinks() method.
+   * Returns parsed sink objects from `pactl list sinks`.
+   */
+  async getSinks(): Promise<Array<Record<string, string>>> {
+    try {
+      const { stdout } = await execAsync(
+        `pactl --server tcp:${this.host}:${this.port} list short sinks`
+      )
+      const sinks = stdout.trim().split('\n').filter(Boolean).map(line => {
+        const parts = line.split('\t')
+        return {
+          index: parts[0] || '',
+          name: parts[1] || '',
+          module: parts[2] || '',
+          sampleSpec: parts[3] || '',
+          state: parts[4] || '',
+        }
+      })
+      return sinks
+    } catch (err) {
+      console.warn(`[PulseAudioWrapper] getSinks failed: ${(err as Error).message}`)
+      return []
+    }
+  }
+
+  /**
+   * Move a sink input to a different sink.
+   * Equivalent to the original balena-audio moveSinkInput() method.
+   * Used by SoundConfig to route audio between sinks when changing modes.
+   * @param sinkInputIndex  Index of the sink input to move
+   * @param sinkIndex       Index of the destination sink
+   */
+  async moveSinkInput(sinkInputIndex: number, sinkIndex: number): Promise<void> {
+    try {
+      await execAsync(
+        `pactl --server tcp:${this.host}:${this.port} move-sink-input ${sinkInputIndex} ${sinkIndex}`
+      )
+    } catch (err) {
+      console.warn(`[PulseAudioWrapper] moveSinkInput failed: ${(err as Error).message}`)
+    }
   }
 
   /**
