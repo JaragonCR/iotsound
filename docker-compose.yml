@@ -64,10 +64,10 @@ services:
     depends_on:
       - audio
    
- hostname:
-  build: ./core/hostname
-  restart: no
-  labels:
-    io.balena.features.supervisor-api: 1
-  environment:
-    SET_HOSTNAME: ${SOUND_DEVICE_NAME}
+  hostname:
+   build: ./core/hostname
+   restart: no
+   labels:
+     io.balena.features.supervisor-api: 1
+   environment:
+     SET_HOSTNAME: ${SOUND_DEVICE_NAME}
