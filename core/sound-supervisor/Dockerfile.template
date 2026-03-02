@@ -1,22 +1,19 @@
 FROM balenalib/%%BALENA_ARCH%%-node:20 as build
-
 WORKDIR /usr/src
 COPY core/sound-supervisor/package*.json ./
 RUN npm install
-
 #dev-cmd-live=npm run livepush
-
 COPY core/sound-supervisor/src ./src
 COPY core/sound-supervisor/tsconfig.json .
 RUN npm run build
 
 FROM balenalib/%%BALENA_ARCH%%-node:20-run
-
+RUN install_packages \
+    pulseaudio-utils \
+    curl \
+    dbus
 WORKDIR /usr/src
-
 COPY core/sound-supervisor/package*.json ./
 COPY --from=build /usr/src/build ./build
-
 RUN npm install --production
-
 CMD [ "npm", "start" ]
