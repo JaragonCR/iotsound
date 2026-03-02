@@ -1,6 +1,6 @@
 #!/bin/sh
-# Use SET_HOSTNAME if provided, otherwise fall back to 'iotsound'
-HOSTNAME="${SET_HOSTNAME:-iotsound}"
+# SOUND_DEVICE_NAME is injected automatically by balena from fleet/device variables
+HOSTNAME="${SOUND_DEVICE_NAME:-iotsound}"
 
 echo "[hostname] Setting hostname to: $HOSTNAME"
 
