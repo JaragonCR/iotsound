@@ -64,11 +64,10 @@ services:
     depends_on:
       - audio
    
-  # https://github.com/balenablocks/hostname
-  hostname:
-    build: ./core/hostname
-    restart: no
-    labels:
-      io.balena.features.supervisor-api: 1
-    environment:
-      SET_HOSTNAME: ${SOUND_DEVICE_NAME:-"iotsound"}
+ hostname:
+  build: ./core/hostname
+  restart: no
+  labels:
+    io.balena.features.supervisor-api: 1
+  environment:
+    SET_HOSTNAME: ${SOUND_DEVICE_NAME}
