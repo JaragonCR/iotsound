@@ -10,7 +10,7 @@ COPY core/sound-supervisor/src ./src
 COPY core/sound-supervisor/tsconfig.json .
 RUN npm run build
 
-FROM balenalib/%%BALENA_ARCH%%-alpine-node:20
+FROM balenalib/%%BALENA_ARCH%%-node:20-alpine
 
 WORKDIR /usr/src
 
