@@ -1,1 +1,8 @@
-FROM balenablocks/hostname-%%BALENA_ARCH%%
+FROM balenalib/%%BALENA_ARCH%%-alpine
+
+RUN install_packages curl
+
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
