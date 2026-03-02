@@ -1,0 +1,42 @@
+# ----------------------
+# Stage 1: Build go-librespot
+# ----------------------
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache \
+    git \
+    build-base \
+    pkgconf \
+    alsa-lib-dev \
+    libogg-dev \
+    libvorbis-dev \
+    flac-dev
+
+RUN git clone https://github.com/devgianlu/go-librespot.git /go-librespot
+WORKDIR /go-librespot
+RUN go mod download
+RUN go build -v -o /daemon ./cmd/daemon
+
+# ----------------------
+# Stage 2: Runtime image
+# ----------------------
+FROM alpine:latest
+
+RUN apk add --no-cache \
+    avahi \
+    libgcc \
+    gcompat \
+    alsa-lib \
+    curl
+
+ENV PULSE_SERVER=tcp:localhost:4317
+
+# Install balena alsa-bridge (routes ALSA → PulseAudio)
+RUN curl -skL https://raw.githubusercontent.com/balena-io-experimental/audio/master/scripts/alsa-bridge/alpine-setup.sh | sh \
+ && apk del curl
+
+COPY --from=builder /daemon /usr/src/daemon
+COPY start.sh /usr/src/
+
+WORKDIR /usr/src/
+CMD ["/bin/sh", "/usr/src/start.sh"]

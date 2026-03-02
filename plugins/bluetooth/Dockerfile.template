@@ -1,6 +1,34 @@
-FROM bh.cr/balenalabs/bluetooth-%%BALENA_ARCH%%
+# Modernized bluetooth plugin
+# Previously cloned JaragonCR/bluetooth at build time via alpine/git.
+# Now self-contained: bluetooth-agent is vendored directly in this directory.
+#
+# Changes vs upstream balena-labs-projects/bluetooth:
+#   - int() cast fix for RECONNECT_MAX_RETRIES
+#   - Wipe all paired devices on startup for fresh connections
+#   - Python 3.8 Alpine → Python 3.12 Alpine
+
+FROM balenalib/%%BALENA_MACHINE_NAME%%-alpine-python:3.12-run
 
 WORKDIR /usr/src
 
-COPY start.sh /usr/src/
+# DBus is required for bluetooth-agent to talk to BlueZ
+ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+ENV PYTHONUNBUFFERED=1
+
+RUN install_packages \
+  bluez \
+  bluez-btmgmt \
+  py3-dbus \
+  py3-gobject3
+
+# Copy vendored bluetooth-agent (fork of balena-labs-projects/bluetooth)
+# and local start.sh
+COPY bluetooth-agent /usr/src/bluetooth-agent
+COPY entry.sh /usr/src/entry.sh
+COPY start.sh /usr/src/start.sh
+
+RUN chmod +x /usr/src/bluetooth-agent \
+  && chmod +x /usr/src/entry.sh \
+  && chmod +x /usr/src/start.sh
+
 CMD [ "/bin/bash", "/usr/src/start.sh" ]

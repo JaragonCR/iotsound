@@ -2,7 +2,7 @@ import { getIPAddress } from './utils'
 import { SoundModes } from "./types"
 import { constants } from './constants'
 import { startBalenaService, stopBalenaService, restartBalenaService } from './utils'
-import BalenaAudio from 'balena-audio'
+import PulseAudioWrapper from './PulseAudioWrapper'
 
 interface MultiRoomConfig {
   master: String,
@@ -24,9 +24,9 @@ export default class SoundConfig {
     master: constants.multiroom.master ?? this.device.ip,
     forced: constants.multiroom.forced
   }
-  private audioBlock: BalenaAudio
+  private audioBlock: PulseAudioWrapper
 
-  bindAudioBlock(audioBlock: BalenaAudio) {
+  bindAudioBlock(audioBlock: PulseAudioWrapper) {
     this.audioBlock = audioBlock
   }
 

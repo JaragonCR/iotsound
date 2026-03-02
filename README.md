@@ -1,47 +1,115 @@
-# IoTSound
+# IoTSound (JaragonCR Fork) — v4.0.0
 
-**Starter project enabling you to add multi-room audio streaming via Bluetooth, Airplay2, Spotify Connect and others to any old speakers or Hi-Fi using just a Raspberry Pi.**
+> **Actively maintained community fork** of [iotsound/iotsound](https://github.com/iotsound/iotsound), originally developed by Balena as balenaSound.
+> In October 2025 Balena issued a [call for maintainers](https://github.com/iotsound/iotsound/issues/689) but did not transfer the project to volunteers. This fork picks up that work.
 
-IoTSound, formerly balenaSound, was developed in 2019 to showcase the capabilities of the [balena IoT platform](https://www.balena.io/) which provides powerful edge device management at scale. Unfortunately, balenaSound has not connected with its intended audience: the commercial and industrial IoT space where the balena platform has thrived. Rather than archive and discontinue balenaSound, we are separating it from balena and gifting it to the hobbyist audio community that has been so passionate about it over the past years. 
+[![deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/JaragonCR/iotsound&defaultDeviceType=raspberry-pi)
 
-If you would like to become a maintainer of this project, please reach out to us in the [call for maintainers](https://github.com/iotsound/iotsound/issues/689) issue open now!
+---
 
-**Alternatives**
+## What's different in this fork
 
-There is no guarantee that this project will be maintained, working, or error-free. We've listed some alternative well-maintained Raspberry Pi-based music players below you may want to check out in the meantime:
- 
-- [moOde Audio](https://moodeaudio.org/) is a free, open source "Audiophile streamer for the wonderful Raspberry Pi family of single board computers and DIY audio community." MoOde also offers a multiroom feature.
-- [Volumio](https://volumio.com/) offers free and premium options for building your own music player.
-- [piCorePlayer](https://www.picoreplayer.org/) - Free software that plays local music as well as online music streaming services on a Raspberry Pi.
+### ✅ Completed modernization (v4.0.0)
 
-All of the above software is easily installable from downloads or via the [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
+| Change | Details |
+|---|---|
+| **PulseAudio → PipeWire** | Replaced PulseAudio 15 with PipeWire + WirePlumber on Alpine 3.21. `pipewire-pulse` maintains full TCP 4317 backward compatibility with all audio clients. |
+| **Audio block wrapper** | Replaced the abandoned `balena-audio` npm package (4+ years unmaintained) with `PulseAudioWrapper` — a drop-in replacement using `pactl` and Node.js built-ins. Zero new dependencies. |
+| **librespot → go-librespot** | Replaced the aging librespot Rust implementation with [go-librespot](https://github.com/devgianlu/go-librespot) for better Spotify Connect stability and zeroconf support. |
+| **Node.js 14 → 20 LTS** | Upgraded sound-supervisor from EOL Node 14 to Node 20 LTS. |
+| **TypeScript 3.9 → 5.4.5** | Modernized TypeScript compiler and updated tsconfig target to ES2022. |
+| **13 CVEs fixed** | Addressed all Dependabot security alerts: `axios`, `express`, `async`, `lodash`, `js-yaml`, `braces`, `socket.io-parser` and more. |
+| **Hostname fix** | Fixed Day 1 issue where `${SOUND_DEVICE_NAME}` was never resolved due to balena not supporting docker-compose variable substitution syntax. Replaced with self-contained supervisor API script. |
+| **Bluetooth modernization** | Removed fragile `git clone at build time` pattern. Vendored custom `bluetooth-agent` directly into the plugin. Upgraded Python 3.8 → 3.12. Custom changes: wipe paired devices on startup, fix `RECONNECT_MAX_RETRIES` type cast bug. |
+| **Logging cleanup** | Removed outdated kernel version comments and verbose debug noise across all containers. |
+| **Versionist integration** | Automated changelog generation and semantic versioning via Flowzone. |
+
+### 🔧 Pending / In Progress
+
+| Item | Notes |
+|---|---|
+| **Karaoke support** | Integrating [pitube-karaoke](https://github.com/JaragonCR/pitube-karaoke) — Go-based karaoke with HDMI video output and 3.5mm audio input |
+| **Airplay plugin update** | shairport-sync version bump and base image update |
+| **Multiroom modernization** | Snapcast server/client — consider switching from build-from-source to official Docker images |
+| **UPnP plugin update** | gmrender-resurrect base image update |
+
+---
 
 ## Highlights
 
-- **Audio source plugins**: Stream audio from your favourite music services: Bluetooth, Airplay2, Spotify Connect, UPnP and more!
-- **Multi-room synchronous playing**: Play perfectly synchronized audio on multiple devices all over your place.
-- **Extended DAC support**: Upgrade your audio quality with one of our supported DACs
+- **Audio source plugins**: Stream audio from Bluetooth, Airplay2, Spotify Connect, UPnP and more
+- **Multi-room synchronous playing**: Perfectly synchronized audio across multiple devices
+- **Extended DAC support**: HiFiBerry DAC+ and other supported DAC boards
+- **PipeWire audio stack**: Modern, low-latency audio with full PulseAudio backward compatibility
+- **balenaCloud managed**: Full OTA updates, fleet management and device monitoring via balenaCloud dashboard
+
+## Hardware tested
+
+| Device | Status |
+|---|---|
+| Raspberry Pi 4 + HiFiBerry DAC+ | ✅ Tested and working |
+| Raspberry Pi 5 | Not yet tested |
+| Raspberry Pi Zero W | Should work, not tested |
 
 ## Setup and configuration
 
-Running this app is as simple as deploying it to a balenaCloud fleet. You can do it in just one click by using the button below:
+Deploy to a balenaCloud fleet with one click:
 
-[![deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/iotsound/iotsound&defaultDeviceType=raspberry-pi)
+[![deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/JaragonCR/iotsound&defaultDeviceType=raspberry-pi)
+
+### Fleet variables
+
+Set these in your balenaCloud fleet or device variables:
+
+| Variable | Description | Default |
+|---|---|---|
+| `SOUND_DEVICE_NAME` | Device hostname and Bluetooth/Spotify name | `iotsound` |
+| `SOUND_DISABLE_BLUETOOTH` | Set to `1` to disable Bluetooth | unset |
+| `AUDIO_OUTPUT` | Audio output selection | `AUTO` |
+| `SOUND_VOLUME` | Default volume 0-100 | `75` |
+
+### Web UI
+
+Once deployed, access the control panel at `http://<device-ip>/` for volume control and device management.
+
+## Branch workflow
+
+This project uses [Versionist](https://github.com/product-os/versionist) for automated versioning.
+All changes should go through feature branches and PRs — see [.versionbot/COMMIT_RULES.md](.versionbot/COMMIT_RULES.md) for commit message guidelines.
 
 ## Documentation
 
-Head over to our [docs](https://iotsound.github.io/) for detailed installation and usage instructions, customization options, and more!
+Head over to the [original docs](https://iotsound.github.io/) for detailed installation and usage instructions. Note some docs may reference older versions.
 
 ## Motivation
 
 ![concept](https://raw.githubusercontent.com/iotsound/iotsound/master/docs/images/sound.png)
 
-There are many commercial solutions out there that provide functionality similar to IoTSound. Most of them though come with a premium price tag and are riddled with privacy concerns.
+There are many commercial solutions out there that provide functionality similar to IoTSound — Sonos, WiiM, and others. Most come with a premium price tag, vendor lock-in, and privacy concerns.
 
-IoTSound is an open source project that allows you to build your own DIY audio streaming platform without compromises. Why spend big money on hardware that might be deemed obsolete by the vendor as they see fit? With IoTSound you are in control, bring your old speakers back to life!
+IoTSound is an open source project that lets you build your own DIY audio streaming platform without compromises. Bring your old speakers back to life, on your own terms.
 
-This project is no longer in active development but if you'd like to be a maintainer please submit an issue here on GitHub.
+## Alternatives
+
+If you need a more established solution:
+
+- [moOde Audio](https://moodeaudio.org/) — free, open source audiophile streamer with multiroom support
+- [Volumio](https://volumio.com/) — free and premium options
+- [piCorePlayer](https://www.picoreplayer.org/) — lightweight, supports local and streaming services
+
+## Contributing
+
+This is a community-maintained fork. PRs welcome. If you find a bug or want to help with any of the pending items above, please [raise an issue](https://github.com/JaragonCR/iotsound/issues/new).
+
+See [.versionbot/COMMIT_RULES.md](.versionbot/COMMIT_RULES.md) for commit message guidelines.
 
 ## Getting Help
 
-If you're having any problem, please [raise an issue](https://github.com/iotsound/iotsound/issues/new) on GitHub so another community member may provide assistance.
+If you're having any problem, please [raise an issue](https://github.com/JaragonCR/iotsound/issues/new) on GitHub.
+
+## Credits
+
+- Original project by [Balena](https://www.balena.io/)
+- go-librespot by [devgianlu](https://github.com/devgianlu/go-librespot)
+- PipeWire migration assistance by Google Gemini
+- Modernization work by [@JaragonCR](https://github.com/JaragonCR) with assistance from Claude (Anthropic)
