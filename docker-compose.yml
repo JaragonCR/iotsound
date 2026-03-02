@@ -69,5 +69,3 @@ services:
    restart: no
    labels:
      io.balena.features.supervisor-api: 1
-   environment:
-     SET_HOSTNAME: ${SOUND_DEVICE_NAME}
