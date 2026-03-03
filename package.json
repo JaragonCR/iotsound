@@ -6,5 +6,8 @@
     "type": "git",
     "url": "https://github.com/JaragonCR/iotsound"
   },
+  "scripts": {
+    "test": "npm audit --audit-level=high"
+  },
   "license": "MIT"
 }
