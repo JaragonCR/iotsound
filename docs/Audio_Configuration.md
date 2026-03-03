@@ -56,6 +56,17 @@ AUDIO_INPUT=USB         # Force USB device
 
 Configurable PipeWire biquad filters for microphone input to improve voice quality and remove unwanted noise.
 
+### Quick Start: Disable All EQ
+
+To quickly disable all microphone filters and use raw input (default):
+
+```
+AUDIO_INPUT_EQ_DISABLED = true
+AUDIO_MIC_INPUT_VOLUME = 35
+```
+
+This ignores all other filter settings and uses the unfiltered USB microphone input. This is the current default while EQ is being refined for production.
+
 ### Highpass Filter (Removes Low-Frequency Rumble)
 
 Removes microphone rumble, wind noise, and low-frequency electrical hum.
@@ -78,17 +89,51 @@ Removes microphone hiss, high-frequency noise, and sibilance.
 
 **Configuration:**
 - `AUDIO_INPUT_LOWPASS` - Cutoff frequency in Hz
-  - `12000` (default) - Recommended for vocals/karaoke
+  - `15000` (default) - Recommended for vocals/karaoke
   - `10000` - More aggressive, adds presence
-  - `15000` - Less aggressive, preserves brightness
+  - `18000` - Less aggressive, preserves brightness
   - `0` or empty - Disabled
   - `20000` - Full spectrum (no filtering)
 
 **Common Settings:**
 - `10000Hz` - Very smooth, warm vocals (aggressive)
-- `12000Hz` - Balanced for karaoke (default)
-- `15000Hz` - Bright, presence-focused
+- `15000Hz` - Balanced for karaoke (default)
+- `18000Hz` - Bright, presence-focused
 - `20000Hz` - No lowpass filtering
+
+### Boxy Sound Removal (500Hz Peaking Cut)
+
+Removes the "boxy" or "enclosed" quality that can accumulate in the 500Hz region, making vocals sound trapped or muffled.
+
+**Configuration:**
+- `AUDIO_INPUT_BOXY_CUT` - Peaking filter gain in dB at 500Hz
+  - `-2` (default) - Subtle cut, removes boxy quality
+  - `-3` - More aggressive cut
+  - `0` or empty - Disabled (no boxy cut)
+  - Positive values (e.g., `+2`) - Boost 500Hz (not recommended for vocals)
+
+**Common Settings:**
+- `-2dB` - Default, subtle cut (recommended)
+- `-3dB` - More noticeable, for very boxy vocals
+- `0` - Disabled, no boxy filtering
+
+### Proximity Effect Removal (250Hz Peaking Cut)
+
+Removes the low-mid boost that occurs when a microphone is held too close to the mouth. This is the natural "proximity effect" where closeness boosts frequencies around 200-300Hz.
+
+**Configuration:**
+- `AUDIO_INPUT_PROXIMITY_CUT` - Peaking filter gain in dB at 250Hz
+  - `-2` (default) - Subtle cut, reduces proximity boost for close miking
+  - `-3` - More aggressive cut for very close miking
+  - `0` or empty - Disabled (no proximity cut)
+  - Positive values (e.g., `+2`) - Boost 250Hz (not recommended)
+
+**Common Settings:**
+- `-2dB` - Default, subtle cut (recommended for close-miking)
+- `-3dB` - More aggressive, for very close or sensitive mics
+- `0` - Disabled, for normal mic distance (6+ inches away)
+
+**Note:** Proximity effect is a real acoustic phenomenon. If your karaoke performers hold the mic close, use this filter. If they keep proper distance (6+ inches), you can disable it.
 
 ### Microphone Input Volume
 
@@ -144,13 +189,20 @@ Set these in your Balena fleet configuration to customize audio behavior across 
 ```
 AUDIO_OUTPUT = AUTO
 AUDIO_INPUT = AUTO
-AUDIO_INPUT_HIGHPASS = 120
-AUDIO_INPUT_LOWPASS = 12000
-AUDIO_MIC_INPUT_VOLUME = 40
+AUDIO_INPUT_EQ_DISABLED = true
+AUDIO_INPUT_HIGHPASS = 130
+AUDIO_INPUT_HIGHPASS_Q = 1.0
+AUDIO_INPUT_PROXIMITY_CUT = -2
+AUDIO_INPUT_BOXY_CUT = -2
+AUDIO_INPUT_LOWPASS = 15000
+AUDIO_INPUT_LOWPASS_Q = 1.0
+AUDIO_MIC_INPUT_VOLUME = 35
 AUDIO_INPUT_LOOPBACK = false
 SOUND_INPUT_LATENCY = 200
 SOUND_OUTPUT_LATENCY = 200
 ```
+
+**Current defaults:** EQ is disabled (`AUDIO_INPUT_EQ_DISABLED = true`) while being refined. Volume is set to 35% as the sweet spot for USB microphones.
 
 ## Device Detection Output
 
