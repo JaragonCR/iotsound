@@ -1,4 +1,46 @@
 - commits:
+    - subject: "feature: Hardware audio device detection with microphone filtering"
+      hash: afa124a93c7f53089e3be03c53f5866395f0d2f7
+      body: |
+        Audio Device Detection:
+        - Auto-detect output sinks: HiFiBerry DAC > USB > HDMI > Built-in
+        - Auto-detect input sources: USB > Built-in
+        - Manual override via AUDIO_OUTPUT and AUDIO_INPUT variables
+        - Lists available devices at startup for easy configuration
+
+        Microphone Filtering:
+        - Configurable PipeWire biquad filters for voice quality
+        - AUDIO_INPUT_HIGHPASS (default: 120Hz) - removes rumble
+        - AUDIO_INPUT_LOWPASS (default: 12000Hz) - removes harshness
+        - AUDIO_MIC_INPUT_VOLUME (default: 40%) - prevents amplification noise
+
+        Microphone Loopback:
+        - Optional real-time monitoring via AUDIO_INPUT_LOOPBACK
+        - Cleaned duplicate loopback modules on startup
+        - Useful for testing and karaoke applications
+
+        Integration:
+        - Saves detected input device to /run/pulse/audio-input-device
+        - Enables karaoke container microphone auto-detection
+        - Full latency configuration support
+
+        Documentation:
+        - Updated README.md with audio configuration overview
+        - New AUDIO_CONFIGURATION.md with comprehensive guide
+        - Troubleshooting section for common audio issues
+
+        Tested with:
+        - Raspberry Pi 4 + HiFiBerry DAC+ (output)
+        - Raspberry Pi 4 + C-Media USB Audio Dongle (mic input)
+        - Highpass/lowpass filtering with configurable parameters
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+  version: 4.2.0
+  title: ""
+  date: 2026-03-03T21:28:18.338Z
+- commits:
     - subject: "minor: Add WiFi watchdog service for automatic recovery"
       hash: ec5a93f68e66823c63e64aa736b29ca5747c89d5
       body: |-
