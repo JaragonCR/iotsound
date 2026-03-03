@@ -1,3 +1,3 @@
 # PulseAudio protocol servers are configured via pipewire-pulse.conf.d/server.conf
 # Bluetooth is handled natively by WirePlumber
-# This file is kept for loopback and routing rules added dynamically by entry.sh
+# This file is intentionally empty - all routing is applied dynamically by start.sh

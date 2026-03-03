@@ -29,6 +29,8 @@ COPY pulseaudio/pulse-server.conf /etc/pipewire/pipewire-pulse.conf.d/server.con
 
 COPY udev/95-balena-audio.rules /etc/udev/rules.d/95-balena-audio.rules
 
+# This valid ENV command safely busts the cache for the COPY steps below
+ENV CACHE_BUST=2026-03-02
 COPY entry.sh .
 COPY . .
 
