@@ -1,10 +1,14 @@
 {
   "name": "iotsound",
   "version": "4.0.0",
+  "private": true,
   "description": "Multi-room audio streaming via Bluetooth, Airplay2, Spotify Connect",
   "repository": {
     "type": "git",
     "url": "https://github.com/JaragonCR/iotsound"
+  },
+  "scripts": {
+    "test": "npm audit --audit-level=high"
   },
   "license": "MIT"
 }
