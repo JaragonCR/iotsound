@@ -1,4 +1,47 @@
 - commits:
+    - subject: "fix: Add hardware audio device detection and microphone filtering"
+      hash: b891f4ab57e90a4d3914a2fdacc0632fd1237a4d
+      body: |
+        Hardware Detection:
+        - Auto-detect output devices: HiFiBerry DAC > USB > HDMI > Built-in
+        - Auto-detect input devices: USB > Built-in
+        - Manual override via AUDIO_OUTPUT and AUDIO_INPUT variables
+
+        Professional Vocal EQ Filters:
+        - Highpass: 130Hz (removes rumble, Q configurable)
+        - Proximity cut: -2dB @ 250Hz (removes close-miking boost)
+        - Boxy cut: -2dB @ 500Hz (removes enclosed sound)
+        - Lowpass: 15000Hz (removes harshness, Q configurable)
+        - AUDIO_INPUT_EQ_DISABLED easy button to disable all filters at once
+
+        Microphone Features:
+        - Auto-detect USB microphones with volume control
+        - Real-time monitoring via optional mic loopback
+        - Raw input fallback when filters disabled
+        - Saves detected input device to /run/pulse/audio-input-device
+
+        New Environment Variables:
+        - AUDIO_INPUT_EQ_DISABLED (easy button to bypass all filters)
+        - AUDIO_INPUT_HIGHPASS, AUDIO_INPUT_LOWPASS with Q factors
+        - AUDIO_INPUT_PROXIMITY_CUT, AUDIO_INPUT_BOXY_CUT
+        - AUDIO_MIC_INPUT_VOLUME, AUDIO_INPUT_LOOPBACK
+
+        Architecture:
+        - Filter config created in Phase 2 (before services start)
+        - MIC_SOURCE determined at runtime
+        - Graceful fallback to raw input
+
+        Documentation:
+        - Updated README.md and new AUDIO_CONFIGURATION.md
+        - Comprehensive vocal EQ guide and troubleshooting
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+  version: 4.2.1
+  title: ""
+  date: 2026-03-03T23:30:48.004Z
+- commits:
     - subject: "feature: Hardware audio device detection with microphone filtering"
       hash: afa124a93c7f53089e3be03c53f5866395f0d2f7
       body: |
