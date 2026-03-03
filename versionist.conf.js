@@ -1,5 +1,6 @@
 module.exports = {
-  editVersion: (cwd, version, cb) => {
+  // 'updateVersion' is the correct Versionist hook for a custom function
+  updateVersion: (cwd, version, cb) => {
     const fs = require('fs');
     const path = require('path');
 
