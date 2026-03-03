@@ -1,4 +1,13 @@
 - commits:
+    - subject: "patch: implement robust sink detection and fix variable expansion"
+      hash: 30b802081696238db8173c71387c44f0ae977458
+      body: ""
+      footer: {}
+      author: JaragonCR
+  version: 4.0.3
+  title: ""
+  date: 2026-03-03T02:10:44.418Z
+- commits:
     - subject: "patch: ensure audio service starts on pipewire by checking for config
         files"
       hash: 4cf07431a4f210fd22f162fd95441ed7e6e48930
