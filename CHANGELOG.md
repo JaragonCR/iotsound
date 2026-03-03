@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.1.0
+## (2026-03-03)
+
+* minor: Add WiFi watchdog service for automatic recovery [JaragonCR]
+
 # v4.0.4
 ## (2026-03-03)
 

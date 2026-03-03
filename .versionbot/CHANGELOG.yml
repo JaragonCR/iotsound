@@ -1,4 +1,21 @@
 - commits:
+    - subject: "minor: Add WiFi watchdog service for automatic recovery"
+      hash: ec5a93f68e66823c63e64aa736b29ca5747c89d5
+      body: |-
+        - Monitors WiFi connectivity every 30 seconds
+        - Toggles WiFi off/on after 10 minutes of downtime (if no audio playing)
+        - Reboots after 3 failed recovery attempts
+        - Audio-aware: won't interrupt active playback
+        - Organized in core/watchdog/ following project structure
+        - Configurable via environment variables
+        - Includes start.sh with environment variable defaults
+        - Updated README with WiFi Watchdog documentation
+      footer: {}
+      author: JaragonCR
+  version: 4.1.0
+  title: ""
+  date: 2026-03-03T16:32:34.315Z
+- commits:
     - subject: "patch: improve audio service initialization sequencing"
       hash: dc54a72d772983074f04795b30b2801b0a238b12
       body: ""
