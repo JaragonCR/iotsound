@@ -3,6 +3,7 @@ set -e
 
 # ============================================================================
 # IoTSound Audio Service Startup Script
+# Enhanced with Input Device Detection and DAC Prioritization
 # ============================================================================
 
 LOG_FILE="/var/log/audio-startup.log"
@@ -36,6 +37,7 @@ SOUND_SUPERVISOR_PORT=${SOUND_SUPERVISOR_PORT:-80}
 PULSEAUDIO_TIMEOUT=30
 SOUND_SUPERVISOR_TIMEOUT=60
 HARDWARE_SINK_TIMEOUT=20
+HARDWARE_SOURCE_TIMEOUT=10
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -124,7 +126,7 @@ function wait_for_pulseaudio() {
 }
 
 function detect_hardware_sink() {
-  log_step "Detecting hardware audio sink..."
+  log_step "Detecting hardware audio sinks..."
   local timeout=$HARDWARE_SINK_TIMEOUT
 
   while [ $timeout -gt 0 ]; do
@@ -161,11 +163,12 @@ function select_hardware_sink() {
     log_warn "Preference '$audio_output_pref' not found, falling back to auto-detection"
   fi
 
-  # Auto-detect by preference order
-  for preferred in 'soc_sound' 'usb' 'dac' 'hifiberry'; do
+  # Auto-detect by preference order: DAC > USB > HDMI > Built-in
+  # This ensures HiFiBerry DAC+ is preferred over USB audio dongle
+  for preferred in 'hifiberry' 'dac' 'soc_sound' 'usb' 'dac+' 'hdmi'; do
     selected_sink=$(echo "$hw_sinks" | grep -i "$preferred" | head -n 1 || true)
     if [ -n "$selected_sink" ]; then
-      log_ok "Selected preferred sink: $selected_sink"
+      log_ok "Selected preferred sink: $selected_sink (matched: $preferred)"
       echo "$selected_sink"
       return 0
     fi
@@ -180,6 +183,52 @@ function select_hardware_sink() {
   fi
 
   log_warn "No sinks available, will attempt to use system default"
+  return 1
+}
+
+function detect_hardware_source() {
+  log_step "Detecting hardware audio sources (microphones)..."
+  local timeout=$HARDWARE_SOURCE_TIMEOUT
+
+  while [ $timeout -gt 0 ]; do
+    local hw_sources=$(pactl list short sources 2>/dev/null | awk '{print $2}' | grep -v 'balena-sound\|snapcast' | grep 'alsa_input' || true)
+
+    if [ -n "$hw_sources" ]; then
+      log_ok "Found hardware sources"
+      echo "$hw_sources"
+      return 0
+    fi
+
+    log "  Waiting for source detection... ($((HARDWARE_SOURCE_TIMEOUT - timeout + 1))/$HARDWARE_SOURCE_TIMEOUT seconds)"
+    sleep 1
+    timeout=$((timeout - 1))
+  done
+
+  log_warn "No hardware sources detected after $HARDWARE_SOURCE_TIMEOUT seconds"
+  return 1
+}
+
+function select_hardware_source() {
+  local hw_sources="$1"
+  local selected_source=""
+
+  # Prefer USB input devices (USB microphone/dongle) over built-in
+  selected_source=$(echo "$hw_sources" | grep -i 'usb' | head -n 1 || true)
+  if [ -n "$selected_source" ]; then
+    log_ok "Selected USB input source: $selected_source"
+    echo "$selected_source"
+    return 0
+  fi
+
+  # Fall back to first available
+  selected_source=$(echo "$hw_sources" | head -n 1)
+  if [ -n "$selected_source" ]; then
+    log_ok "Selected first available input source: $selected_source"
+    echo "$selected_source"
+    return 0
+  fi
+
+  log_warn "No input sources available"
   return 1
 }
 
@@ -285,9 +334,104 @@ pipewire-pulse > /var/log/pipewire-pulse.log 2>&1 &
 PW_PULSE_PID=$!
 log_ok "PipeWire-Pulse started (PID: $PW_PULSE_PID)"
 
-# ============================================================================
-# PHASE 6: WAIT FOR PULSEAUDIO READINESS
-# ============================================================================
+# ========================================================================
+# Create PipeWire Filter Configuration (for microphone audio processing)
+# ========================================================================
+
+log_step "Configuring PipeWire audio filters for microphone input..."
+
+# Microphone filter frequencies (optimized for karaoke vocals)
+# AUDIO_INPUT_HIGHPASS: High-pass cutoff frequency (Hz) - removes rumble/noise
+#   Default: 120Hz (good for vocals), set to 0 or empty to disable
+# AUDIO_INPUT_LOWPASS: Low-pass cutoff frequency (Hz) - removes harshness  
+#   Default: 12000Hz (vocal range), set to 0 or empty to disable, 20000 for full spectrum
+AUDIO_INPUT_HIGHPASS=${AUDIO_INPUT_HIGHPASS:-120}
+AUDIO_INPUT_LOWPASS=${AUDIO_INPUT_LOWPASS:-12000}
+
+log "Microphone filter configuration:"
+log "  Highpass: ${AUDIO_INPUT_HIGHPASS}Hz (0/empty = disabled)"
+log "  Lowpass: ${AUDIO_INPUT_LOWPASS}Hz (0/empty = disabled)"
+
+mkdir -p /etc/pipewire/pipewire.conf.d/
+
+# Determine which filters are active
+HP_ACTIVE=false
+LP_ACTIVE=false
+[ "$AUDIO_INPUT_HIGHPASS" != "0" ] && [ -n "$AUDIO_INPUT_HIGHPASS" ] && HP_ACTIVE=true
+[ "$AUDIO_INPUT_LOWPASS" != "0" ] && [ -n "$AUDIO_INPUT_LOWPASS" ] && LP_ACTIVE=true
+
+if [ "$HP_ACTIVE" = true ] || [ "$LP_ACTIVE" = true ]; then
+  # Build filter chain
+  NODES_SECTION=""
+  LINKS_SECTION=""
+  
+  if [ "$HP_ACTIVE" = true ]; then
+    NODES_SECTION="${NODES_SECTION}
+                    {
+                        type   = builtin
+                        name   = hp
+                        label  = bq_highpass
+                        control = { Freq = $AUDIO_INPUT_HIGHPASS Q = 0.707 }
+                    }"
+  fi
+  
+  if [ "$LP_ACTIVE" = true ]; then
+    NODES_SECTION="${NODES_SECTION}
+                    {
+                        type   = builtin
+                        name   = lp
+                        label  = bq_lowpass
+                        control = { Freq = $AUDIO_INPUT_LOWPASS Q = 0.707 }
+                    }"
+    
+    if [ "$HP_ACTIVE" = true ]; then
+      LINKS_SECTION="
+                links = [
+                    { output = \"hp:Out\" input = \"lp:In\" }
+                ]"
+    fi
+  fi
+  
+  # Determine input/output ports
+  if [ "$HP_ACTIVE" = true ]; then
+    INPUT_PORT="hp:In"
+  else
+    INPUT_PORT="lp:In"
+  fi
+  
+  if [ "$LP_ACTIVE" = true ]; then
+    OUTPUT_PORT="lp:Out"
+  else
+    OUTPUT_PORT="hp:Out"
+  fi
+  
+  cat > /etc/pipewire/pipewire.conf.d/99-mic-filters.conf << EOF
+context.modules = [
+    { name = libpipewire-module-filter-chain
+        args = {
+            node.description = "Mic Audio Filters"
+            media.name       = "Mic Filtered"
+            filter.graph = {
+                nodes = [$NODES_SECTION
+                ]$LINKS_SECTION
+                inputs  = [ "$INPUT_PORT" ]
+                outputs = [ "$OUTPUT_PORT" ]
+            }
+            capture.props = {
+                node.name = "capture.mic_filtered"
+            }
+            playback.props = {
+                node.name   = "mic_filtered"
+                media.class = Audio/Source
+            }
+        }
+    }
+]
+EOF
+  log_ok "Microphone filter configuration created"
+else
+  log_ok "Microphone filters disabled (AUDIO_INPUT_HIGHPASS=0, AUDIO_INPUT_LOWPASS=0)"
+fi
 
 log_section "PHASE 6: PulseAudio Readiness Check"
 
@@ -298,33 +442,49 @@ if ! wait_for_pulseaudio; then
 fi
 
 # ============================================================================
-# PHASE 7: HARDWARE SINK DETECTION AND SELECTION
+# PHASE 7: OUTPUT DEVICE DETECTION AND SELECTION (DAC PRIORITY)
 # ============================================================================
 
-log_section "PHASE 7: Hardware Sink Detection"
+log_section "PHASE 7: Hardware Output Device Detection"
 
-# Read output preference saved by entry.sh
-AUDIO_OUTPUT=$(cat /run/pulse/audio-output-preference 2>/dev/null || echo "AUTO")
+# Read output preference (defaults to AUTO if not set)
+AUDIO_OUTPUT=${AUDIO_OUTPUT:-AUTO}
 log "Output preference: $AUDIO_OUTPUT"
 
-echo "--- Available Hardware Sinks ---"
-HW_SINKS=$(pactl list short sinks | awk '{print $2}' | grep -v 'balena-sound\|snapcast' | grep 'alsa_output' || true)
-if [ -z "$HW_SINKS" ]; then
-  HW_SINKS=$(pactl list short sinks | awk '{print $2}' | grep -v 'balena-sound\|snapcast' || true)
+log_step "Detecting hardware audio sinks..."
+HW_SINKS=$(pactl list short sinks | awk '{print $2}' | grep -v 'balena-sound\|snapcast' || true)
+
+if [ -n "$HW_SINKS" ]; then
+  log_step "Available Hardware Output Sinks:"
+  echo "$HW_SINKS" | nl -v 1 | sed 's/^/  /'
+  log "  (Set AUDIO_OUTPUT=<name> to force a specific device)"
 fi
-echo "$HW_SINKS" | sed 's/^/ - /'
-echo "--------------------------------"
 
 HW_SINK=""
 
-if [ "$AUDIO_OUTPUT" = "ALL" ]; then
-  log_step "Loading combine-sink for all outputs..."
-  pactl load-module module-combine-sink sink_name=combined_all_sinks || log_warn "Failed to load combine sink"
-  HW_SINK="combined_all_sinks"
-else
+# If AUDIO_OUTPUT is explicitly set and not AUTO, force that device
+if [ "$AUDIO_OUTPUT" != "AUTO" ]; then
+  log_step "Forcing output device: $AUDIO_OUTPUT"
+  HW_SINK=$(echo "$HW_SINKS" | grep -i "$AUDIO_OUTPUT" | head -n 1 || true)
+  
+  if [ -n "$HW_SINK" ]; then
+    log_ok "Found matching device: $HW_SINK"
+  else
+    log_error "Device '$AUDIO_OUTPUT' not found! Available: $(echo "$HW_SINKS" | tr '\n' ', ')"
+    log_warn "Falling back to auto-detection"
+    AUDIO_OUTPUT="AUTO"
+  fi
+fi
+
+# Auto-detect if AUDIO_OUTPUT is AUTO or device not found
+if [ "$AUDIO_OUTPUT" = "AUTO" ] || [ -z "$HW_SINK" ]; then
+  log_step "Auto-detecting best output device..."
   HW_SINKS_DETECTED=$(detect_hardware_sink) || true
   if [ -n "$HW_SINKS_DETECTED" ]; then
-    HW_SINK=$(select_hardware_sink "$HW_SINKS_DETECTED" "$AUDIO_OUTPUT") || true
+    log_step "Available Hardware Output Sinks (detected):"
+    echo "$HW_SINKS_DETECTED" | nl -v 1 | sed 's/^/  /'
+    log "  (Set AUDIO_OUTPUT=<name> to force a specific device)"
+    HW_SINK=$(select_hardware_sink "$HW_SINKS_DETECTED" "") || true
   fi
 
   if [ -z "$HW_SINK" ]; then
@@ -339,10 +499,10 @@ if [ -z "$HW_SINK" ]; then
   log_warn "Using last-resort fallback: $HW_SINK"
 fi
 
-log_ok "Selected Hardware Sink: $HW_SINK"
+log_ok "Selected Output Sink: $HW_SINK"
 
 if pactl set-default-sink "$HW_SINK" 2>/dev/null; then
-  log_ok "Default sink configured successfully"
+  log_ok "Default output sink configured successfully"
 else
   log_warn "Failed to set default sink (continuing anyway)"
 fi
@@ -357,9 +517,105 @@ fi
 
 # Update balena-sound config with detected sink
 if sed -i "s/%OUTPUT_SINK%/sink=$HW_SINK/" "$CONFIG_FILE" 2>/dev/null; then
-  log_ok "Audio configuration updated with selected sink"
+  log_ok "Audio configuration updated with selected output sink"
 else
   log_warn "Failed to update configuration file"
+fi
+
+# ============================================================================
+# PHASE 7B: INPUT DEVICE DETECTION (FOR KARAOKE AND MIC INPUT)
+# ============================================================================
+
+log_section "PHASE 7B: Hardware Input Device Detection"
+
+# Read input preference (defaults to AUTO if not set)
+AUDIO_INPUT=${AUDIO_INPUT:-AUTO}
+log "Input preference: $AUDIO_INPUT"
+
+log_step "Detecting hardware audio sources (microphones)..."
+HW_SOURCES=$(pactl list short sources 2>/dev/null | awk '{print $2}' | grep -v 'balena-sound\|snapcast\|\.monitor' || true)
+
+if [ -n "$HW_SOURCES" ]; then
+  log_step "Available Hardware Input Sources:"
+  echo "$HW_SOURCES" | nl -v 1 | sed 's/^/  /'
+  log "  (Set AUDIO_INPUT=<n> to force a specific device)"
+  
+  HW_SOURCE=""
+  
+  # If AUDIO_INPUT is explicitly set and not AUTO, force that device
+  if [ "$AUDIO_INPUT" != "AUTO" ]; then
+    log_step "Forcing input device: $AUDIO_INPUT"
+    HW_SOURCE=$(echo "$HW_SOURCES" | grep -i "$AUDIO_INPUT" | head -n 1 || true)
+    
+    if [ -n "$HW_SOURCE" ]; then
+      log_ok "Found matching device: $HW_SOURCE"
+    else
+      log_error "Device '$AUDIO_INPUT' not found! Available: $(echo "$HW_SOURCES" | tr '\n' ', ')"
+      log_warn "Falling back to auto-detection"
+      AUDIO_INPUT="AUTO"
+    fi
+  fi
+
+  # Auto-detect if AUDIO_INPUT is AUTO or device not found
+  if [ "$AUDIO_INPUT" = "AUTO" ] || [ -z "$HW_SOURCE" ]; then
+    log_step "Auto-detecting best input device..."
+    HW_SOURCES_DETECTED=$(detect_hardware_source) || true
+    if [ -n "$HW_SOURCES_DETECTED" ]; then
+      HW_SOURCE=$(select_hardware_source "$HW_SOURCES_DETECTED") || true
+    fi
+  fi
+
+  if [ -n "$HW_SOURCE" ]; then
+    log_ok "Selected Input Source: $HW_SOURCE"
+    echo "$HW_SOURCE" > /run/pulse/audio-input-device
+    
+    if pactl set-default-source "$HW_SOURCE" 2>/dev/null; then
+      log_ok "Default input source configured successfully"
+    else
+      log_warn "Failed to set default input source (continuing anyway)"
+    fi
+
+    # ========================================================================
+    # PHASE 7C: OPTIONAL MIC LOOPBACK FOR TESTING/MONITORING
+    # ========================================================================
+    
+    AUDIO_INPUT_LOOPBACK=${AUDIO_INPUT_LOOPBACK:-false}
+    AUDIO_MIC_INPUT_VOLUME=${AUDIO_MIC_INPUT_VOLUME:-40}
+    
+    if [ "$AUDIO_INPUT_LOOPBACK" = "true" ] || [ "$AUDIO_INPUT_LOOPBACK" = "1" ]; then
+      log_step "Enabling mic loopback to speakers for real-time monitoring..."
+      
+      # Clean up any existing loopback modules first
+      pactl list modules 2>/dev/null | grep -o "Module #[0-9]*" | awk '{print $2}' | while read mod; do
+        pactl unload-module "$mod" 2>/dev/null || true
+      done
+      sleep 1
+      
+      # Set mic volume (default 40%)
+      if pactl set-source-volume mic_filtered "$AUDIO_MIC_INPUT_VOLUME%" 2>/dev/null; then
+        log_ok "Mic volume set to ${AUDIO_MIC_INPUT_VOLUME}%"
+      else
+        log_warn "Failed to set mic volume to ${AUDIO_MIC_INPUT_VOLUME}%"
+      fi
+      
+      # Load fresh loopback
+      if pactl load-module module-loopback source=mic_filtered sink="$HW_SINK" latency_msec=50 remix=true > /dev/null 2>&1; then
+        log_ok "Mic loopback enabled (filtered @ ${AUDIO_MIC_INPUT_VOLUME}%) - you will hear yourself through speakers"
+        log "  (This is useful for testing. Disable with AUDIO_INPUT_LOOPBACK=false)"
+      else
+        log_warn "Failed to enable mic loopback (continuing without it)"
+      fi
+    else
+      log_ok "Mic loopback disabled (AUDIO_INPUT_LOOPBACK=false)"
+      log "  To enable: set AUDIO_INPUT_LOOPBACK=true in Balena"
+    fi
+  else
+    log_warn "Could not select input source"
+    echo "" > /run/pulse/audio-input-device
+  fi
+else
+  log_warn "No input devices (microphones) detected"
+  echo "" > /run/pulse/audio-input-device
 fi
 
 # ============================================================================
@@ -384,7 +640,7 @@ for pa_file in /etc/pulse/default.pa.d/*.pa; do
       continue
     fi
     
-    # NEW: Skip empty/malformed set-default-sink commands
+    # Skip empty/malformed set-default-sink commands
     if [[ "$cmd" =~ ^set-default-sink[[:space:]]*$ ]]; then
        log_warn "  Skipping malformed command: $cmd (Missing sink name)"
        continue
@@ -410,7 +666,9 @@ log_section "IOTSOUND AUDIO SERVICE READY"
 log "Startup completed at: $(date)"
 log "PipeWire-Pulse PID: $PW_PULSE_PID"
 log "Audio Configuration Summary:"
-log "  - Output Sink: $HW_SINK"
+log "  - Output Sink: $HW_SINK (DAC > USB > HDMI priority)"
+log "  - Input Source: $(cat /run/pulse/audio-input-device 2>/dev/null || echo 'None detected')"
+log "  - Mic Loopback: ${AUDIO_INPUT_LOOPBACK:-false}"
 log "  - Input Latency: ${SOUND_INPUT_LATENCY}ms"
 log "  - Output Latency: ${SOUND_OUTPUT_LATENCY}ms"
 log "  - Mode: $MODE"

@@ -9,7 +9,7 @@
 
 ## What's different in this fork
 
-### ✅ Completed modernization (v4.0.0)
+### ✅ Completed modernization (v4.0.0 → v4.1.0)
 
 | Change | Details |
 |---|---|
@@ -23,12 +23,8 @@
 | **Bluetooth modernization** | Removed fragile `git clone at build time` pattern. Vendored custom `bluetooth-agent` directly into the plugin. Upgraded Python 3.8 → 3.12. Custom changes: wipe paired devices on startup, fix `RECONNECT_MAX_RETRIES` type cast bug. |
 | **Logging cleanup** | Removed outdated kernel version comments and verbose debug noise across all containers. |
 | **Versionist integration** | Automated changelog generation and semantic versioning via Flowzone. |
-
-### ✨ New in v4.1.0
-
-| Feature | Details |
-|---|---|
-| **WiFi Watchdog** | Automatic WiFi recovery service monitors connectivity every 30 seconds. If WiFi is down for 10+ minutes (and no audio is playing), it toggles WiFi off/on. Reboots device after 3 failed recovery attempts. Audio-aware to protect active playback. |
+| **Hardware audio detection** | Auto-detect output devices (DAC > USB > HDMI > Built-in) and input devices (USB > Built-in) with manual override support. |
+| **Microphone filtering** | Configurable PipeWire biquad filters (highpass/lowpass) for voice quality optimization. Perfect for karaoke. |
 
 ### 🔧 Pending / In Progress
 
@@ -45,9 +41,10 @@
 
 - **Audio source plugins**: Stream audio from Bluetooth, Airplay2, Spotify Connect, UPnP and more
 - **Multi-room synchronous playing**: Perfectly synchronized audio across multiple devices
-- **Extended DAC support**: HiFiBerry DAC+ and other supported DAC boards
+- **Extended DAC support**: HiFiBerry DAC+, USB audio devices, and other supported DAC boards
+- **Hardware auto-detection**: Automatically detects and prioritizes audio output and input devices
+- **Microphone filtering**: Configurable highpass/lowpass filters for microphone input (ideal for karaoke)
 - **PipeWire audio stack**: Modern, low-latency audio with full PulseAudio backward compatibility
-- **WiFi Watchdog**: Automatic WiFi recovery — toggles connection if down for 10+ minutes, reboots after 3 failed attempts
 - **balenaCloud managed**: Full OTA updates, fleet management and device monitoring via balenaCloud dashboard
 
 ## Hardware tested
@@ -55,6 +52,7 @@
 | Device | Status |
 |---|---|
 | Raspberry Pi 4 + HiFiBerry DAC+ | ✅ Tested and working |
+| Raspberry Pi 4 + C-Media USB Audio Dongle | ✅ Tested and working |
 | Raspberry Pi 5 | Not yet tested |
 | Raspberry Pi Zero W | Should work, not tested |
 
@@ -72,43 +70,99 @@ Set these in your balenaCloud fleet or device variables:
 |---|---|---|
 | `SOUND_DEVICE_NAME` | Device hostname and Bluetooth/Spotify name | `iotsound` |
 | `SOUND_DISABLE_BLUETOOTH` | Set to `1` to disable Bluetooth | unset |
-| `AUDIO_OUTPUT` | Audio output selection | `AUTO` |
 | `SOUND_VOLUME` | Default volume 0-100 | `75` |
-| `WIFI_CHECK_INTERVAL` | WiFi watchdog check interval (seconds) | `30` |
-| `WIFI_OFFLINE_THRESHOLD` | WiFi offline timeout before recovery (seconds) | `600` (10 min) |
-| `WIFI_RECOVERY_WAIT` | Wait time between recovery attempts (seconds) | `300` (5 min) |
-| `MAX_RECOVERY_ATTEMPTS` | Max WiFi toggle attempts before reboot | `3` |
+| `AUDIO_OUTPUT` | Audio output selection (`AUTO`, device name, or device number) | `AUTO` |
+| `AUDIO_INPUT` | Audio input selection (`AUTO`, device name, or device number) | `AUTO` |
+| `AUDIO_INPUT_HIGHPASS` | Microphone highpass filter frequency in Hz (0 = disabled) | `120` |
+| `AUDIO_INPUT_LOWPASS` | Microphone lowpass filter frequency in Hz (0 = disabled) | `12000` |
+| `AUDIO_MIC_INPUT_VOLUME` | Microphone input volume percentage (0-100) | `40` |
+| `AUDIO_INPUT_LOOPBACK` | Enable microphone loopback to speakers for testing (`true`/`false`) | `false` |
 
-### WiFi Watchdog
-
-The WiFi Watchdog service monitors your device's WiFi connection and automatically recovers from dropouts:
-
-**Behavior:**
-- Checks WiFi connectivity every 30 seconds
-- If offline for 10+ minutes AND no audio is playing, attempts recovery
-- Recovery: Toggles WiFi off (5s) → on, waits 5 minutes for reconnection
-- Retries up to 3 times
-- If all attempts fail, reboots the device
-- Resets recovery counter when WiFi returns online
-
-**Audio-aware:** Won't reboot or toggle WiFi while audio is actively playing (protects your music).
-
-**Monitor watchdog status:**
-```bash
-balena logs <device-uuid> --follow | grep wifi-watchdog
-```
-
-**Customize behavior via fleet variables** (no rebuild needed):
-```
-WIFI_CHECK_INTERVAL=60          # Check every 60 seconds
-WIFI_OFFLINE_THRESHOLD=900      # 15 minutes before recovery
-WIFI_RECOVERY_WAIT=600          # 10 minutes between attempts
-MAX_RECOVERY_ATTEMPTS=5         # 5 toggle attempts before reboot
-```
+**For detailed audio configuration documentation**, see [AUDIO_CONFIGURATION.md](docs/AUDIO_CONFIGURATION.md) which includes:
+- Device detection and priority ordering
+- Output device selection (DAC prioritization)
+- Input device selection (microphone detection)
+- Microphone filter settings (highpass/lowpass for voice quality)
+- Microphone volume and loopback configuration
+- Latency settings for different use cases
+- Troubleshooting guide
 
 ### Web UI
 
 Once deployed, access the control panel at `http://<device-ip>/` for volume control and device management.
+
+## Audio Devices
+
+### Automatic Detection
+
+The audio service automatically detects available audio devices on startup and logs them:
+
+```
+[STEP] Available Hardware Output Sinks:
+  1        alsa_output.usb-0d8c_C-Media_USB_Audio_Device-00.analog-stereo
+  2        alsa_output.platform-soc_sound.stereo-fallback
+  (Set AUDIO_OUTPUT=<n> to force a specific device)
+
+[STEP] Available Hardware Input Sources:
+  1        alsa_input.usb-0d8c_C-Media_USB_Audio_Device-00.mono-fallback
+  (Set AUDIO_INPUT=<n> to force a specific device)
+```
+
+### Output Priority
+
+By default, devices are selected in this order:
+1. HiFiBerry DAC+ (best audio quality)
+2. USB Audio devices
+3. HDMI audio
+4. Built-in 3.5mm jack (fallback)
+
+Use `AUDIO_OUTPUT` to override: `AUDIO_OUTPUT=1` to force device #1, or `AUDIO_OUTPUT=USB` to force USB.
+
+### Input Priority
+
+By default, microphone devices are selected in this order:
+1. USB Audio devices (USB microphones, audio dongles)
+2. Built-in microphone
+
+Use `AUDIO_INPUT` to override: `AUDIO_INPUT=1` to force device #1, or `AUDIO_INPUT=USB` to force USB.
+
+## Microphone Input & Filtering
+
+The audio service includes configurable audio filters for microphone input to improve voice quality and remove unwanted noise. This is especially useful for karaoke and voice applications.
+
+### Default Configuration (Optimized for Karaoke)
+
+```
+AUDIO_INPUT_HIGHPASS = 120    # Removes rumble and low-frequency noise
+AUDIO_INPUT_LOWPASS = 12000   # Removes high-frequency harshness
+AUDIO_MIC_INPUT_VOLUME = 40   # Input level (prevents amplification noise)
+AUDIO_INPUT_LOOPBACK = false  # Disable mic monitoring by default
+```
+
+### Common Configurations
+
+**Studio/Professional Vocals:**
+```
+AUDIO_INPUT_HIGHPASS = 80
+AUDIO_INPUT_LOWPASS = 15000
+AUDIO_MIC_INPUT_VOLUME = 50
+```
+
+**Karaoke (Default - Recommended):**
+```
+AUDIO_INPUT_HIGHPASS = 120
+AUDIO_INPUT_LOWPASS = 12000
+AUDIO_MIC_INPUT_VOLUME = 40
+```
+
+**No Filtering (Full Spectrum):**
+```
+AUDIO_INPUT_HIGHPASS = 0
+AUDIO_INPUT_LOWPASS = 0
+AUDIO_MIC_INPUT_VOLUME = 40
+```
+
+For detailed filter descriptions and more configuration examples, see [AUDIO_CONFIGURATION.md](docs/AUDIO_CONFIGURATION.md).
 
 ## Branch workflow
 
@@ -118,6 +172,8 @@ All changes should go through feature branches and PRs — see [.versionbot/COMM
 ## Documentation
 
 Head over to the [original docs](https://iotsound.github.io/) for detailed installation and usage instructions. Note some docs may reference older versions.
+
+For audio configuration details: see [AUDIO_CONFIGURATION.md](docs/AUDIO_CONFIGURATION.md)
 
 ## Motivation
 
@@ -150,5 +206,5 @@ If you're having any problem, please [raise an issue](https://github.com/Jaragon
 - Original project by [Balena](https://www.balena.io/)
 - go-librespot by [devgianlu](https://github.com/devgianlu/go-librespot)
 - PipeWire migration assistance by Google Gemini
-- WiFi Watchdog implementation by Claude (Anthropic)
-- Modernization work by [@JaragonCR](https://github.com/JaragonCR) with assistance from Claude (Anthropic)
+- Audio hardware detection and microphone filtering by Claude (Anthropic)
+- Modernization work by [@JaragonCR](https://github.com/JaragonCR)
