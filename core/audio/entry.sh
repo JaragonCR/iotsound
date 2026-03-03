@@ -179,7 +179,6 @@ mkdir -p /run/pulse
 
 # Configure audio hardware
 init_audio_hardware
-pa_set_default_output "$DEFAULT_OUTPUT"
 pa_set_default_volume "$DEFAULT_VOLUME"
 
 # Disable unused PulseAudio modules (safe no-ops if default.pa absent)
