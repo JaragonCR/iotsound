@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.0.4
+## (2026-03-03)
+
+* patch: improve audio service initialization sequencing [JaragonCR]
+* patch: improve audio service initialization sequencing [JaragonCR]
+* patch: improve audio service initialization sequencing [JaragonCR]
+* patch: improve audio service initialization sequencing [JaragonCR]
+* patch: improve audio service initialization sequencing [JaragonCR]
+* patch: improve audio service initialization sequencing [JaragonCR]
+
 # v4.0.3
 ## (2026-03-03)
 

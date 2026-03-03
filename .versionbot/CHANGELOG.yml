@@ -1,4 +1,38 @@
 - commits:
+    - subject: "patch: improve audio service initialization sequencing"
+      hash: dc54a72d772983074f04795b30b2801b0a238b12
+      body: ""
+      footer: {}
+      author: JaragonCR
+    - subject: "patch: improve audio service initialization sequencing"
+      hash: 1a2366ea5a03fbf3cf69bf1799d5a92e95e2e555
+      body: ""
+      footer: {}
+      author: JaragonCR
+    - subject: "patch: improve audio service initialization sequencing"
+      hash: 53235f1d40f7db6748907cfcf22c04dc8b5d2573
+      body: ""
+      footer: {}
+      author: JaragonCR
+    - subject: "patch: improve audio service initialization sequencing"
+      hash: 35aeae4da8e4a73908dcf497bbb35bc10d8f6090
+      body: ""
+      footer: {}
+      author: JaragonCR
+    - subject: "patch: improve audio service initialization sequencing"
+      hash: c4ecf34143d2699d038df4825d8caf0a652a0282
+      body: ""
+      footer: {}
+      author: JaragonCR
+    - subject: "patch: improve audio service initialization sequencing"
+      hash: 14577155b50b285890c6f7034eeea52919f9adb1
+      body: ""
+      footer: {}
+      author: JaragonCR
+  version: 4.0.4
+  title: ""
+  date: 2026-03-03T04:24:19.484Z
+- commits:
     - subject: "patch: implement robust sink detection and fix variable expansion"
       hash: 30b802081696238db8173c71387c44f0ae977458
       body: ""
