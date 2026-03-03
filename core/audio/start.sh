@@ -89,68 +89,60 @@ PW_PULSE_PID=$!
 
 echo "Waiting for PipeWire-Pulse daemon..."
 TIMEOUT=20
-while ! pactl info > /dev/null 2>&1; do 
+while ! pactl info > /dev/null 2>&1; do
   sleep 0.5
   TIMEOUT=$((TIMEOUT-1))
   if [ "$TIMEOUT" -le 0 ]; then
     echo "ERROR: PipeWire stack failed to initialize!"
-    cat /var/log/wireplumber.log
-    cat /var/log/pipewire.log
     exit 1
   fi
 done
 
-# --- NEW OUTPUT DETECTION & OVERRIDE BLOCK ---
+# --- OUTPUT DETECTION BLOCK ---
 echo "--- Available Hardware Sinks ---"
 HW_SINKS=$(pactl list short sinks | awk '{print $2}' | grep -v 'balena-sound\|snapcast')
 echo "$HW_SINKS" | sed 's/^/ - /'
 echo "--------------------------------"
 
 AUDIO_OUTPUT="${AUDIO_OUTPUT:-AUTO}"
-echo "Requested AUDIO_OUTPUT: $AUDIO_OUTPUT"
-
 HW_SINK=""
 
 if [ "$AUDIO_OUTPUT" = "ALL" ]; then
-  echo "Feature Enabled: Routing audio to ALL available hardware sinks simultaneously!"
   pactl load-module module-combine-sink sink_name=combined_all_sinks
   HW_SINK="combined_all_sinks"
 elif [ "$AUDIO_OUTPUT" != "AUTO" ] && echo "$HW_SINKS" | grep -q "^${AUDIO_OUTPUT}$"; then
-  echo "Forcing specific hardware output: $AUDIO_OUTPUT"
   HW_SINK="$AUDIO_OUTPUT"
 else
-  if [ "$AUDIO_OUTPUT" != "AUTO" ] && [ "$AUDIO_OUTPUT" != "RPI_AUTO" ]; then
-    echo "Warning: Sink '$AUDIO_OUTPUT' not found. Falling back to AUTO detection."
-  fi
   echo "Auto-detecting optimal hardware sink..."
-  
-  # Priority 1: External DACs (I2S, USB)
   HW_SINK=$(echo "$HW_SINKS" | grep -iE 'soc_sound|usb|dac|hifiberry' | head -n 1)
-
-  # Priority 2: Built-in 3.5mm / HDMI
   if [ -z "$HW_SINK" ]; then
     HW_SINK=$(echo "$HW_SINKS" | grep -iE 'mailbox|bcm2835|platform' | head -n 1)
   fi
-
-  # Fallback to whatever PipeWire thinks is default
   if [ -z "$HW_SINK" ]; then
     HW_SINK=$(pactl info | awk '/Default Sink:/ {print $3}')
   fi
-  echo "Selected Hardware Sink: $HW_SINK"
 fi
 
-pactl set-default-sink "$HW_SINK"
+echo "Selected Hardware Sink: $HW_SINK"
+pactl set-default-sink "$HW_SINK" || true
 
-# Route our software output directly into the detected/forced hardware
+# Update the balena-sound config file with the actual detected sink
 sed -i "s/%OUTPUT_SINK%/sink=$HW_SINK/" "$CONFIG_FILE"
-# ---------------------------------------------
 
+# --- ROUTING RULES PROCESSING ---
 echo "Applying PulseAudio routing rules..."
 shopt -s nullglob
 for pa_file in /etc/pulse/default.pa.d/*.pa; do
   echo "Processing $pa_file..."
   while IFS= read -r cmd || [ -n "$cmd" ]; do
     [[ "$cmd" =~ ^#.*$ ]] || [[ -z "$cmd" ]] && continue
+    
+    # GUARD: Skip commands that contain unexpanded shell variables like $SINK_NAME
+    if [[ "$cmd" == *\$* ]]; then
+      echo "Skipping legacy command with unexpanded variable: $cmd"
+      continue
+    fi
+
     echo "Executing: pactl $cmd"
     pactl $cmd || echo "Warning: Command failed -> $cmd"
   done < "$pa_file"
