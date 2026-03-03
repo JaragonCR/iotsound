@@ -1,0 +1,52 @@
+- commits:
+    - subject: "fix: validate PipeWire sink name before writing to pa config"
+      hash: b8cf7185b19a22e8ccbc8f55c126003d8b0f916a
+      body: >
+        PipeWire names ALSA sinks differently than PulseAudio
+        (platform-soc_sound
+
+        vs dac). Falls back to first available hardware sink if configured name
+
+        not found, eliminating boot warnings.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix: pass FLOWZONE_TOKEN explicitly to flowzone reusable workflow"
+      hash: 70238f1276507cbd94fc26047f01e4dde116b428
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "docs: test Versionist integration"
+      hash: aa17f766cd0c3a2d61c1700560687e1b3fc9fd5c
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "docs: test Versionist integration"
+      hash: 791943e938d15d04d053e60d0d6b1f7120cf39d8
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "feat: add versionist.conf.js to sync balena.yml and VERSION on release"
+      hash: ec5e039b9f59f413fcdd76260bfce823e14ddf5d
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix: add root package.json for Versionist version tracking"
+      hash: eafbf73947086c3e759c45e4109df9edf3a3304c
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+  version: 4.0.1
+  title: ""
+  date: 2026-03-03T00:46:54.724Z
