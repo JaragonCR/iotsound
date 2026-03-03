@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.0.2
+## (2026-03-03)
+
+* patch: ensure audio service starts on pipewire by checking for config files [JaragonCR]
+
 # v4.0.1
 ## (2026-03-03)
 

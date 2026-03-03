@@ -1,4 +1,14 @@
 - commits:
+    - subject: "patch: ensure audio service starts on pipewire by checking for config
+        files"
+      hash: 4cf07431a4f210fd22f162fd95441ed7e6e48930
+      body: ""
+      footer: {}
+      author: JaragonCR
+  version: 4.0.2
+  title: ""
+  date: 2026-03-03T01:22:53.126Z
+- commits:
     - subject: "fix: validate PipeWire sink name before writing to pa config"
       hash: b8cf7185b19a22e8ccbc8f55c126003d8b0f916a
       body: >
