@@ -4,15 +4,11 @@ set -e
 # ============================================================================
 # IoTSound Audio Service Startup Script
 # ============================================================================
-# This script initializes PipeWire/PulseAudio audio stack with proper
-# sequencing to avoid race conditions and initialization failures.
-# ============================================================================
 
-# Logging utilities
 LOG_FILE="/var/log/audio-startup.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-log() { 
+log() {
   local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
   echo "[$timestamp] $@" | tee -a "$LOG_FILE"
 }
@@ -24,21 +20,10 @@ log_section() {
   log "============================================"
 }
 
-log_step() {
-  log "[STEP] $@"
-}
-
-log_ok() {
-  log "[✓] $@"
-}
-
-log_warn() {
-  log "[⚠] $@"
-}
-
-log_error() {
-  log "[✗] $@"
-}
+log_step() { log "[STEP] $@"; }
+log_ok()   { log "[✓] $@"; }
+log_warn() { log "[⚠] $@"; }
+log_error(){ log "[✗] $@"; }
 
 # ============================================================================
 # CONFIGURATION
@@ -48,7 +33,6 @@ CONFIG_TEMPLATE=/usr/src/balena-sound.pa
 CONFIG_FILE=/etc/pulse/default.pa.d/01-balenasound.pa
 SOUND_SUPERVISOR_PORT=${SOUND_SUPERVISOR_PORT:-80}
 
-# Timeouts (in seconds)
 PULSEAUDIO_TIMEOUT=30
 SOUND_SUPERVISOR_TIMEOUT=60
 HARDWARE_SINK_TIMEOUT=20
@@ -97,7 +81,7 @@ function reset_sound_config() {
 function wait_for_sound_supervisor() {
   log_step "Waiting for sound supervisor at $SOUND_SUPERVISOR..."
   local timeout=$SOUND_SUPERVISOR_TIMEOUT
-  
+
   while [ $timeout -gt 0 ]; do
     if curl --silent --output /dev/null --connect-timeout 2 "$SOUND_SUPERVISOR/ping" 2>/dev/null; then
       log_ok "Sound supervisor is responding"
@@ -107,13 +91,13 @@ function wait_for_sound_supervisor() {
     sleep 1
     timeout=$((timeout - 1))
   done
-  
+
   log_warn "Sound supervisor did not respond within timeout, using defaults"
   return 1
 }
 
 function get_sound_supervisor_mode() {
-  local mode=$(curl --silent --output /dev/null "$SOUND_SUPERVISOR/mode" 2>/dev/null || echo "")
+  local mode=$(curl --silent "$SOUND_SUPERVISOR/mode" 2>/dev/null || echo "")
   if [ -z "$mode" ]; then
     log_warn "Could not retrieve mode from sound supervisor, defaulting to STANDALONE"
     mode="STANDALONE"
@@ -124,7 +108,7 @@ function get_sound_supervisor_mode() {
 function wait_for_pulseaudio() {
   log_step "Waiting for PulseAudio to initialize..."
   local timeout=$PULSEAUDIO_TIMEOUT
-  
+
   while [ $timeout -gt 0 ]; do
     if pactl info > /dev/null 2>&1; then
       log_ok "PulseAudio is ready"
@@ -134,7 +118,7 @@ function wait_for_pulseaudio() {
     sleep 1
     timeout=$((timeout - 1))
   done
-  
+
   log_error "PulseAudio failed to initialize after $PULSEAUDIO_TIMEOUT seconds"
   return 1
 }
@@ -142,31 +126,42 @@ function wait_for_pulseaudio() {
 function detect_hardware_sink() {
   log_step "Detecting hardware audio sink..."
   local timeout=$HARDWARE_SINK_TIMEOUT
-  
+
   while [ $timeout -gt 0 ]; do
-    # Get all non-null sinks
     local hw_sinks=$(pactl list short sinks 2>/dev/null | awk '{print $2}' | grep -v 'balena-sound\|snapcast' | grep 'alsa_output' || true)
-    
+
     if [ -n "$hw_sinks" ]; then
       log_ok "Found hardware sinks"
       echo "$hw_sinks"
       return 0
     fi
-    
+
     log "  Waiting for sink detection... ($((HARDWARE_SINK_TIMEOUT - timeout + 1))/$HARDWARE_SINK_TIMEOUT seconds)"
     sleep 1
     timeout=$((timeout - 1))
   done
-  
+
   log_warn "No hardware sink detected after $HARDWARE_SINK_TIMEOUT seconds"
   return 1
 }
 
 function select_hardware_sink() {
   local hw_sinks="$1"
+  local audio_output_pref="$2"
   local selected_sink=""
-  
-  # Try preferred sink names in order
+
+  # If explicit preference (not AUTO), try to match it first
+  if [ -n "$audio_output_pref" ] && [ "$audio_output_pref" != "AUTO" ]; then
+    selected_sink=$(echo "$hw_sinks" | grep -i "$audio_output_pref" | head -n 1 || true)
+    if [ -n "$selected_sink" ]; then
+      log_ok "Selected sink matching preference '$audio_output_pref': $selected_sink"
+      echo "$selected_sink"
+      return 0
+    fi
+    log_warn "Preference '$audio_output_pref' not found, falling back to auto-detection"
+  fi
+
+  # Auto-detect by preference order
   for preferred in 'soc_sound' 'usb' 'dac' 'hifiberry'; do
     selected_sink=$(echo "$hw_sinks" | grep -i "$preferred" | head -n 1 || true)
     if [ -n "$selected_sink" ]; then
@@ -175,15 +170,15 @@ function select_hardware_sink() {
       return 0
     fi
   done
-  
-  # Fall back to first available sink
+
+  # Fall back to first available
   selected_sink=$(echo "$hw_sinks" | head -n 1)
   if [ -n "$selected_sink" ]; then
     log_ok "Selected first available sink: $selected_sink"
     echo "$selected_sink"
     return 0
   fi
-  
+
   log_warn "No sinks available, will attempt to use system default"
   return 1
 }
@@ -308,6 +303,10 @@ fi
 
 log_section "PHASE 7: Hardware Sink Detection"
 
+# Read output preference saved by entry.sh
+AUDIO_OUTPUT=$(cat /run/pulse/audio-output-preference 2>/dev/null || echo "AUTO")
+log "Output preference: $AUDIO_OUTPUT"
+
 echo "--- Available Hardware Sinks ---"
 HW_SINKS=$(pactl list short sinks | awk '{print $2}' | grep -v 'balena-sound\|snapcast' | grep 'alsa_output' || true)
 if [ -z "$HW_SINKS" ]; then
@@ -316,57 +315,47 @@ fi
 echo "$HW_SINKS" | sed 's/^/ - /'
 echo "--------------------------------"
 
-AUDIO_OUTPUT="${AUDIO_OUTPUT:-AUTO}"
 HW_SINK=""
 
-# Parse AUDIO_OUTPUT environment variable
 if [ "$AUDIO_OUTPUT" = "ALL" ]; then
   log_step "Loading combine-sink for all outputs..."
   pactl load-module module-combine-sink sink_name=combined_all_sinks || log_warn "Failed to load combine sink"
   HW_SINK="combined_all_sinks"
-elif [ "$AUDIO_OUTPUT" != "AUTO" ]; then
-  # Check if specified sink exists
-  if echo "$HW_SINKS" | grep -q "^${AUDIO_OUTPUT}$"; then
-    HW_SINK="$AUDIO_OUTPUT"
-    log_ok "Using explicitly specified sink: $HW_SINK"
-  else
-    log_warn "Specified sink '$AUDIO_OUTPUT' not found, falling back to auto-detection"
+else
+  HW_SINKS_DETECTED=$(detect_hardware_sink) || true
+  if [ -n "$HW_SINKS_DETECTED" ]; then
+    HW_SINK=$(select_hardware_sink "$HW_SINKS_DETECTED" "$AUDIO_OUTPUT") || true
   fi
-fi
 
-# Auto-detect if not already selected
-if [ -z "$HW_SINK" ]; then
-  log_step "Auto-detecting optimal sink from available options..."
-  
-  # Try to detect sinks in order of preference
-  HW_SINKS_DETECTED=$(detect_hardware_sink)
-  if [ $? -eq 0 ]; then
-    HW_SINK=$(select_hardware_sink "$HW_SINKS_DETECTED")
-  else
-    # Fallback: try to get default sink from pactl info
+  if [ -z "$HW_SINK" ]; then
     log_warn "Hardware sink detection timeout, attempting to use system default"
     HW_SINK=$(pactl info | awk '/Default Sink:/ {print $3}' || true)
   fi
 fi
 
-# Final validation
 if [ -z "$HW_SINK" ]; then
   log_error "No hardware sink available! Audio output will not work."
-  log_warn "Available sinks: $HW_SINKS"
-  HW_SINK="alsa_output.platform-soc_sound.stereo-fallback"  # Last resort fallback
+  HW_SINK="alsa_output.platform-soc_sound.stereo-fallback"
   log_warn "Using last-resort fallback: $HW_SINK"
 fi
 
 log_ok "Selected Hardware Sink: $HW_SINK"
 
-# Set as default with error handling
 if pactl set-default-sink "$HW_SINK" 2>/dev/null; then
   log_ok "Default sink configured successfully"
 else
   log_warn "Failed to set default sink (continuing anyway)"
 fi
 
-# Update the balena-sound config file with the detected sink
+# Apply volume now that sink is confirmed
+SAVED_VOLUME=$(cat /run/pulse/audio-default-volume 2>/dev/null || echo "49152")
+if pactl set-sink-volume @DEFAULT_SINK@ "$SAVED_VOLUME" 2>/dev/null; then
+  log_ok "Default volume set to $SAVED_VOLUME"
+else
+  log_warn "Failed to set default volume"
+fi
+
+# Update balena-sound config with detected sink
 if sed -i "s/%OUTPUT_SINK%/sink=$HW_SINK/" "$CONFIG_FILE" 2>/dev/null; then
   log_ok "Audio configuration updated with selected sink"
 else
@@ -386,18 +375,15 @@ FAILED_COUNT=0
 
 for pa_file in /etc/pulse/default.pa.d/*.pa; do
   log "Processing $pa_file..."
-  
+
   while IFS= read -r cmd || [ -n "$cmd" ]; do
-    # Skip comments and empty lines
     [[ "$cmd" =~ ^#.*$ ]] || [[ -z "$cmd" ]] && continue
-    
-    # GUARD: Skip commands with unexpanded variables
+
     if [[ "$cmd" == *\$* ]]; then
       log_warn "  Skipping command with unexpanded variable: $cmd"
       continue
     fi
 
-    # Execute the command
     log "  Executing: pactl $cmd"
     if pactl $cmd > /dev/null 2>&1; then
       CONFIG_COUNT=$((CONFIG_COUNT + 1))
@@ -417,8 +403,6 @@ log_ok "Applied $CONFIG_COUNT routing rules ($FAILED_COUNT warnings)"
 log_section "IOTSOUND AUDIO SERVICE READY"
 log "Startup completed at: $(date)"
 log "PipeWire-Pulse PID: $PW_PULSE_PID"
-log "All audio services initialized and ready"
-log ""
 log "Audio Configuration Summary:"
 log "  - Output Sink: $HW_SINK"
 log "  - Input Latency: ${SOUND_INPUT_LATENCY}ms"
@@ -426,5 +410,4 @@ log "  - Output Latency: ${SOUND_OUTPUT_LATENCY}ms"
 log "  - Mode: $MODE"
 log ""
 
-# Wait for PipeWire-Pulse to continue running
 wait $PW_PULSE_PID
