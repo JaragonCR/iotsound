@@ -5,6 +5,11 @@ set -e
 /usr/bin/entry.sh echo ""
 
 # Helper functions
+function pa_disable_module() {
+  local MODULE="$1"
+  sed -i "s/load-module $MODULE/#load-module $MODULE/" /etc/pulse/default.pa
+}
+
 function pa_set_log_level() {
   local PA_LOG_LEVEL="$1"
   declare -A options=(["ERROR"]=0 ["WARN"]=1 ["NOTICE"]=2 ["INFO"]=3 ["DEBUG"]=4)
@@ -103,6 +108,12 @@ function pa_set_default_output () {
   esac
 
   if [[ -n "$PA_SINK" ]]; then
+    # Verify sink exists in PipeWire before writing - sink names differ between PulseAudio and PipeWire
+    ACTUAL_SINK=$(pactl list short sinks 2>/dev/null | awk '{print $2}' | grep -F "$PA_SINK" | head -1)
+    if [[ -z "$ACTUAL_SINK" ]]; then
+      echo "WARNING: Sink $PA_SINK not found, using PipeWire auto-detected sink"
+      PA_SINK=$(pactl list short sinks 2>/dev/null | grep -v "null-sink\|monitor\|balena-sound\|snapcast" | awk 'NR==1{print $2}')
+    fi
     echo "$PA_SINK" > /run/pulse/pulseaudio.sink
     echo -e "\nset-default-sink $PA_SINK" >> /etc/pulse/default.pa.d/00-audioblock.pa
   fi
@@ -169,11 +180,34 @@ init_audio_hardware
 pa_set_default_output "$DEFAULT_OUTPUT"
 pa_set_default_volume "$DEFAULT_VOLUME"
 
+# Disable unused PulseAudio modules (safe no-ops if default.pa absent)
+pa_disable_module module-console-kit
+pa_disable_module module-dbus-protocol
+pa_disable_module module-jackdbus-detect
+pa_disable_module module-bluetooth-discover
+pa_disable_module module-bluetooth-policy
+pa_disable_module module-native-protocol-unix
+
 pa_set_log_level "$LOG_LEVEL"
 
 if [[ -n "$COOKIE" ]]; then
   pa_set_cookie "$COOKIE"
 fi
 
-# Hand over control directly to start.sh without starting daemons early
-exec "$@"
+# Start PipeWire stack if available, fallback to PulseAudio
+if command -v pipewire &> /dev/null; then
+  echo "Setting audio routing rules..."
+  pipewire &
+  sleep 1
+  wireplumber &
+  sleep 1
+  if [[ "${1#-}" != "$1" ]]; then
+    set -- pipewire-pulse "$@"
+  fi
+  exec "$@"
+else
+  if [[ "${1#-}" != "$1" ]]; then
+    set -- pulseaudio "$@"
+  fi
+  exec "$@"
+fi
