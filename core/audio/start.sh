@@ -383,6 +383,12 @@ for pa_file in /etc/pulse/default.pa.d/*.pa; do
       log_warn "  Skipping command with unexpanded variable: $cmd"
       continue
     fi
+    
+    # NEW: Skip empty/malformed set-default-sink commands
+    if [[ "$cmd" =~ ^set-default-sink[[:space:]]*$ ]]; then
+       log_warn "  Skipping malformed command: $cmd (Missing sink name)"
+       continue
+    fi
 
     log "  Executing: pactl $cmd"
     if pactl $cmd > /dev/null 2>&1; then

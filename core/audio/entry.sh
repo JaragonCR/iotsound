@@ -105,20 +105,5 @@ if [[ -n "$COOKIE" ]]; then
   pa_set_cookie "$COOKIE"
 fi
 
-# Start PipeWire stack if available, fallback to PulseAudio
-if command -v pipewire &> /dev/null; then
-  echo "Setting audio routing rules..."
-  pipewire &
-  sleep 1
-  wireplumber &
-  sleep 1
-  if [[ "${1#-}" != "$1" ]]; then
-    set -- pipewire-pulse "$@"
-  fi
-  exec "$@"
-else
-  if [[ "${1#-}" != "$1" ]]; then
-    set -- pulseaudio "$@"
-  fi
-  exec "$@"
-fi
+# Execute the CMD passed by Docker (which is /bin/bash /usr/src/start.sh)
+exec "$@"
