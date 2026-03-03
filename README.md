@@ -1,4 +1,4 @@
-# IoTSound (JaragonCR Fork) — v4.0.0
+# IoTSound (JaragonCR Fork) — v4.1.0
 
 > **Actively maintained community fork** of [iotsound/iotsound](https://github.com/iotsound/iotsound), originally developed by Balena as balenaSound.
 > In October 2025 Balena issued a [call for maintainers](https://github.com/iotsound/iotsound/issues/689) but did not transfer the project to volunteers. This fork picks up that work.
@@ -24,6 +24,12 @@
 | **Logging cleanup** | Removed outdated kernel version comments and verbose debug noise across all containers. |
 | **Versionist integration** | Automated changelog generation and semantic versioning via Flowzone. |
 
+### ✨ New in v4.1.0
+
+| Feature | Details |
+|---|---|
+| **WiFi Watchdog** | Automatic WiFi recovery service monitors connectivity every 30 seconds. If WiFi is down for 10+ minutes (and no audio is playing), it toggles WiFi off/on. Reboots device after 3 failed recovery attempts. Audio-aware to protect active playback. |
+
 ### 🔧 Pending / In Progress
 
 | Item | Notes |
@@ -41,6 +47,7 @@
 - **Multi-room synchronous playing**: Perfectly synchronized audio across multiple devices
 - **Extended DAC support**: HiFiBerry DAC+ and other supported DAC boards
 - **PipeWire audio stack**: Modern, low-latency audio with full PulseAudio backward compatibility
+- **WiFi Watchdog**: Automatic WiFi recovery — toggles connection if down for 10+ minutes, reboots after 3 failed attempts
 - **balenaCloud managed**: Full OTA updates, fleet management and device monitoring via balenaCloud dashboard
 
 ## Hardware tested
@@ -67,6 +74,37 @@ Set these in your balenaCloud fleet or device variables:
 | `SOUND_DISABLE_BLUETOOTH` | Set to `1` to disable Bluetooth | unset |
 | `AUDIO_OUTPUT` | Audio output selection | `AUTO` |
 | `SOUND_VOLUME` | Default volume 0-100 | `75` |
+| `WIFI_CHECK_INTERVAL` | WiFi watchdog check interval (seconds) | `30` |
+| `WIFI_OFFLINE_THRESHOLD` | WiFi offline timeout before recovery (seconds) | `600` (10 min) |
+| `WIFI_RECOVERY_WAIT` | Wait time between recovery attempts (seconds) | `300` (5 min) |
+| `MAX_RECOVERY_ATTEMPTS` | Max WiFi toggle attempts before reboot | `3` |
+
+### WiFi Watchdog
+
+The WiFi Watchdog service monitors your device's WiFi connection and automatically recovers from dropouts:
+
+**Behavior:**
+- Checks WiFi connectivity every 30 seconds
+- If offline for 10+ minutes AND no audio is playing, attempts recovery
+- Recovery: Toggles WiFi off (5s) → on, waits 5 minutes for reconnection
+- Retries up to 3 times
+- If all attempts fail, reboots the device
+- Resets recovery counter when WiFi returns online
+
+**Audio-aware:** Won't reboot or toggle WiFi while audio is actively playing (protects your music).
+
+**Monitor watchdog status:**
+```bash
+balena logs <device-uuid> --follow | grep wifi-watchdog
+```
+
+**Customize behavior via fleet variables** (no rebuild needed):
+```
+WIFI_CHECK_INTERVAL=60          # Check every 60 seconds
+WIFI_OFFLINE_THRESHOLD=900      # 15 minutes before recovery
+WIFI_RECOVERY_WAIT=600          # 10 minutes between attempts
+MAX_RECOVERY_ATTEMPTS=5         # 5 toggle attempts before reboot
+```
 
 ### Web UI
 
@@ -112,4 +150,5 @@ If you're having any problem, please [raise an issue](https://github.com/Jaragon
 - Original project by [Balena](https://www.balena.io/)
 - go-librespot by [devgianlu](https://github.com/devgianlu/go-librespot)
 - PipeWire migration assistance by Google Gemini
+- WiFi Watchdog implementation by Claude (Anthropic)
 - Modernization work by [@JaragonCR](https://github.com/JaragonCR) with assistance from Claude (Anthropic)
