@@ -7,7 +7,9 @@ set -e
 # Helper functions
 function pa_disable_module() {
   local MODULE="$1"
-  sed -i "s/load-module $MODULE/#load-module $MODULE/" /etc/pulse/default.pa
+  if [ -f /etc/pulse/default.pa ]; then
+   sed -i "s/load-module $MODULE/#load-module $MODULE/" /etc/pulse/default.pa
+  fi
 }
 
 function pa_set_log_level() {
