@@ -257,7 +257,179 @@ fi
 log_ok "Sound supervisor mode: $MODE"
 
 # ============================================================================
-# PHASE 2: PULSEAUDIO CONFIGURATION
+# PHASE 2: PIPEWIRE FILTER CONFIGURATION (BEFORE services start)
+# ============================================================================
+
+log_section "PHASE 2: PipeWire Filter Configuration"
+
+log_step "Configuring PipeWire audio filters for microphone input..."
+
+# Easy button to disable all EQ at once
+AUDIO_INPUT_EQ_DISABLED=${AUDIO_INPUT_EQ_DISABLED:-true}
+
+if [ "$AUDIO_INPUT_EQ_DISABLED" = "true" ] || [ "$AUDIO_INPUT_EQ_DISABLED" = "1" ]; then
+  log_ok "Microphone EQ DISABLED via AUDIO_INPUT_EQ_DISABLED=true"
+  log "All filter customizations ignored - using raw USB input"
+  # Skip all filter setup
+  mkdir -p /etc/pipewire/pipewire.conf.d/
+  rm -f /etc/pipewire/pipewire.conf.d/99-mic-filters.conf
+else
+  # Microphone filter parameters
+# AUDIO_INPUT_HIGHPASS: High-pass cutoff frequency (Hz) - removes rumble/noise
+#   Default: 130Hz (professional vocal standard)
+# AUDIO_INPUT_LOWPASS: Low-pass cutoff frequency (Hz) - removes harshness  
+#   Default: 15000Hz (bright, presence-focused)
+# AUDIO_INPUT_HIGHPASS_Q: High-pass filter Q factor (bandwidth)
+#   Default: 1.0 (wider, more natural sounding)
+# AUDIO_INPUT_LOWPASS_Q: Low-pass filter Q factor (bandwidth)
+#   Default: 1.0 (wider, more natural sounding)
+# AUDIO_INPUT_BOXY_CUT: Peaking filter cut at 500Hz to remove boxy sound
+#   Default: -2 dB (subtle cut), set to 0 to disable
+#   Negative = cut (reduce boxy frequencies), Positive = boost
+# AUDIO_INPUT_PROXIMITY_CUT: Peaking filter cut at 250Hz to remove proximity effect
+#   Default: -2 dB (reduces low-mid boost from close miking), set to 0 to disable
+#   Negative = cut (reduce proximity boost), Positive = boost
+AUDIO_INPUT_HIGHPASS=${AUDIO_INPUT_HIGHPASS:-130}
+AUDIO_INPUT_LOWPASS=${AUDIO_INPUT_LOWPASS:-15000}
+AUDIO_INPUT_HIGHPASS_Q=${AUDIO_INPUT_HIGHPASS_Q:-1.0}
+AUDIO_INPUT_LOWPASS_Q=${AUDIO_INPUT_LOWPASS_Q:-1.0}
+AUDIO_INPUT_BOXY_CUT=${AUDIO_INPUT_BOXY_CUT:--2}
+AUDIO_INPUT_PROXIMITY_CUT=${AUDIO_INPUT_PROXIMITY_CUT:--2}
+
+log "Microphone filter settings:"
+log "  Highpass: ${AUDIO_INPUT_HIGHPASS}Hz, Q=${AUDIO_INPUT_HIGHPASS_Q}"
+log "  Proximity (250Hz): ${AUDIO_INPUT_PROXIMITY_CUT}dB"
+log "  Boxy (500Hz): ${AUDIO_INPUT_BOXY_CUT}dB"
+log "  Lowpass: ${AUDIO_INPUT_LOWPASS}Hz, Q=${AUDIO_INPUT_LOWPASS_Q}"
+log "  (0/empty = disabled)"
+
+mkdir -p /etc/pipewire/pipewire.conf.d/
+
+# Determine which filters are active
+HP_ACTIVE=false
+LP_ACTIVE=false
+BOXY_ACTIVE=false
+PROXIMITY_ACTIVE=false
+[ "$AUDIO_INPUT_HIGHPASS" != "0" ] && [ -n "$AUDIO_INPUT_HIGHPASS" ] && HP_ACTIVE=true
+[ "$AUDIO_INPUT_LOWPASS" != "0" ] && [ -n "$AUDIO_INPUT_LOWPASS" ] && LP_ACTIVE=true
+[ "$AUDIO_INPUT_BOXY_CUT" != "0" ] && [ -n "$AUDIO_INPUT_BOXY_CUT" ] && BOXY_ACTIVE=true
+[ "$AUDIO_INPUT_PROXIMITY_CUT" != "0" ] && [ -n "$AUDIO_INPUT_PROXIMITY_CUT" ] && PROXIMITY_ACTIVE=true
+
+if [ "$HP_ACTIVE" = true ] || [ "$LP_ACTIVE" = true ] || [ "$BOXY_ACTIVE" = true ] || [ "$PROXIMITY_ACTIVE" = true ]; then
+  # Build filter chain
+  NODES_SECTION=""
+  LINKS_SECTION=""
+  CURRENT_OUTPUT="hp:Out"
+  
+  if [ "$HP_ACTIVE" = true ]; then
+    NODES_SECTION="${NODES_SECTION}
+                    {
+                        type   = builtin
+                        name   = hp
+                        label  = bq_highpass
+                        control = { Freq = $AUDIO_INPUT_HIGHPASS Q = $AUDIO_INPUT_HIGHPASS_Q }
+                    }"
+    CURRENT_OUTPUT="hp:Out"
+  fi
+  
+  # Add proximity cut filter (250Hz) after highpass
+  if [ "$PROXIMITY_ACTIVE" = true ]; then
+    NODES_SECTION="${NODES_SECTION}
+                    {
+                        type   = builtin
+                        name   = proximity
+                        label  = bq_peaking
+                        control = { Freq = 250 Q = 0.707 Gain = $AUDIO_INPUT_PROXIMITY_CUT }
+                    }"
+    
+    if [ "$HP_ACTIVE" = true ]; then
+      LINKS_SECTION="${LINKS_SECTION}
+                    { output = \"hp:Out\" input = \"proximity:In\" }"
+    fi
+    CURRENT_OUTPUT="proximity:Out"
+  fi
+  
+  # Add boxy cut filter (500Hz) after proximity
+  if [ "$BOXY_ACTIVE" = true ]; then
+    NODES_SECTION="${NODES_SECTION}
+                    {
+                        type   = builtin
+                        name   = boxy
+                        label  = bq_peaking
+                        control = { Freq = 500 Q = 0.707 Gain = $AUDIO_INPUT_BOXY_CUT }
+                    }"
+    
+    if [ "$HP_ACTIVE" = true ] || [ "$PROXIMITY_ACTIVE" = true ]; then
+      LINKS_SECTION="${LINKS_SECTION}
+                    { output = \"$CURRENT_OUTPUT\" input = \"boxy:In\" }"
+    fi
+    CURRENT_OUTPUT="boxy:Out"
+  fi
+  
+  # Add lowpass filter last
+  if [ "$LP_ACTIVE" = true ]; then
+    NODES_SECTION="${NODES_SECTION}
+                    {
+                        type   = builtin
+                        name   = lp
+                        label  = bq_lowpass
+                        control = { Freq = $AUDIO_INPUT_LOWPASS Q = $AUDIO_INPUT_LOWPASS_Q }
+                    }"
+    
+    LINKS_SECTION="${LINKS_SECTION}
+                    { output = \"$CURRENT_OUTPUT\" input = \"lp:In\" }"
+    CURRENT_OUTPUT="lp:Out"
+  fi
+  
+  # Determine input/output ports
+  if [ "$HP_ACTIVE" = true ]; then
+    INPUT_PORT="hp:In"
+  elif [ "$PROXIMITY_ACTIVE" = true ]; then
+    INPUT_PORT="proximity:In"
+  elif [ "$BOXY_ACTIVE" = true ]; then
+    INPUT_PORT="boxy:In"
+  else
+    INPUT_PORT="lp:In"
+  fi
+  
+  OUTPUT_PORT="$CURRENT_OUTPUT"
+  
+  cat > /etc/pipewire/pipewire.conf.d/99-mic-filters.conf << EOF
+context.modules = [
+    { name = libpipewire-module-filter-chain
+        args = {
+            node.description = "Mic Audio Filters"
+            media.name       = "Mic Filtered"
+            filter.graph = {
+                nodes = [$NODES_SECTION
+                ]
+                links = [$LINKS_SECTION
+                ]
+                inputs  = [ "$INPUT_PORT" ]
+                outputs = [ "$OUTPUT_PORT" ]
+            }
+            capture.props = {
+                node.name = "capture.mic_filtered"
+            }
+            playback.props = {
+                node.name   = "mic_filtered"
+                media.class = Audio/Source
+            }
+        }
+    }
+]
+EOF
+  log_ok "Microphone filter configuration created"
+  MIC_SOURCE="mic_filtered"
+else
+  log_ok "All microphone filters disabled - using raw USB input"
+  MIC_SOURCE="$HW_SOURCE"
+  # HW_SOURCE will be set to the detected USB mic in Phase 7B
+fi
+fi
+
+# ============================================================================
+# PHASE 3: PULSEAUDIO CONFIGURATION
 # ============================================================================
 
 log_section "PHASE 2: PulseAudio Configuration"
@@ -279,7 +451,7 @@ fi
 log_ok "Audio routing configuration prepared"
 
 # ============================================================================
-# PHASE 3: CLEANUP AND ENVIRONMENT SETUP
+# PHASE 4: CLEANUP AND ENVIRONMENT SETUP
 # ============================================================================
 
 log_section "PHASE 3: Environment Setup"
@@ -334,106 +506,9 @@ pipewire-pulse > /var/log/pipewire-pulse.log 2>&1 &
 PW_PULSE_PID=$!
 log_ok "PipeWire-Pulse started (PID: $PW_PULSE_PID)"
 
-# ========================================================================
-# Create PipeWire Filter Configuration (for microphone audio processing)
-# ========================================================================
-
-log_step "Configuring PipeWire audio filters for microphone input..."
-
-# Microphone filter frequencies (optimized for karaoke vocals)
-# AUDIO_INPUT_HIGHPASS: High-pass cutoff frequency (Hz) - removes rumble/noise
-#   Default: 120Hz (good for vocals), set to 0 or empty to disable
-# AUDIO_INPUT_LOWPASS: Low-pass cutoff frequency (Hz) - removes harshness  
-#   Default: 12000Hz (vocal range), set to 0 or empty to disable, 20000 for full spectrum
-AUDIO_INPUT_HIGHPASS=${AUDIO_INPUT_HIGHPASS:-120}
-AUDIO_INPUT_LOWPASS=${AUDIO_INPUT_LOWPASS:-12000}
-
-log "Microphone filter configuration:"
-log "  Highpass: ${AUDIO_INPUT_HIGHPASS}Hz (0/empty = disabled)"
-log "  Lowpass: ${AUDIO_INPUT_LOWPASS}Hz (0/empty = disabled)"
-
-mkdir -p /etc/pipewire/pipewire.conf.d/
-
-# Determine which filters are active
-HP_ACTIVE=false
-LP_ACTIVE=false
-[ "$AUDIO_INPUT_HIGHPASS" != "0" ] && [ -n "$AUDIO_INPUT_HIGHPASS" ] && HP_ACTIVE=true
-[ "$AUDIO_INPUT_LOWPASS" != "0" ] && [ -n "$AUDIO_INPUT_LOWPASS" ] && LP_ACTIVE=true
-
-if [ "$HP_ACTIVE" = true ] || [ "$LP_ACTIVE" = true ]; then
-  # Build filter chain
-  NODES_SECTION=""
-  LINKS_SECTION=""
-  
-  if [ "$HP_ACTIVE" = true ]; then
-    NODES_SECTION="${NODES_SECTION}
-                    {
-                        type   = builtin
-                        name   = hp
-                        label  = bq_highpass
-                        control = { Freq = $AUDIO_INPUT_HIGHPASS Q = 0.707 }
-                    }"
-  fi
-  
-  if [ "$LP_ACTIVE" = true ]; then
-    NODES_SECTION="${NODES_SECTION}
-                    {
-                        type   = builtin
-                        name   = lp
-                        label  = bq_lowpass
-                        control = { Freq = $AUDIO_INPUT_LOWPASS Q = 0.707 }
-                    }"
-    
-    if [ "$HP_ACTIVE" = true ]; then
-      LINKS_SECTION="
-                links = [
-                    { output = \"hp:Out\" input = \"lp:In\" }
-                ]"
-    fi
-  fi
-  
-  # Determine input/output ports
-  if [ "$HP_ACTIVE" = true ]; then
-    INPUT_PORT="hp:In"
-  else
-    INPUT_PORT="lp:In"
-  fi
-  
-  if [ "$LP_ACTIVE" = true ]; then
-    OUTPUT_PORT="lp:Out"
-  else
-    OUTPUT_PORT="hp:Out"
-  fi
-  
-  cat > /etc/pipewire/pipewire.conf.d/99-mic-filters.conf << EOF
-context.modules = [
-    { name = libpipewire-module-filter-chain
-        args = {
-            node.description = "Mic Audio Filters"
-            media.name       = "Mic Filtered"
-            filter.graph = {
-                nodes = [$NODES_SECTION
-                ]$LINKS_SECTION
-                inputs  = [ "$INPUT_PORT" ]
-                outputs = [ "$OUTPUT_PORT" ]
-            }
-            capture.props = {
-                node.name = "capture.mic_filtered"
-            }
-            playback.props = {
-                node.name   = "mic_filtered"
-                media.class = Audio/Source
-            }
-        }
-    }
-]
-EOF
-  log_ok "Microphone filter configuration created"
-else
-  log_ok "Microphone filters disabled (AUDIO_INPUT_HIGHPASS=0, AUDIO_INPUT_LOWPASS=0)"
-fi
-
-log_section "PHASE 6: PulseAudio Readiness Check"
+# ============================================================================
+# PHASE 6: WAIT FOR PULSEAUDIO READINESS
+# ============================================================================
 
 if ! wait_for_pulseaudio; then
   log_error "PulseAudio stack failed to initialize!"
@@ -576,11 +651,23 @@ if [ -n "$HW_SOURCES" ]; then
     fi
 
     # ========================================================================
+    # DETERMINE MIC SOURCE (filtered or raw based on what's available)
+    # ========================================================================
+    
+    if pactl list sources short 2>/dev/null | grep -q "mic_filtered"; then
+      MIC_SOURCE="mic_filtered"
+      log_ok "Using filtered microphone input (mic_filtered)"
+    else
+      MIC_SOURCE="$HW_SOURCE"
+      log_ok "Using raw microphone input: $HW_SOURCE"
+    fi
+
+    # ========================================================================
     # PHASE 7C: OPTIONAL MIC LOOPBACK FOR TESTING/MONITORING
     # ========================================================================
     
     AUDIO_INPUT_LOOPBACK=${AUDIO_INPUT_LOOPBACK:-false}
-    AUDIO_MIC_INPUT_VOLUME=${AUDIO_MIC_INPUT_VOLUME:-40}
+    AUDIO_MIC_INPUT_VOLUME=${AUDIO_MIC_INPUT_VOLUME:-35}
     
     if [ "$AUDIO_INPUT_LOOPBACK" = "true" ] || [ "$AUDIO_INPUT_LOOPBACK" = "1" ]; then
       log_step "Enabling mic loopback to speakers for real-time monitoring..."
@@ -592,15 +679,15 @@ if [ -n "$HW_SOURCES" ]; then
       sleep 1
       
       # Set mic volume (default 40%)
-      if pactl set-source-volume mic_filtered "$AUDIO_MIC_INPUT_VOLUME%" 2>/dev/null; then
+      if pactl set-source-volume "$MIC_SOURCE" "$AUDIO_MIC_INPUT_VOLUME%" 2>/dev/null; then
         log_ok "Mic volume set to ${AUDIO_MIC_INPUT_VOLUME}%"
       else
         log_warn "Failed to set mic volume to ${AUDIO_MIC_INPUT_VOLUME}%"
       fi
       
-      # Load fresh loopback
-      if pactl load-module module-loopback source=mic_filtered sink="$HW_SINK" latency_msec=50 remix=true > /dev/null 2>&1; then
-        log_ok "Mic loopback enabled (filtered @ ${AUDIO_MIC_INPUT_VOLUME}%) - you will hear yourself through speakers"
+      # Load fresh loopback using MIC_SOURCE (filtered or raw)
+      if pactl load-module module-loopback source="$MIC_SOURCE" sink="$HW_SINK" latency_msec=50 remix=true > /dev/null 2>&1; then
+        log_ok "Mic loopback enabled (${MIC_SOURCE} @ ${AUDIO_MIC_INPUT_VOLUME}%) - you will hear yourself through speakers"
         log "  (This is useful for testing. Disable with AUDIO_INPUT_LOOPBACK=false)"
       else
         log_warn "Failed to enable mic loopback (continuing without it)"
