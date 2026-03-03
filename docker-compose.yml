@@ -35,7 +35,21 @@ services:
   multiroom-client:
     build: ./core/multiroom/client
     restart: on-failure
-  
+
+  wifi-watchdog:
+    build:
+      context: ./core/watchdog/
+      dockerfile: Dockerfile.template
+    container_name: iotsound-wifi-watchdog
+    privileged: true
+    network_mode: host
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Plugins
   # -- Additional plugins can be added.
   # -- Remove unwanted plugins as needed
