@@ -1,4 +1,22 @@
 - commits:
+    - subject: "fix(ci): pass secrets to Flowzone with inherit"
+      hash: 83fe0769ee0189be446d0b27b34000ad075e7403
+      body: >
+        Flowzone updated to require FLOWZONE_APP_PRIVATE_KEY,
+        GH_APP_PRIVATE_KEY,
+
+        or FLOWZONE_TOKEN. Switching to secrets: inherit passes all repo secrets
+
+        automatically and avoids future breakage if Flowzone renames secrets
+        again.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+  version: 4.2.3
+  title: ""
+  date: 2026-03-30T21:59:38.245Z
+- commits:
     - subject: "fix(bluetooth): modernize agent entrypoint, fix re-pairing and restart
         loop"
       hash: 4caff4657f089a9a0eee3a31400f1242ab7faff8

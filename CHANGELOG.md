@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.2.3
+## (2026-03-30)
+
+* fix(ci): pass secrets to Flowzone with inherit [JaragonCR]
+
 # v4.2.2
 ## (2026-03-30)
 
