@@ -1,4 +1,33 @@
 - commits:
+    - subject: "fix(bluetooth): modernize agent entrypoint, fix re-pairing and restart
+        loop"
+      hash: 4caff4657f089a9a0eee3a31400f1242ab7faff8
+      body: >
+        - Set ENTRYPOINT/CMD correctly so entry.sh actually runs before
+        bluetooth-agent;
+          previously CMD ran bluetooth-agent directly, skipping all HCI setup
+        - Export AGENT_CAPABILITY so the Python agent picks up the correct
+        pairing
+          capability (KeyboardDisplay vs NoInputNoOutput) set by entry.sh
+        - Move SOUND_DISABLE_BLUETOOTH check to top of entry.sh; drop start.sh
+
+        - Hardcode PIN to 0000 - device is headless, no one can enter a PIN
+
+        - Change bluetooth restart policy to on-failure; unless-stopped caused
+        an
+          infinite restart loop on clean exits (disabled BT, missing HCI interface)
+        - Add PropertiesChanged signal handler to remove a device from BlueZ on
+          disconnect - fixes re-pairing failure when phone forgets the bond
+        - Remove dead reconnect-on-startup block (wipe-on-startup makes it
+        unreachable)
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+  version: 4.2.2
+  title: ""
+  date: 2026-03-30T21:34:16.986Z
+- commits:
     - subject: "fix: Add hardware audio device detection and microphone filtering"
       hash: b891f4ab57e90a4d3914a2fdacc0632fd1237a4d
       body: |
