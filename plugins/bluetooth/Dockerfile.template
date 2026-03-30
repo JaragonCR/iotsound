@@ -25,10 +25,9 @@ RUN install_packages \
 # and local start.sh
 COPY bluetooth-agent /usr/src/bluetooth-agent
 COPY entry.sh /usr/src/entry.sh
-COPY start.sh /usr/src/start.sh
 
 RUN chmod +x /usr/src/bluetooth-agent \
-  && chmod +x /usr/src/entry.sh \
-  && chmod +x /usr/src/start.sh
+  && chmod +x /usr/src/entry.sh
 
-CMD [ "/bin/bash", "/usr/src/start.sh" ]
+ENTRYPOINT ["/usr/src/entry.sh"]
+CMD ["/usr/src/bluetooth-agent"]

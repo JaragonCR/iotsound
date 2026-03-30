@@ -7,3 +7,7 @@ node_modules
 build
 core/multiroom/server/snapweb
 labs-docs-builder
+
+# Local planning/notes (not for release)
+docs/BASELINE_ISSUES.md
+MEMORY.md
