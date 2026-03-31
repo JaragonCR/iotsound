@@ -5,7 +5,7 @@ import { startBalenaService, stopBalenaService, restartBalenaService } from './u
 import PulseAudioWrapper from './PulseAudioWrapper'
 
 interface MultiRoomConfig {
-  master: String,
+  master: string,
   forced: boolean
 }
 
@@ -35,11 +35,6 @@ export default class SoundConfig {
     restartBalenaService('multiroom-client')
   }
 
-  // TODO: Fix bug - This won't work if there are USB or DAC sound cards because it currently relies on hardcoded sink|sinkInput indexes
-  // sinkInput 0 usually refers to the "balena-sound.input to snapcast|balenaSound.output" loopback
-  // sink 2 usually refers to "balenaSound.output" sink
-  // sink 3 usually refers to "snapcast" sink
-  // But this numbering gets altered if USB or DAC soundcards are found
   setMode(mode: SoundModes): boolean {
     let oldMode: SoundModes = this.mode
     let modeUpdated: boolean = mode !== oldMode
@@ -58,7 +53,7 @@ export default class SoundConfig {
             startBalenaService('upnp')
             startBalenaService('bluetooth')
 
-            this.audioBlock.moveSinkInput(0, 3)
+            this.audioBlock.moveSinkInputByName('balena-sound.input', 'snapcast')
             break
           case SoundModes.MULTI_ROOM_CLIENT:
             // stop
@@ -82,7 +77,7 @@ export default class SoundConfig {
             startBalenaService('upnp')
             startBalenaService('bluetooth')
             
-            this.audioBlock.moveSinkInput(0, 2)
+            this.audioBlock.moveSinkInputByName('balena-sound.input', 'balena-sound.output')
             break
           default:
             break
