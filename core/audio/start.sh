@@ -432,7 +432,7 @@ fi
 # PHASE 3: PULSEAUDIO CONFIGURATION
 # ============================================================================
 
-log_section "PHASE 2: PulseAudio Configuration"
+log_section "PHASE 3: PulseAudio Configuration"
 
 SOUND_INPUT_LATENCY=${SOUND_INPUT_LATENCY:-200}
 SOUND_OUTPUT_LATENCY=${SOUND_OUTPUT_LATENCY:-200}
@@ -454,7 +454,7 @@ log_ok "Audio routing configuration prepared"
 # PHASE 4: CLEANUP AND ENVIRONMENT SETUP
 # ============================================================================
 
-log_section "PHASE 3: Environment Setup"
+log_section "PHASE 4: Environment Setup"
 
 log_step "Cleaning up any stale processes..."
 killall pipewire wireplumber pipewire-pulse dbus-daemon 2>/dev/null || true
