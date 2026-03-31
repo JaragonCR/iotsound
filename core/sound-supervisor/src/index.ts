@@ -3,18 +3,13 @@ import PulseAudioWrapper from './PulseAudioWrapper'
 import SoundAPI from './SoundAPI'
 import SoundConfig from './SoundConfig'
 import { constants } from './constants'
-import { getSdk } from 'balena-sdk'
+import sdk from './BalenaClient'
 
 // balenaSound core
 const config: SoundConfig = new SoundConfig()
 const audioBlock: PulseAudioWrapper = new PulseAudioWrapper(`tcp:${config.device.ip}:4317`)
 const soundAPI: SoundAPI = new SoundAPI(config, audioBlock)
 config.bindAudioBlock(audioBlock)
-
-// init balenaCloud sdk
-const sdk = getSdk({ apiUrl: 'https://api.balena-cloud.com/' })
-sdk.auth.logout()
-sdk.auth.loginWithToken(process.env.BALENA_API_KEY!) // Asserted by io.balena.features.balena-api: '1'
 
 // Fleet communication
 let discoveryOptions: any = {
@@ -67,7 +62,7 @@ audioBlock.on('play', async (sink: any) => {
   try {
     await sdk.models.device.tags.set(process.env.BALENA_DEVICE_UUID!, 'metrics:play', '') // BALENA_DEVICE_UUID is always present in balenaOS
   } catch (error) {
-    console.log(error.message)
+    console.log((error as Error).message)
   }
 
 })
