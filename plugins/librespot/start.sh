@@ -23,10 +23,10 @@ if [[ -n "$SOUND_SPOTIFY_USERNAME" && -n "$SOUND_SPOTIFY_PASSWORD" ]]; then
 fi
 
 cat > "$CONFIG_PATH" <<EOF
-log_level: $LOG_LEVEL
-device_name: $SOUND_DEVICE_NAME
-audio_backend: $SOUND_SPOTIFY_BACKEND
-device_type: speaker
+log_level: "$LOG_LEVEL"
+device_name: "$SOUND_DEVICE_NAME"
+audio_backend: "$SOUND_SPOTIFY_BACKEND"
+device_type: "speaker"
 initial_volume: $SOUND_SPOTIFY_INITIAL_VOLUME
 bitrate: $SOUND_SPOTIFY_BITRATE
 normalisation_disabled: $NORMALISATION_BOOL
@@ -37,8 +37,8 @@ EOF
 if [[ "$AUTH_TYPE" == "spotify_token" ]]; then
   cat >> "$CONFIG_PATH" <<EOF
   spotify_token:
-    username: $SOUND_SPOTIFY_USERNAME
-    access_token: $SOUND_SPOTIFY_PASSWORD
+    username: "$SOUND_SPOTIFY_USERNAME"
+    access_token: "$SOUND_SPOTIFY_PASSWORD"
 EOF
 fi
 

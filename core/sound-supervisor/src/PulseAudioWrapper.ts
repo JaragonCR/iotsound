@@ -228,6 +228,49 @@ export class PulseAudioWrapper extends EventEmitter {
     }
   }
 
+  async getSinkIndexByName(name: string): Promise<number | null> {
+    const sinks = await this.getSinks()
+    const found = sinks.find(s => s.name === name)
+    return found ? parseInt(found.index, 10) : null
+  }
+
+  async getSinkInputIndexBySource(sourceName: string): Promise<number | null> {
+    try {
+      const { stdout } = await execAsync(`pactl --server ${this.server} list sink-inputs`)
+      let currentIndex: number | null = null
+      for (const line of stdout.split('\n')) {
+        const indexMatch = line.match(/^Sink Input #(\d+)/)
+        if (indexMatch) {
+          currentIndex = parseInt(indexMatch[1], 10)
+        }
+        if (currentIndex !== null && line.includes(`Loopback from ${sourceName}`)) {
+          return currentIndex
+        }
+      }
+      console.warn(`[PulseAudioWrapper] getSinkInputIndexBySource: no sink-input found for source '${sourceName}'`)
+      return null
+    } catch (err) {
+      console.warn(`[PulseAudioWrapper] getSinkInputIndexBySource failed: ${(err as Error).message}`)
+      return null
+    }
+  }
+
+  async moveSinkInputByName(sinkInputSourceName: string, targetSinkName: string): Promise<void> {
+    const [sinkInputIndex, sinkIndex] = await Promise.all([
+      this.getSinkInputIndexBySource(sinkInputSourceName),
+      this.getSinkIndexByName(targetSinkName)
+    ])
+    if (sinkInputIndex === null) {
+      console.warn(`[PulseAudioWrapper] moveSinkInputByName: sink-input for source '${sinkInputSourceName}' not found`)
+      return
+    }
+    if (sinkIndex === null) {
+      console.warn(`[PulseAudioWrapper] moveSinkInputByName: sink '${targetSinkName}' not found`)
+      return
+    }
+    await this.moveSinkInput(sinkInputIndex, sinkIndex)
+  }
+
   // -------------------------------------------------------------------------
   // Cleanup
   // -------------------------------------------------------------------------

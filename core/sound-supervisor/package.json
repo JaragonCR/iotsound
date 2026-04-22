@@ -13,13 +13,11 @@
   "author": "Tom\u00e1s Migone <tomas@balena.io",
   "license": "Apache-2.0",
   "dependencies": {
-    "@tmigone/pulseaudio": "^0.1.8",
     "axios": "^0.30.3",
     "balena-sdk": "^15.39.1",
     "cote": "^1.2.0",
     "express": "^4.22.0",
-    "express-async-handler": "~1.1.4",
-    "ts-retry-promise": "^0.5.0"
+    "express-async-handler": "~1.1.4"
   },
   "devDependencies": {
     "@types/cote": "^0.19.0",

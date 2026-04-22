@@ -15,5 +15,5 @@ RUN install_packages \
 WORKDIR /usr/src
 COPY core/sound-supervisor/package*.json ./
 COPY --from=build /usr/src/build ./build
-RUN npm install --production
+RUN npm install --omit=dev
 CMD [ "npm", "start" ]

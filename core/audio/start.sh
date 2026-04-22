@@ -432,7 +432,7 @@ fi
 # PHASE 3: PULSEAUDIO CONFIGURATION
 # ============================================================================
 
-log_section "PHASE 2: PulseAudio Configuration"
+log_section "PHASE 3: PulseAudio Configuration"
 
 SOUND_INPUT_LATENCY=${SOUND_INPUT_LATENCY:-200}
 SOUND_OUTPUT_LATENCY=${SOUND_OUTPUT_LATENCY:-200}
@@ -454,7 +454,7 @@ log_ok "Audio routing configuration prepared"
 # PHASE 4: CLEANUP AND ENVIRONMENT SETUP
 # ============================================================================
 
-log_section "PHASE 3: Environment Setup"
+log_section "PHASE 4: Environment Setup"
 
 log_step "Cleaning up any stale processes..."
 killall pipewire wireplumber pipewire-pulse dbus-daemon 2>/dev/null || true
@@ -473,10 +473,10 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 log_ok "Runtime directories ready"
 
 # ============================================================================
-# PHASE 4: START DBUS DAEMON
+# PHASE 5: START DBUS DAEMON
 # ============================================================================
 
-log_section "PHASE 4: D-Bus Daemon"
+log_section "PHASE 5: D-Bus Daemon"
 
 log_step "Starting D-Bus daemon..."
 dbus-daemon --session --address=$DBUS_SESSION_BUS_ADDRESS --nofork --nopidfile --syslog-only &
@@ -484,10 +484,10 @@ sleep 1
 log_ok "D-Bus daemon started"
 
 # ============================================================================
-# PHASE 5: START PIPEWIRE STACK
+# PHASE 6: START PIPEWIRE STACK
 # ============================================================================
 
-log_section "PHASE 5: PipeWire Stack Initialization"
+log_section "PHASE 6: PipeWire Stack Initialization"
 
 log_step "Starting PipeWire daemon..."
 pipewire > /var/log/pipewire.log 2>&1 &
@@ -507,7 +507,7 @@ PW_PULSE_PID=$!
 log_ok "PipeWire-Pulse started (PID: $PW_PULSE_PID)"
 
 # ============================================================================
-# PHASE 6: WAIT FOR PULSEAUDIO READINESS
+# PHASE 7: WAIT FOR PULSEAUDIO READINESS
 # ============================================================================
 
 if ! wait_for_pulseaudio; then
@@ -517,10 +517,10 @@ if ! wait_for_pulseaudio; then
 fi
 
 # ============================================================================
-# PHASE 7: OUTPUT DEVICE DETECTION AND SELECTION (DAC PRIORITY)
+# PHASE 8: OUTPUT DEVICE DETECTION AND SELECTION (DAC PRIORITY)
 # ============================================================================
 
-log_section "PHASE 7: Hardware Output Device Detection"
+log_section "PHASE 8: Hardware Output Device Detection"
 
 # Read output preference (defaults to AUTO if not set)
 AUDIO_OUTPUT=${AUDIO_OUTPUT:-AUTO}
@@ -598,10 +598,10 @@ else
 fi
 
 # ============================================================================
-# PHASE 7B: INPUT DEVICE DETECTION (FOR KARAOKE AND MIC INPUT)
+# PHASE 8B: INPUT DEVICE DETECTION (FOR KARAOKE AND MIC INPUT)
 # ============================================================================
 
-log_section "PHASE 7B: Hardware Input Device Detection"
+log_section "PHASE 8B: Hardware Input Device Detection"
 
 # Read input preference (defaults to AUTO if not set)
 AUDIO_INPUT=${AUDIO_INPUT:-AUTO}
@@ -663,7 +663,7 @@ if [ -n "$HW_SOURCES" ]; then
     fi
 
     # ========================================================================
-    # PHASE 7C: OPTIONAL MIC LOOPBACK FOR TESTING/MONITORING
+    # PHASE 8C: OPTIONAL MIC LOOPBACK FOR TESTING/MONITORING
     # ========================================================================
     
     AUDIO_INPUT_LOOPBACK=${AUDIO_INPUT_LOOPBACK:-false}
@@ -706,10 +706,10 @@ else
 fi
 
 # ============================================================================
-# PHASE 8: APPLY PULSEAUDIO ROUTING RULES
+# PHASE 9: APPLY PULSEAUDIO ROUTING RULES
 # ============================================================================
 
-log_section "PHASE 8: Applying PulseAudio Routing Rules"
+log_section "PHASE 9: Applying PulseAudio Routing Rules"
 
 log_step "Processing PulseAudio configuration files..."
 shopt -s nullglob
@@ -746,7 +746,7 @@ done
 log_ok "Applied $CONFIG_COUNT routing rules ($FAILED_COUNT warnings)"
 
 # ============================================================================
-# PHASE 9: STARTUP COMPLETE
+# PHASE 10: STARTUP COMPLETE
 # ============================================================================
 
 log_section "IOTSOUND AUDIO SERVICE READY"

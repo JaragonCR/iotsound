@@ -20,20 +20,19 @@ RUN go build -v -o /daemon ./cmd/daemon
 # ----------------------
 # Stage 2: Runtime image
 # ----------------------
-FROM alpine:latest
+FROM alpine:3.21
 
 RUN apk add --no-cache \
     avahi \
     libgcc \
     gcompat \
-    alsa-lib \
-    curl
+    alsa-lib
 
 ENV PULSE_SERVER=tcp:localhost:4317
 
-# Install balena alsa-bridge (routes ALSA → PulseAudio)
-RUN curl -skL https://raw.githubusercontent.com/balena-io-experimental/audio/master/scripts/alsa-bridge/alpine-setup.sh | sh \
- && apk del curl
+# Install balena alsa-bridge (routes ALSA -> PulseAudio)
+COPY alpine-setup.sh /tmp/alpine-setup.sh
+RUN sh /tmp/alpine-setup.sh && rm /tmp/alpine-setup.sh
 
 COPY --from=builder /daemon /usr/src/daemon
 COPY start.sh /usr/src/
