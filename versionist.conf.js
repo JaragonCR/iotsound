@@ -1,4 +1,31 @@
 module.exports = {
+  getIncrementLevel: (commits) => {
+    const order = ['major', 'minor', 'patch'];
+    let level = null;
+
+    for (const commit of commits) {
+      const explicit = (
+        (commit.footer || {})['Change-type'] ||
+        (commit.footer || {})['change-type'] ||
+        ''
+      ).toLowerCase().trim();
+
+      if (order.includes(explicit)) {
+        if (level === null || order.indexOf(explicit) < order.indexOf(level)) {
+          level = explicit;
+        }
+        continue;
+      }
+
+      // Treat Dependabot dependency bumps as patch when no Change-type present
+      if (/^build\(deps\)/i.test(commit.subject) || /dependabot/i.test(commit.author || '')) {
+        level = level === 'major' || level === 'minor' ? level : 'patch';
+      }
+    }
+
+    return level;
+  },
+
   // 'updateVersion' is the correct Versionist hook for a custom function
   updateVersion: (cwd, version, cb) => {
     const fs = require('fs');
