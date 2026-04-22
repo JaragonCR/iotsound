@@ -33,7 +33,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit --allow-empty -m "chore(deps): annotate dependency bump as patch
-
-Change-type: patch"
+          git commit --allow-empty -m $'chore(deps): annotate dependency bump as patch\n\nChange-type: patch'
           git push
