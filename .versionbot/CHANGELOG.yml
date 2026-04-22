@@ -1,4 +1,42 @@
 - commits:
+    - subject: "chore(deps): annotate dependency bump as patch"
+      hash: 520ffb1144ae435dd0cffcbcaea26e7f1abbffb2
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: github-actions[bot]
+    - subject: "fix(ci): fix YAML/shellcheck error in annotate-dependabot workflow"
+      hash: 273ee3b791eeee33da0230947f865b207cf9ac21
+      body: |
+        Blank line inside a double-quoted shell string caused shellcheck SC1072
+        and the YAML parser treated "Change-type: patch" as a top-level key.
+        Use ANSI-C $'...' quoting to embed the newlines safely.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(ci): add workflow to annotate Dependabot PRs with Change-type:
+        patch"
+      hash: 23a794ce19598373ad4632684e6f85f6c1bc432a
+      body: |
+        Dependabot commits have no Change-type trailer. Instead of relying on
+        versionist.conf.js hooks (which balena-versionist may not invoke), this
+        workflow adds an empty annotation commit to every Dependabot branch so
+        the standard versionist Change-type parser always finds a valid level.
+        Loop-safe: the check step skips if Change-type is already present.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.2.9
+  title: ""
+  date: 2026-04-22T23:52:20.542Z
+- commits:
     - subject: "fix(ci): make Dependabot patch detection robust against versionist
         field names"
       hash: 5e4e6555015bf3bf258097e415e0dfea3cd62055
