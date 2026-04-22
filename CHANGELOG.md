@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.2.7
+## (2026-04-22)
+
+* fix(ci): restore clean flowzone.yml — remove pull_request_target [JaragonCR]
+
 # v4.2.6
 ## (2026-04-22)
 

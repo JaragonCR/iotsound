@@ -1,4 +1,20 @@
 - commits:
+    - subject: "fix(ci): restore clean flowzone.yml — remove pull_request_target"
+      hash: 50f223645d7163858f4d4c3a20fb9b46525c9d93
+      body: |
+        Flowzone rejects pull_request_target internally. Dependabot access
+        is handled via the FLOWZONE_TOKEN Dependabot secret (PAT).
+        No if condition, no pull_request_target — back to the original.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.2.7
+  title: ""
+  date: 2026-04-22T23:05:15.723Z
+- commits:
     - subject: "fix(ci): use branch prefix instead of actor to detect Dependabot"
       hash: 5b48b708f897845593cc535eadca431049506afe
       body: |
