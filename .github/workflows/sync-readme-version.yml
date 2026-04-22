@@ -1,0 +1,34 @@
+name: Sync README Version
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - balena.yml
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from balena.yml
+        id: ver
+        run: echo "version=$(grep '^version:' balena.yml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Update README header
+        run: sed -i "s/— v[0-9]\+\.[0-9]\+\.[0-9]\+/— v${{ steps.ver.outputs.version }}/" README.md
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet README.md || (
+            git add README.md &&
+            git commit -m "chore: sync README version to v${{ steps.ver.outputs.version }}" &&
+            git push
+          )
