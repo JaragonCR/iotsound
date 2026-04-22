@@ -10,6 +10,4 @@ jobs:
     name: Flowzone
     uses: product-os/flowzone/.github/workflows/flowzone.yml@master
     secrets:
-      FLOWZONE_APP_PRIVATE_KEY: ${{ secrets.FLOWZONE_APP_PRIVATE_KEY }}
-      GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
       FLOWZONE_TOKEN: ${{ secrets.FLOWZONE_TOKEN }}
