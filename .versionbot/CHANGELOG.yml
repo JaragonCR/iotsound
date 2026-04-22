@@ -1,4 +1,25 @@
 - commits:
+    - subject: "fix(ci): make Dependabot patch detection robust against versionist
+        field names"
+      hash: 5e4e6555015bf3bf258097e415e0dfea3cd62055
+      body: >
+        JSON-serialise the entire commit object so the build(deps)/dependabot
+        check
+
+        succeeds regardless of whether versionist exposes commit.subject as the
+        full
+
+        first line or as the conventional-commit description-only field.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.2.8
+  title: ""
+  date: 2026-04-22T23:21:43.422Z
+- commits:
     - subject: "fix(ci): restore clean flowzone.yml — remove pull_request_target"
       hash: 50f223645d7163858f4d4c3a20fb9b46525c9d93
       body: |
