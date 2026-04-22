@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.2.4
+## (2026-04-22)
+
+* fix(sound-supervisor): replace hardcoded sink indexes in setMode() [JaragonCR]
+* fix(sound-supervisor): add name-based sink lookup to PulseAudioWrapper [JaragonCR]
+* fix(sound-supervisor): consolidate balena SDK into single BalenaClient [JaragonCR]
+* fix(sound-supervisor): remove orphaned dependencies [JaragonCR]
+* fix(balena): add raspberrypi5 to supportedDeviceTypes [JaragonCR]
+* fix(audio): correct phase numbering in start.sh log sections [JaragonCR]
+* fix(sound-supervisor): replace deprecated npm install --production [JaragonCR]
+* fix(watchdog): switch to balenalib base image, drop unused packages [JaragonCR]
+* fix(librespot): quote all string values in generated YAML config [JaragonCR]
+* fix(airplay): vendor alsa-bridge script instead of curl | sh [JaragonCR]
+* fix(librespot): pin alpine to 3.21 and vendor alsa-bridge script [JaragonCR]
+
 # v4.2.3
 ## (2026-03-30)
 

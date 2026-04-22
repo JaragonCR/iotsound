@@ -1,4 +1,120 @@
 - commits:
+    - subject: "fix(sound-supervisor): replace hardcoded sink indexes in setMode()"
+      hash: 74283e273efe2efa7c0c149210ba31789b49c223
+      body: |
+        moveSinkInput(0, 2) and moveSinkInput(0, 3) assumed fixed PulseAudio
+        indexes that break when USB or DAC cards alter sink numbering.
+        Now resolved by name via moveSinkInputByName(). Also fixes String
+        object wrapper type in MultiRoomConfig interface.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(sound-supervisor): add name-based sink lookup to PulseAudioWrapper"
+      hash: 81df90525b1586e3c77225263901140cfe8a5fc0
+      body: |
+        Add getSinkIndexByName(), getSinkInputIndexBySource(), and
+        moveSinkInputByName() so callers can address sinks by their stable
+        names rather than dynamic indexes that shift when USB/DAC cards are
+        present.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(sound-supervisor): consolidate balena SDK into single BalenaClient"
+      hash: 4bf93d981820bf3c35d2985acd22d962472218e0
+      body: >
+        Both index.ts and SoundAPI.ts were independently calling getSdk() and
+
+        loginWithToken(), creating two separate authenticated SDK instances.
+
+        BalenaClient.ts now owns the single instance; both callers import from
+        it.
+
+        Also fixes error.message on unknown catch binding in index.ts.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(sound-supervisor): remove orphaned dependencies"
+      hash: 8dd3890392e4a2438e0bc69c045ca3d854052106
+      body: |
+        @tmigone/pulseaudio was replaced by PulseAudioWrapper.ts and is no
+        longer imported. ts-retry-promise is not imported anywhere in src/.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(balena): add raspberrypi5 to supportedDeviceTypes"
+      hash: e15e601058328c94d79932b6fc2610982aa05295
+      body: |
+        Pi 5 was missing from the supported device list, preventing deployment
+        from balenaHub. Stack is architecture-agnostic so Pi 5 works as-is.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(audio): correct phase numbering in start.sh log sections"
+      hash: f475ffc45150ca77c14f9c6461f1a1f47c92859e
+      body: |
+        Phases 2 and 3 were swapped in the log_section labels from Phase 3
+        onward. Labels now match actual execution order.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(sound-supervisor): replace deprecated npm install --production"
+      hash: 5717cd362fac40decbaafa50f78c0229c4509442
+      body: |
+        --production was deprecated in npm v9. Use --omit=dev instead.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(watchdog): switch to balenalib base image, drop unused packages"
+      hash: df825f80f99aacfb77497f51482a16ec71354121
+      body: |
+        Replace generic python:3.11-slim with balenalib Debian Python for
+        proper ARM/udev support. Remove pulseaudio-utils (unused) and the
+        watchdog user creation that never had a matching USER directive.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(librespot): quote all string values in generated YAML config"
+      hash: 689f194930d7209d9f92060c6152fa987c87b4cd
+      body: |
+        Unquoted env vars in the heredoc allowed values containing ':' or
+        newlines to corrupt the config file. Quoted all user-facing string
+        fields; numeric and boolean fields left unquoted as YAML requires.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(airplay): vendor alsa-bridge script instead of curl | sh"
+      hash: 4f75d98867647a61ed24bbbdfec70fa3d2d1f008
+      body: |
+        Replace remote curl | sh with vendored local copy of alpine-setup.sh.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(librespot): pin alpine to 3.21 and vendor alsa-bridge script"
+      hash: 0c84beb27f78ba44f20ade2a2fd2234758936116
+      body: >
+        Replace mutable alpine:latest tag with alpine:3.21 for reproducible
+        builds.
+
+        Replace curl | sh from remote URL with vendored local copy of
+        alpine-setup.sh.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+  version: 4.2.4
+  title: ""
+  date: 2026-04-22T19:54:41.376Z
+- commits:
     - subject: "fix(ci): pass secrets to Flowzone with inherit"
       hash: 83fe0769ee0189be446d0b27b34000ad075e7403
       body: >
