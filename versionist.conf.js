@@ -23,8 +23,12 @@ module.exports = {
         continue;
       }
 
-      // Treat Dependabot dependency bumps as patch when no Change-type present
-      if (/^build\(deps\)/i.test(commit.subject) || /dependabot/i.test(commit.author || '')) {
+      // Treat Dependabot dependency bumps as patch when no Change-type present.
+      // commit.subject may be the full first line OR just the conventional-commit
+      // description part (after "type(scope): "), so check multiple fields plus a
+      // JSON-serialised fallback that catches any field name versionist uses.
+      const commitJson = JSON.stringify(commit).toLowerCase();
+      if (/dependabot/i.test(commitJson) || /build\(deps\)/.test(commitJson)) {
         level = level === 'major' || level === 'minor' ? level : 'patch';
       }
     }
