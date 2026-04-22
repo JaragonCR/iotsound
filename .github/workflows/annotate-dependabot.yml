@@ -1,0 +1,39 @@
+name: Annotate Dependabot PRs
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+    branches:
+      - master
+      - main
+
+jobs:
+  annotate:
+    if: startsWith(github.head_ref, 'dependabot/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 2
+
+      - name: Check if Change-type already present
+        id: check
+        run: |
+          if git log -1 --pretty=%B | grep -qi "change-type:"; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Annotate as patch
+        if: steps.check.outputs.already == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore(deps): annotate dependency bump as patch
+
+Change-type: patch"
+          git push
