@@ -18,8 +18,8 @@ jobs:
   flowzone:
     name: Flowzone
     if: |
-      (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]') ||
-      (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]')
+      (github.event_name == 'pull_request' && !startsWith(github.head_ref, 'dependabot/')) ||
+      (github.event_name == 'pull_request_target' && startsWith(github.head_ref, 'dependabot/'))
     uses: product-os/flowzone/.github/workflows/flowzone.yml@master
     secrets:
       FLOWZONE_APP_PRIVATE_KEY: ${{ secrets.FLOWZONE_APP_PRIVATE_KEY }}
