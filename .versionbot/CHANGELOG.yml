@@ -1,4 +1,21 @@
 - commits:
+    - subject: "fix(versionist): scan commit body for Change-type as footer fallback"
+      hash: 8c500a94a4fce7f16cb87cd430266b0f271bee49
+      body: |
+        git only parses the last paragraph as trailers. A blank line before
+        Co-Authored-By puts Change-type in a different paragraph, so it never
+        lands in commit.footer. Add a regex scan of commit.body so Change-type
+        is found regardless of where in the message it appears.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.2.5
+  title: ""
+  date: 2026-04-22T20:29:01.406Z
+- commits:
     - subject: "fix(sound-supervisor): replace hardcoded sink indexes in setMode()"
       hash: 74283e273efe2efa7c0c149210ba31789b49c223
       body: |

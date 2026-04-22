@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.2.5
+## (2026-04-22)
+
+* fix(versionist): scan commit body for Change-type as footer fallback [JaragonCR]
+
 # v4.2.4
 ## (2026-04-22)
 
