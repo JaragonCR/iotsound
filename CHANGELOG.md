@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.2.6
+## (2026-04-22)
+
+* fix(ci): use branch prefix instead of actor to detect Dependabot [JaragonCR]
+* fix(ci): use pull_request_target for Dependabot to access secrets [JaragonCR]
+
 # v4.2.5
 ## (2026-04-22)
 

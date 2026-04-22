@@ -1,4 +1,37 @@
 - commits:
+    - subject: "fix(ci): use branch prefix instead of actor to detect Dependabot"
+      hash: 5b48b708f897845593cc535eadca431049506afe
+      body: |
+        github.actor can be spoofed. Dependabot always creates branches
+        under the dependabot/ prefix, which cannot be faked in a same-repo
+        PR context. Route on head_ref instead.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(ci): use pull_request_target for Dependabot to access secrets"
+      hash: 75310fa123291151df2c73e997eb0a25fe339c47
+      body: |
+        GitHub blocks Dependabot secrets from being forwarded to reusable
+        workflows via the pull_request event. pull_request_target runs in
+        the base-branch context with full Actions-secret access, which does
+        reach reusable workflows.
+
+        Job condition ensures:
+        - Human PRs  → pull_request  (no change to existing behaviour)
+        - Dependabot → pull_request_target (secrets available to Flowzone)
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.2.6
+  title: ""
+  date: 2026-04-22T22:35:23.346Z
+- commits:
     - subject: "fix(versionist): scan commit body for Change-type as footer fallback"
       hash: 8c500a94a4fce7f16cb87cd430266b0f271bee49
       body: |
