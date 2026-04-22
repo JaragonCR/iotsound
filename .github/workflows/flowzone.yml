@@ -5,9 +5,21 @@ on:
     branches:
       - "main"
       - "master"
+  # pull_request_target runs in the base-branch context and has full access to
+  # Actions secrets, which can be forwarded to reusable workflows. Used
+  # exclusively for Dependabot PRs because GitHub blocks Dependabot secrets
+  # from reaching reusable workflows via the pull_request event.
+  pull_request_target:
+    types: [opened, synchronize, closed]
+    branches:
+      - "main"
+      - "master"
 jobs:
   flowzone:
     name: Flowzone
+    if: |
+      (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]') ||
+      (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]')
     uses: product-os/flowzone/.github/workflows/flowzone.yml@master
     secrets:
       FLOWZONE_APP_PRIVATE_KEY: ${{ secrets.FLOWZONE_APP_PRIVATE_KEY }}
