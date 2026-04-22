@@ -4,11 +4,17 @@ module.exports = {
     let level = null;
 
     for (const commit of commits) {
-      const explicit = (
+      // commit.footer only contains the last paragraph's git trailers.
+      // If Change-type is separated from Co-Authored-By by a blank line it
+      // won't appear there, so also scan the raw body as a fallback.
+      const fromFooter = (
         (commit.footer || {})['Change-type'] ||
         (commit.footer || {})['change-type'] ||
         ''
       ).toLowerCase().trim();
+
+      const bodyMatch = /^change-type:\s*(\w+)/im.exec(commit.body || '');
+      const explicit = fromFooter || (bodyMatch ? bodyMatch[1].toLowerCase() : '');
 
       if (order.includes(explicit)) {
         if (level === null || order.indexOf(explicit) < order.indexOf(level)) {
