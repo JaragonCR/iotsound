@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.2.9
+## (2026-04-22)
+
+* chore(deps): annotate dependency bump as patch [github-actions[bot]]
+* fix(ci): fix YAML/shellcheck error in annotate-dependabot workflow [JaragonCR]
+* feat(ci): add workflow to annotate Dependabot PRs with Change-type: patch [JaragonCR]
+
 # v4.2.8
 ## (2026-04-22)
 
