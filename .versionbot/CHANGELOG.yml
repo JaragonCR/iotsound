@@ -1,4 +1,38 @@
 - commits:
+    - subject: "feat(deps): upgrade balena-sdk 15→23, fix uuid vuln, fix PA hang"
+      hash: 5520b88ddf5a04c996212bfc0fad632eacfc04fa
+      body: |
+        balena-sdk:
+        - Upgraded 15→23 (via 15→17→20→23 tested hops on wispy-road Pi 4)
+        - axios 0.31→1.7.9, ts-node 8→10, TypeScript 5.4→5.8, @types bumped
+
+        node-discover uuid vulnerability:
+        - @dashersw/node-discover@1.0.6 (abandoned, via cote) called
+          require('uuid/v4') from uuid@3 which uses Math.random
+        - patch-package replaces it with require('crypto').randomUUID
+          (Node.js built-in CSPRNG, no external dep, no ESM compat issues)
+        - patch-package moved to dependencies so postinstall runs in
+          Docker runtime stage; patches/ dir copied in Dockerfile
+
+        PulseAudioWrapper silent hang:
+        - listen() returned immediately before PulseAudio was confirmed ready,
+          so setVolume() raced an unconfirmed connection and execAsync blocked
+        - listen() now resolves only after the 'ready' event fires
+        - Added { timeout: 5000 } to all execAsync calls
+
+        Other:
+        - wifi-watchdog: remove broken pactl call from is_audio_playing()
+        - librespot: use JaragonCR/go-librespot fork, feature/dj-clean branch
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.3.0
+  title: ""
+  date: 2026-04-24T13:22:27.291Z
+- commits:
     - subject: "chore(deps): annotate dependency bump as patch"
       hash: 520ffb1144ae435dd0cffcbcaea26e7f1abbffb2
       body: ""

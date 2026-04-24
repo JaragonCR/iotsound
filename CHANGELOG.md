@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.3.0
+## (2026-04-24)
+
+* feat(deps): upgrade balena-sdk 15→23, fix uuid vuln, fix PA hang [JaragonCR]
+
 # v4.2.9
 ## (2026-04-22)
 
