@@ -35,8 +35,8 @@ function executeBalenaServiceAction (service: string, action: string): Promise<A
     let url: string = `${process.env.BALENA_SUPERVISOR_ADDRESS}/v2/applications/${process.env.BALENA_APP_ID}/${action}-service?apikey=${process.env.BALENA_SUPERVISOR_API_KEY}`
     return axios.post(url, { serviceName: service })
   } catch (error) {
-    console.log(error.message)
-    return Promise.reject(error.message)
+    console.log((error as Error).message)
+    return Promise.reject((error as Error).message)
   }
 }
 
