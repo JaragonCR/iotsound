@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(balena device logs *)",
+      "Bash(balena help *)"
+    ]
+  }
+}
