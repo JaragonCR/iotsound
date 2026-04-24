@@ -18,14 +18,14 @@
     "balena-sdk": "^23.0.0",
     "cote": "^1.2.0",
     "express": "^4.22.0",
-    "express-async-handler": "~1.1.4"
+    "express-async-handler": "~1.1.4",
+    "patch-package": "^8.0.1"
   },
   "devDependencies": {
     "@types/cote": "^0.19.0",
     "@types/express": "^4.17.21",
     "@types/node": "^20.19.0",
     "nodemon": "^3.1.14",
-    "patch-package": "^8.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   },
