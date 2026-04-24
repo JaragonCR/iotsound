@@ -8,24 +8,26 @@
     "clean": "rm -rf build",
     "build": "npm run clean && tsc --project tsconfig.json && cp -R src/ui build/ui",
     "watch": "tsc --watch --project tsconfig.json",
-    "livepush": "nodemon --watch src -e js,ts,json --exec node -r ts-node/register/transpile-only src/index.ts"
+    "livepush": "nodemon --watch src -e js,ts,json --exec node -r ts-node/register/transpile-only src/index.ts",
+    "postinstall": "patch-package"
   },
-  "author": "Tom\u00e1s Migone <tomas@balena.io",
+  "author": "Tomás Migone <tomas@balena.io",
   "license": "Apache-2.0",
   "dependencies": {
-    "axios": "^0.31.0",
-    "balena-sdk": "^15.39.1",
+    "axios": "^1.7.9",
+    "balena-sdk": "^23.0.0",
     "cote": "^1.2.0",
     "express": "^4.22.0",
-    "express-async-handler": "~1.1.4"
+    "express-async-handler": "~1.1.4",
+    "patch-package": "^8.0.1"
   },
   "devDependencies": {
     "@types/cote": "^0.19.0",
-    "@types/express": "^4.17.7",
-    "@types/node": "20.14.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.19.0",
     "nodemon": "^3.1.14",
-    "ts-node": "^8.10.2",
-    "typescript": "5.4.5"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   },
   "overrides": {
     "diff": ">=4.0.4"

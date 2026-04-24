@@ -69,21 +69,12 @@ class WiFiWatchdog:
     def is_audio_playing(self):
         """Check if audio is currently playing."""
         try:
-            # Check if pulseaudio/alsa is playing sound
             result = subprocess.run(
-                ["pgrep", "-f", "audio|mpd|spotifyd|shairport"],
+                ["pgrep", "-f", "go-librespot|shairport|snapclient|bluealsa"],
                 capture_output=True,
                 timeout=5
             )
-            # Also check for active playback via pactl
-            pa_result = subprocess.run(
-                ["pactl", "list", "sink-inputs"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            is_playing = result.returncode == 0 or "state: RUNNING" in pa_result.stdout
-            return is_playing
+            return result.returncode == 0
         except Exception as e:
             logger.warning(f"Error checking audio status: {e}")
             return False

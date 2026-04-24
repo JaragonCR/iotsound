@@ -14,7 +14,7 @@ import { EventEmitter } from 'events'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
-const execAsync = promisify(exec)
+const execAsync = (cmd: string) => promisify(exec)(cmd, { timeout: 5000 })
 
 const RECONNECT_DELAY_MS = 3000
 const MAX_RETRIES = 20
@@ -54,7 +54,10 @@ export class PulseAudioWrapper extends EventEmitter {
    * Start connecting to PulseAudio and emit 'ready' when connected.
    */
   async listen(): Promise<void> {
-    this._scheduleConnect()
+    return new Promise((resolve) => {
+      this.once('ready', resolve)
+      this._scheduleConnect()
+    })
   }
 
   // -------------------------------------------------------------------------
