@@ -12,7 +12,7 @@ RUN apk add --no-cache \
     libvorbis-dev \
     flac-dev
 
-RUN git clone https://github.com/devgianlu/go-librespot.git /go-librespot
+RUN git clone --branch feature/dj-clean https://github.com/JaragonCR/go-librespot.git /go-librespot
 WORKDIR /go-librespot
 RUN go mod download
 RUN go build -v -o /daemon ./cmd/daemon
