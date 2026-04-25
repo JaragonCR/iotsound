@@ -66,17 +66,83 @@ Deploy to a balenaCloud fleet with one click:
 
 Set these in your balenaCloud fleet or device variables:
 
+#### Device identity
+
 | Variable | Description | Default |
 |---|---|---|
-| `SOUND_DEVICE_NAME` | Device hostname and Bluetooth/Spotify name | `iotsound` |
-| `SOUND_DISABLE_BLUETOOTH` | Set to `1` to disable Bluetooth | unset |
-| `SOUND_VOLUME` | Default volume 0-100 | `75` |
-| `AUDIO_OUTPUT` | Audio output selection (`AUTO`, device name, or device number) | `AUTO` |
-| `AUDIO_INPUT` | Audio input selection (`AUTO`, device name, or device number) | `AUTO` |
-| `AUDIO_INPUT_HIGHPASS` | Microphone highpass filter frequency in Hz (0 = disabled) | `120` |
-| `AUDIO_INPUT_LOWPASS` | Microphone lowpass filter frequency in Hz (0 = disabled) | `12000` |
-| `AUDIO_MIC_INPUT_VOLUME` | Microphone input volume percentage (0-100) | `40` |
-| `AUDIO_INPUT_LOOPBACK` | Enable microphone loopback to speakers for testing (`true`/`false`) | `false` |
+| `SOUND_DEVICE_NAME` | Hostname and broadcast name for Bluetooth, AirPlay, Spotify Connect, and UPnP | `iotsound` |
+
+#### Audio output
+
+| Variable | Description | Default |
+|---|---|---|
+| `SOUND_VOLUME` | Default volume (0–100) | `75` |
+| `AUDIO_OUTPUT` | Output device — `AUTO`, device name substring, or device number | `AUTO` |
+| `AUDIO_LOG_LEVEL` | PulseAudio log verbosity: `ERROR`, `WARN`, `NOTICE`, `INFO`, `DEBUG` | `NOTICE` |
+
+#### Microphone input & filtering
+
+| Variable | Description | Default |
+|---|---|---|
+| `AUDIO_INPUT` | Input device — `AUTO`, device name substring, or device number | `AUTO` |
+| `AUDIO_INPUT_LOOPBACK` | Monitor mic through speakers (`true`/`false`) | `false` |
+| `AUDIO_MIC_INPUT_VOLUME` | Mic input level 0–100 (only used when loopback is active) | `35` |
+| `AUDIO_INPUT_EQ_DISABLED` | Disable all mic EQ filters (`true`/`false`) | `true` |
+| `AUDIO_INPUT_HIGHPASS` | Highpass filter cutoff Hz — removes rumble (0 = off) | `130` |
+| `AUDIO_INPUT_LOWPASS` | Lowpass filter cutoff Hz — removes harshness (0 = off) | `15000` |
+| `AUDIO_INPUT_HIGHPASS_Q` | Highpass filter Q factor (bandwidth) | `1.0` |
+| `AUDIO_INPUT_LOWPASS_Q` | Lowpass filter Q factor (bandwidth) | `1.0` |
+| `AUDIO_INPUT_BOXY_CUT` | Peaking gain at 500 Hz (dB) to reduce boxy sound | `-2` |
+| `AUDIO_INPUT_PROXIMITY_CUT` | Peaking gain at 250 Hz (dB) to reduce proximity effect | `-2` |
+| `SOUND_ENABLE_SOUNDCARD_INPUT` | Route soundcard mic into the audio mix (set to any value to enable) | unset |
+| `SOUND_INPUT_LATENCY` | Input loopback latency in ms | `200` |
+| `SOUND_OUTPUT_LATENCY` | Output loopback latency in ms | `200` |
+
+#### Multiroom (Snapcast)
+
+| Variable | Description | Default |
+|---|---|---|
+| `SOUND_MODE` | Force mode: `STANDALONE`, `MULTI_ROOM` (server), or `MULTI_ROOM_CLIENT` | auto-detected |
+| `SOUND_MULTIROOM_MASTER` | IP of the multiroom server — forces this device into client mode | auto-detected |
+| `SOUND_MULTIROOM_LATENCY` | Client latency compensation in ms for speaker sync | unset |
+| `SOUND_MULTIROOM_POLL_INTERVAL` | Fleet sync interval in seconds | `60` |
+| `SOUND_MULTIROOM_DISALLOW_UPDATES` | Prevent automatic master switching (set to any value to lock) | unset |
+| `SOUND_COTE_DELAY` | Delay before fleet pub/sub starts in ms | `5000` |
+
+#### Spotify Connect (librespot)
+
+| Variable | Description | Default |
+|---|---|---|
+| `SOUND_SPOTIFY_BITRATE` | Streaming bitrate in kbps: `96`, `160`, or `320` | `160` |
+| `SOUND_SPOTIFY_INITIAL_VOLUME` | Volume level when Spotify connects (0–100) | `50` |
+| `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`) | unset |
+| `SOUND_SPOTIFY_PASSWORD` | Spotify access token for credential auth | unset |
+| `SOUND_SPOTIFY_DISABLE_NORMALISATION` | Disable loudness normalization (set to `1`) | unset |
+| `LOG_LEVEL` | go-librespot log level: `debug`, `info`, `warning`, `error` | `info` |
+
+#### Bluetooth
+
+| Variable | Description | Default |
+|---|---|---|
+| `SOUND_DISABLE_BLUETOOTH` | Disable Bluetooth entirely (set to any value) | unset |
+| `BLUETOOTH_DEVICE_NAME` | Bluetooth broadcast name | `balenaOS <first 4 of UUID>` |
+| `BLUETOOTH_HCI_INTERFACE` | Bluetooth adapter to use (e.g. `hci0`, `hci1`) | `hci0` |
+| `BLUETOOTH_PAIRING_MODE` | `SSP` (Secure Simple Pairing) or `LEGACY` (PIN required) | `SSP` |
+
+#### AirPlay
+
+| Variable | Description | Default |
+|---|---|---|
+| `SOUND_DISABLE_AIRPLAY` | Disable AirPlay entirely (set to any value) | unset |
+
+#### WiFi watchdog
+
+| Variable | Description | Default |
+|---|---|---|
+| `WIFI_CHECK_INTERVAL` | Connectivity check interval in seconds | `30` |
+| `WIFI_OFFLINE_THRESHOLD` | Seconds offline before recovery starts | `600` |
+| `WIFI_RECOVERY_WAIT` | Seconds between recovery attempts | `300` |
+| `MAX_RECOVERY_ATTEMPTS` | Recovery attempts before forcing a device reboot | `3` |
 
 **For detailed audio configuration documentation**, see [AUDIO_CONFIGURATION.md](docs/AUDIO_CONFIGURATION.md) which includes:
 - Device detection and priority ordering
