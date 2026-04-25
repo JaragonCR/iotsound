@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.4.0
+## (2026-04-25)
+
+* docs: expand fleet variables reference to full 40+ var coverage [JaragonCR]
+* feat(deps): migrate sound-supervisor to node:24-bookworm-slim [JaragonCR]
+
 # v4.3.0
 ## (2026-04-24)
 

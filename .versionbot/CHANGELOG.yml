@@ -1,4 +1,37 @@
 - commits:
+    - subject: "docs: expand fleet variables reference to full 40+ var coverage"
+      hash: 6fb598ed61eb19f7ea378a02c780ebcfaaaec744
+      body: >
+        Replace the 9-row stub table with a categorized reference covering
+
+        every user-facing env var across all services: audio output/input,
+
+        mic EQ filters, multiroom, Spotify Connect, Bluetooth, AirPlay, and
+
+        WiFi watchdog. Corrects stale defaults (highpass 120→130, mic vol
+        40→35).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(deps): migrate sound-supervisor to node:24-bookworm-slim"
+      hash: c9128d3cb38a8b1e020a1faaef4fc6bbb6adab7a
+      body: |
+        Replace deprecated balenalib/%%BALENA_ARCH%%-node:20 images with the
+        official node:24-bookworm-slim from Docker Hub. balenalib stopped
+        publishing aarch64 images beyond Node 20 in 2025.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.4.0
+  title: ""
+  date: 2026-04-25T00:33:41.901Z
+- commits:
     - subject: "feat(deps): upgrade balena-sdk 15→23, fix uuid vuln, fix PA hang"
       hash: 5520b88ddf5a04c996212bfc0fad632eacfc04fa
       body: |
