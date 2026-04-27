@@ -1,9 +1,15 @@
-# hadolint ignore=DL3006
-FROM bh.cr/g_tomas_migone1/multiroom-%%BALENA_ARCH%%
+FROM debian:bookworm-slim
 WORKDIR /usr/src
 
 ENV PULSE_SERVER=tcp:audio:4317
 ENV PULSE_SOURCE=snapcast.monitor
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    snapserver \
+    libpulse0 \
+    libasound2-plugins \
+    curl \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY snapserver.conf /etc/snapserver.conf
 COPY start.sh .
