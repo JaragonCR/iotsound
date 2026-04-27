@@ -1,9 +1,6 @@
 #!/bin/bash
 set -e
 
-# Run balena base image entrypoint script
-/usr/bin/entry.sh echo ""
-
 # Helper functions
 function pa_disable_module() {
   local MODULE="$1"
