@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# WirePlumber uses libudev to enumerate ALSA devices. Without a running
+# udevd the SPA ALSA plugin finds nothing and PipeWire falls back to
+# auto_null. Start udevd early so it populates /run/udev before PipeWire
+# launches in start.sh Phase 6.
+/sbin/udevd --daemon 2>/dev/null || true
+udevadm trigger 2>/dev/null || true
+
 # Helper functions
 function pa_disable_module() {
   local MODULE="$1"

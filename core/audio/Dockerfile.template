@@ -6,6 +6,7 @@ ENV XDG_RUNTIME_DIR=/tmp/pw-runtime
 
 RUN apk add --no-cache \
   bash \
+  eudev \
   alsa-utils \
   mawk \
   pipewire \
