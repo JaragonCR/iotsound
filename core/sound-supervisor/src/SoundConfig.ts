@@ -45,16 +45,14 @@ export default class SoundConfig {
         this.safeService(startBalenaService, 'multiroom-server')
         this.safeService(startBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
-        this.safeService(startBalenaService, 'spotify')
-        this.safeService(startBalenaService, 'upnp')
+        this.safeService(startBalenaService, 'librespot')
         this.safeService(startBalenaService, 'bluetooth')
         this.audioBlock.moveSinkInputByName('balena-sound.input', 'snapcast')
         break
       case SoundModes.MULTI_ROOM_CLIENT:
         this.safeService(stopBalenaService, 'multiroom-server')
         this.safeService(stopBalenaService, 'airplay')
-        this.safeService(stopBalenaService, 'spotify')
-        this.safeService(stopBalenaService, 'upnp')
+        this.safeService(stopBalenaService, 'librespot')
         this.safeService(stopBalenaService, 'bluetooth')
         this.safeService(startBalenaService, 'multiroom-client')
         break
@@ -62,8 +60,7 @@ export default class SoundConfig {
         this.safeService(stopBalenaService, 'multiroom-server')
         this.safeService(stopBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
-        this.safeService(startBalenaService, 'spotify')
-        this.safeService(startBalenaService, 'upnp')
+        this.safeService(startBalenaService, 'librespot')
         this.safeService(startBalenaService, 'bluetooth')
         this.audioBlock.moveSinkInputByName('balena-sound.input', 'balena-sound.output')
         break
