@@ -1,9 +1,15 @@
-FROM balenalib/%%BALENA_MACHINE_NAME%%-debian:buster
+FROM debian:bookworm-slim
 WORKDIR /usr/src
 
 ENV PULSE_SERVER=tcp:localhost:4317
 
-RUN install_packages gmediarender gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-pulseaudio
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gmediarender \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-pulseaudio \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY start.sh /usr/src/
 
