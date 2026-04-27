@@ -32,7 +32,7 @@
 |---|---|
 | **Karaoke support** | Integrating [pitube-karaoke](https://github.com/JaragonCR/pitube-karaoke) — Go-based karaoke with HDMI video output and 3.5mm audio input |
 | **Airplay plugin update** | shairport-sync version bump and base image update |
-| **Multiroom modernization** | Snapcast server/client — consider switching from build-from-source to official Docker images |
+| **Multiroom modernization** | Snapcast upgrade + PipeWire-native pipe source, mDNS auto-discovery, mode simplification — see [MULTIROOM.md](docs/MULTIROOM.md) |
 | **UPnP plugin update** | gmrender-resurrect base image update |
 
 ---
@@ -99,6 +99,8 @@ Set these in your balenaCloud fleet or device variables:
 | `SOUND_OUTPUT_LATENCY` | Output loopback latency in ms | `200` |
 
 #### Multiroom (Snapcast)
+
+See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of how auto-election works, setup instructions, and the planned PipeWire-native simplification.
 
 | Variable | Description | Default |
 |---|---|---|
