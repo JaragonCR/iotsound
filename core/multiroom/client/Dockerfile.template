@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpulse0 \
     libasound2-plugins \
     curl \
+    iproute2 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY start.sh .
