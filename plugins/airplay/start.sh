@@ -13,4 +13,4 @@ echo "Starting Shairport Sync"
 
 exec shairport-sync \
   --name="$SOUND_DEVICE_NAME" \
-  --output=pa
+  --output=pulseaudio
