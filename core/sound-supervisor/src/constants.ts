@@ -7,7 +7,7 @@ function checkInt(s: string | undefined): number | undefined {
 let deviceType: string = process.env.BALENA_DEVICE_TYPE ?? 'unknown'
 
 export function defaultMode(): SoundModes {
-  return ['raspberry-pi', 'raspberry-pi2', 'unknown'].includes(deviceType) ? SoundModes.STANDALONE : SoundModes.MULTI_ROOM
+  return SoundModes.STANDALONE
 }
 
 export const constants = {
