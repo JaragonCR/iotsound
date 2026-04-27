@@ -2,6 +2,8 @@
 
 IoTSound turns multiple Raspberry Pis into a perfectly-synchronized whole-home audio system — similar to Sonos, but open source and self-hosted.
 
+> **Multiroom is a whole-house broadcast, not a zone selector.** When any device starts playing, *every* device in your fleet plays the same audio simultaneously. There is no built-in way to play different audio in different rooms — all devices are always in sync. If you want an independent device, set it to `STANDALONE` mode.
+
 ---
 
 ## How it works
@@ -177,6 +179,10 @@ PipeWire pipe-sink → /tmp/snapfifo → snapserver reads pipe source
 ```
 
 Zero ALSA, zero libpulse. The multiroom containers become thin wrappers around the snapcast binaries.
+
+### Zone control (not yet implemented)
+
+Snapcast natively supports **client groups** — you can assign clients to named groups and each group receives an independent audio stream. This would allow true zone control (kitchen and living room play jazz, bedroom plays silence). IoTSound does not currently expose this feature; it would require a management UI. This is a candidate for a future feature.
 
 ### References
 
