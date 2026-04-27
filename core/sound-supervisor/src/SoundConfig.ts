@@ -35,7 +35,7 @@ export default class SoundConfig {
     this.safeService(restartBalenaService, 'multiroom-client')
   }
 
-  private safeService(fn: (s: string) => Promise<void>, service: string): void {
+  private safeService(fn: (s: string) => Promise<unknown>, service: string): void {
     fn(service).catch((err: Error) => console.log(`Service call failed [${service}]: ${err.message}`))
   }
 
