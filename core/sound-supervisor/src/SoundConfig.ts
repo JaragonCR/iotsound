@@ -39,44 +39,52 @@ export default class SoundConfig {
     fn(service).catch((err: Error) => console.log(`Service call failed [${service}]: ${err.message}`))
   }
 
+  private applyModeServices(): void {
+    switch (this.mode) {
+      case SoundModes.MULTI_ROOM:
+        this.safeService(startBalenaService, 'multiroom-server')
+        this.safeService(startBalenaService, 'multiroom-client')
+        this.safeService(startBalenaService, 'airplay')
+        this.safeService(startBalenaService, 'spotify')
+        this.safeService(startBalenaService, 'upnp')
+        this.safeService(startBalenaService, 'bluetooth')
+        this.audioBlock.moveSinkInputByName('balena-sound.input', 'snapcast')
+        break
+      case SoundModes.MULTI_ROOM_CLIENT:
+        this.safeService(stopBalenaService, 'multiroom-server')
+        this.safeService(stopBalenaService, 'airplay')
+        this.safeService(stopBalenaService, 'spotify')
+        this.safeService(stopBalenaService, 'upnp')
+        this.safeService(stopBalenaService, 'bluetooth')
+        this.safeService(startBalenaService, 'multiroom-client')
+        break
+      case SoundModes.STANDALONE:
+        this.safeService(stopBalenaService, 'multiroom-server')
+        this.safeService(stopBalenaService, 'multiroom-client')
+        this.safeService(startBalenaService, 'airplay')
+        this.safeService(startBalenaService, 'spotify')
+        this.safeService(startBalenaService, 'upnp')
+        this.safeService(startBalenaService, 'bluetooth')
+        this.audioBlock.moveSinkInputByName('balena-sound.input', 'balena-sound.output')
+        break
+      default:
+        break
+    }
+  }
+
+  applyCurrentMode(): void {
+    console.log(`Applying current mode on startup: ${this.mode}`)
+    this.applyModeServices()
+  }
+
   setMode(mode: SoundModes): boolean {
     let oldMode: SoundModes = this.mode
     let modeUpdated: boolean = mode !== oldMode
 
     if (mode && Object.values(SoundModes).includes(mode)) {
       this.mode = SoundModes[mode]
-
       if (modeUpdated) {
-        switch (this.mode) {
-          case SoundModes.MULTI_ROOM:
-            this.safeService(startBalenaService, 'multiroom-server')
-            this.safeService(startBalenaService, 'multiroom-client')
-            this.safeService(startBalenaService, 'airplay')
-            this.safeService(startBalenaService, 'spotify')
-            this.safeService(startBalenaService, 'upnp')
-            this.safeService(startBalenaService, 'bluetooth')
-            this.audioBlock.moveSinkInputByName('balena-sound.input', 'snapcast')
-            break
-          case SoundModes.MULTI_ROOM_CLIENT:
-            this.safeService(stopBalenaService, 'multiroom-server')
-            this.safeService(stopBalenaService, 'airplay')
-            this.safeService(stopBalenaService, 'spotify')
-            this.safeService(stopBalenaService, 'upnp')
-            this.safeService(stopBalenaService, 'bluetooth')
-            this.safeService(startBalenaService, 'multiroom-client')
-            break
-          case SoundModes.STANDALONE:
-            this.safeService(stopBalenaService, 'multiroom-server')
-            this.safeService(stopBalenaService, 'multiroom-client')
-            this.safeService(startBalenaService, 'airplay')
-            this.safeService(startBalenaService, 'spotify')
-            this.safeService(startBalenaService, 'upnp')
-            this.safeService(startBalenaService, 'bluetooth')
-            this.audioBlock.moveSinkInputByName('balena-sound.input', 'balena-sound.output')
-            break
-          default:
-            break
-        }
+        this.applyModeServices()
       }
     } else {
       console.log(`Error setting mode, invalid mode: ${mode}`)
