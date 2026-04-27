@@ -19,6 +19,7 @@ ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
 ENV PYTHONUNBUFFERED=1
 
 RUN apk add --no-cache \
+  bash \
   python3 \
   bluez \
   bluez-btmgmt \

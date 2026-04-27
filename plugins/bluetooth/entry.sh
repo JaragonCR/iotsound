@@ -7,8 +7,6 @@ if [[ -n "$SOUND_DISABLE_BLUETOOTH" ]]; then
   exit 0
 fi
 
-# Run balena base image entrypoint script
-/usr/bin/entry.sh echo "Running balena base image entrypoint..."
 
 function reset_hci_interface () {
   local INTERFACE=$1
