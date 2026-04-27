@@ -1,3 +1,30 @@
+# Stage 1: Build snapserver from source
+FROM debian:bookworm-slim AS snapcast-builder
+ARG SNAPCAST_VERSION=0.27.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    build-essential \
+    cmake \
+    libasound2-dev \
+    libavahi-client-dev \
+    libopus-dev \
+    libvorbis-dev \
+    libflac-dev \
+    libsoxr-dev \
+    libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "v${SNAPCAST_VERSION}" \
+    https://github.com/badaix/snapcast.git /snapcast
+
+WORKDIR /snapcast
+RUN cmake -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/snapcast/bin && \
+    cmake --build build -j$(nproc) --target snapserver
+
+# Stage 2: Runtime
 FROM debian:bookworm-slim
 WORKDIR /usr/src
 
@@ -5,12 +32,20 @@ ENV PULSE_SERVER=tcp:audio:4317
 ENV PULSE_SOURCE=snapcast.monitor
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    snapserver \
     libpulse0 \
     libasound2-plugins \
+    libasound2 \
+    libopus0 \
+    libvorbis0a \
+    libflac12 \
+    libsoxr0 \
+    libssl3 \
+    libavahi-client3 \
     curl \
     iproute2 \
   && rm -rf /var/lib/apt/lists/*
+
+COPY --from=snapcast-builder /snapcast/bin/snapserver /usr/bin/snapserver
 
 COPY snapserver.conf /etc/snapserver.conf
 COPY start.sh .
