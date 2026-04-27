@@ -1,11 +1,11 @@
-FROM balenalib/%%BALENA_MACHINE_NAME%%-debian-python:3.11-run
+FROM python:3.12-slim
 
-# Install system dependencies needed for network monitoring
-RUN install_packages \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wireless-tools \
     iproute2 \
     iputils-ping \
-    procps
+    procps \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

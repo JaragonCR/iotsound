@@ -5,9 +5,12 @@
 # Changes vs upstream balena-labs-projects/bluetooth:
 #   - int() cast fix for RECONNECT_MAX_RETRIES
 #   - Wipe all paired devices on startup for fresh connections
-#   - Python 3.8 Alpine → Python 3.12 Alpine
+#   - balenalib alpine-python:3.12 → alpine:3.21 + apk python3
+#
+# Note: alpine:3.21 (not python:3.12-alpine) so py3-dbus and py3-gobject3
+# use the same Python interpreter they were built against.
 
-FROM balenalib/%%BALENA_MACHINE_NAME%%-alpine-python:3.12-run
+FROM alpine:3.21
 
 WORKDIR /usr/src
 
@@ -15,7 +18,8 @@ WORKDIR /usr/src
 ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
 ENV PYTHONUNBUFFERED=1
 
-RUN install_packages \
+RUN apk add --no-cache \
+  python3 \
   bluez \
   bluez-btmgmt \
   py3-dbus \
