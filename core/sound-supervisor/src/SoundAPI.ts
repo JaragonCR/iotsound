@@ -43,10 +43,18 @@ export default class SoundAPI {
     this.api.get('/version', (_req, res) => res.send(VERSION) )
 
     // Config variables -- update mode
-    this.api.post('/mode', (req, res) => {
-      let updated: boolean = this.config.setMode(req.body.mode)
+    this.api.post('/mode', asyncHandler(async (req, res) => {
+      const updated: boolean = this.config.setMode(req.body.mode)
+      if (updated) {
+        try {
+          await this.sdk.models.device.envVar.set(process.env.BALENA_DEVICE_UUID!, 'SOUND_MODE', req.body.mode)
+          console.log(`SOUND_MODE persisted: ${req.body.mode}`)
+        } catch (err) {
+          console.log(`Failed to persist SOUND_MODE: ${(err as Error).message}`)
+        }
+      }
       res.json({ mode: this.config.mode, updated })
-    })
+    }))
 
     // Audio block
     this.api.get('/audio', asyncHandler(async (_req, res) => res.json(await this.audioBlock.getInfo())))

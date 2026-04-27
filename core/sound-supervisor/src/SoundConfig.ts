@@ -32,7 +32,11 @@ export default class SoundConfig {
 
   setMultiRoomMaster(master: string) {
     this.multiroom.master = master
-    restartBalenaService('multiroom-client')
+    this.safeService(restartBalenaService, 'multiroom-client')
+  }
+
+  private safeService(fn: (s: string) => Promise<void>, service: string): void {
+    fn(service).catch((err: Error) => console.log(`Service call failed [${service}]: ${err.message}`))
   }
 
   setMode(mode: SoundModes): boolean {
@@ -45,38 +49,29 @@ export default class SoundConfig {
       if (modeUpdated) {
         switch (this.mode) {
           case SoundModes.MULTI_ROOM:
-            // start
-            startBalenaService('multiroom-server')
-            startBalenaService('multiroom-client')
-            startBalenaService('airplay')
-            startBalenaService('spotify')
-            startBalenaService('upnp')
-            startBalenaService('bluetooth')
-
+            this.safeService(startBalenaService, 'multiroom-server')
+            this.safeService(startBalenaService, 'multiroom-client')
+            this.safeService(startBalenaService, 'airplay')
+            this.safeService(startBalenaService, 'spotify')
+            this.safeService(startBalenaService, 'upnp')
+            this.safeService(startBalenaService, 'bluetooth')
             this.audioBlock.moveSinkInputByName('balena-sound.input', 'snapcast')
             break
           case SoundModes.MULTI_ROOM_CLIENT:
-            // stop
-            stopBalenaService('multiroom-server')
-            stopBalenaService('airplay')
-            stopBalenaService('spotify')
-            stopBalenaService('upnp')
-            stopBalenaService('bluetooth')
-            
-            // start
-            startBalenaService('multiroom-client')
+            this.safeService(stopBalenaService, 'multiroom-server')
+            this.safeService(stopBalenaService, 'airplay')
+            this.safeService(stopBalenaService, 'spotify')
+            this.safeService(stopBalenaService, 'upnp')
+            this.safeService(stopBalenaService, 'bluetooth')
+            this.safeService(startBalenaService, 'multiroom-client')
             break
           case SoundModes.STANDALONE:
-            // stop
-            stopBalenaService('multiroom-server')
-            stopBalenaService('multiroom-client')
-
-            // start
-            startBalenaService('airplay')
-            startBalenaService('spotify')
-            startBalenaService('upnp')
-            startBalenaService('bluetooth')
-            
+            this.safeService(stopBalenaService, 'multiroom-server')
+            this.safeService(stopBalenaService, 'multiroom-client')
+            this.safeService(startBalenaService, 'airplay')
+            this.safeService(startBalenaService, 'spotify')
+            this.safeService(startBalenaService, 'upnp')
+            this.safeService(startBalenaService, 'bluetooth')
             this.audioBlock.moveSinkInputByName('balena-sound.input', 'balena-sound.output')
             break
           default:
