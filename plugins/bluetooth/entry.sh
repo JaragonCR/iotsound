@@ -7,8 +7,6 @@ if [[ -n "$SOUND_DISABLE_BLUETOOTH" ]]; then
   exit 0
 fi
 
-# Run balena base image entrypoint script
-/usr/bin/entry.sh echo "Running balena base image entrypoint..."
 
 function reset_hci_interface () {
   local INTERFACE=$1
@@ -37,8 +35,8 @@ echo "Available HCI interfaces: "${HCI_INTERFACES[@]}
 
 # Bail out if provided HCI interface is invalid
 if [[ ! "${HCI_INTERFACES[@]}" =~ "$HCI_INTERFACE" ]]; then
-  echo "Exiting... selected HCI interface is invalid: $HCI_INTERFACE"
-  exit 0
+  echo "HCI interface $HCI_INTERFACE not ready yet, will retry..."
+  exit 1
 fi
 
 # Reset all interfaces. This helps shut off interfaces from previous runs.

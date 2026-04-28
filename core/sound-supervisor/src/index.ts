@@ -28,6 +28,12 @@ async function init() {
   await audioBlock.listen()
   await audioBlock.setVolume(constants.volume)
 
+  // Ensure balena service state matches the configured mode on every startup.
+  // balenaOS persists stopped-via-API state across reboots, so we must
+  // explicitly start/stop services to recover from any prior crash or partial
+  // mode switch.
+  config.applyCurrentMode()
+
   // For multi room, allow cote to establish connections before sending fleet-sync
   if (config.isMultiRoomEnabled()) {
     await timeout(constants.coteDelay)

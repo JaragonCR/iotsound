@@ -1,9 +1,55 @@
-# hadolint ignore=DL3006
-FROM bh.cr/g_tomas_migone1/multiroom-%%BALENA_ARCH%%
+# Stage 1: Build snapclient from source
+FROM debian:bookworm-slim AS snapcast-builder
+ARG SNAPCAST_VERSION=0.27.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    build-essential \
+    cmake \
+    libboost-dev \
+    libexpat1-dev \
+    libasound2-dev \
+    libavahi-client-dev \
+    libopus-dev \
+    libvorbis-dev \
+    libflac-dev \
+    libsoxr-dev \
+    libssl-dev \
+    libpulse-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "v${SNAPCAST_VERSION}" \
+    https://github.com/badaix/snapcast.git /snapcast
+
+WORKDIR /snapcast
+RUN cmake -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/snapcast/bin && \
+    cmake --build build -j$(nproc) --target snapclient
+
+# Stage 2: Runtime
+FROM debian:bookworm-slim
 WORKDIR /usr/src
 
 ENV PULSE_SERVER=tcp:audio:4317
 ENV PULSE_SINK=balena-sound.output
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpulse0 \
+    libasound2-plugins \
+    libasound2 \
+    libopus0 \
+    libvorbis0a \
+    libflac12 \
+    libsoxr0 \
+    libssl3 \
+    libavahi-client3 \
+    curl \
+    iproute2 \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=snapcast-builder /snapcast/bin/snapclient /usr/bin/snapclient
 
 COPY start.sh .
 

@@ -74,24 +74,28 @@
               </div>
             </div>
 
-            <!-- <div class="col-sm-6">
-                <div class="card text-center h-100">
-                  <div class="card-body">
-                    <h5 class="card-title">Mode selection  <span class="badge badge-pill badge-warning" style="font-size: 10px;vertical-align: middle;">Restarts application</span></h5>
-                    <p class="card-text">Set the mode of operation. See our <a href='https://balena-labs-projects.github.io/balena-sound/usage#modes-of-operation' target='__blank'>docs</a> for details.</p>
-                    <div class="btn-group">
-                      <button id="set-mode" type="button" class="btn btn-outline-warning dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        Multiroom
-                      </button>
-                      <div class="dropdown-menu">
-                        <a class="dropdown-item" href="#" id="set-mode-mr">Multiroom</a>
-                        <a class="dropdown-item" href="#" id="set-mode-mrc">Multiroom client only</a>
-                        <a class="dropdown-item" href="#" id="set-mode-standalone">Standalone</a>
-                      </div>
-                    </div>
+            <div class="col-sm-6">
+              <div class="card text-center h-100">
+                <div class="card-body">
+                  <h5 class="card-title">
+                    Multiroom
+                    <span class="badge badge-pill badge-warning" style="font-size: 10px; vertical-align: middle">Restarts services</span>
+                  </h5>
+                  <p class="card-text">
+                    Enable to sync audio across all devices in the fleet.<br/>
+                    Disable to play independently on this device only.
+                  </p>
+                  <div class="btn-group" role="group">
+                    <button id="btn-multiroom" type="button" class="btn btn-outline-primary" onclick="setMode('MULTI_ROOM')">
+                      Multiroom
+                    </button>
+                    <button id="btn-standalone" type="button" class="btn btn-outline-secondary" onclick="setMode('STANDALONE')">
+                      Standalone
+                    </button>
                   </div>
                 </div>
-              </div> -->
+              </div>
+            </div>
 
             <div class="col-sm-6">
               <div class="card text-center h-100">
@@ -276,38 +280,21 @@
         }
 
         let mode = await getAPI("/mode");
-        if (mode) {
-          switch (mode) {
-            case "MULTI_ROOM":
-              $("#set-mode").text("Multiroom");
-              break;
-            case "MULTI_ROOM_CLIENT":
-              $("#set-mode").text("Multiroom client only");
-              break;
-            case "STANDALONE":
-              $("#set-mode").text("Standalone");
-              break;
-          }
-        }
+        updateModeButtons(mode);
       }
 
-      $("#set-mode-mr").on("click", function (event) {
-        event.preventDefault();
-        postAPI("/mode", "mode", "MULTI_ROOM");
-        $("#set-mode").text("Multiroom");
-      });
+      function updateModeButtons(mode) {
+        var isMultiroom = (mode === "MULTI_ROOM" || mode === "MULTI_ROOM_CLIENT");
+        document.getElementById("btn-multiroom").className =
+          isMultiroom ? "btn btn-primary" : "btn btn-outline-primary";
+        document.getElementById("btn-standalone").className =
+          isMultiroom ? "btn btn-outline-secondary" : "btn btn-secondary";
+      }
 
-      $("#set-mode-mrc").on("click", function (event) {
-        event.preventDefault();
-        postAPI("/mode", "mode", "MULTI_ROOM_CLIENT");
-        $("#set-mode").text("Multiroom client only");
-      });
-
-      $("#set-mode-standalone").on("click", function (event) {
-        event.preventDefault();
-        postAPI("/mode", "mode", "STANDALONE");
-        $("#set-mode").text("Standalone");
-      });
+      async function setMode(mode) {
+        updateModeButtons(mode);
+        await postAPI("/mode", "mode", mode);
+      }
 
       function deviceAction(action, key, value) {
         postAPI("/device/" + action, key, value);

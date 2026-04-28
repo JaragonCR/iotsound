@@ -1,20 +1,16 @@
-FROM mikebrady/shairport-sync:4.1.1 as shairport
+FROM mikebrady/shairport-sync:5.0.4
 WORKDIR /usr/src
 
 ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
-
-# DL4006: https://github.com/hadolint/hadolint/wiki/DL4006
-SHELL ["/bin/sh", "-eo", "pipefail", "-c"]
-
-# shairport-sync docker image doesn't include pulseaudio support so we use ALSA bridge
+# Audio block exposes pipewire-pulse compat on host port 4317
+# airplay runs network_mode:host so localhost:4317 is correct
 ENV PULSE_SERVER=tcp:localhost:4317
-COPY alpine-setup.sh /tmp/alpine-setup.sh
-RUN apk update && apk add --no-cache supervisor && \
-  sh /tmp/alpine-setup.sh && rm /tmp/alpine-setup.sh
+
+RUN apk update && apk add --no-cache supervisor
 
 COPY start.sh /usr/src/
 COPY supervisor.conf /usr/src/supervisor.conf
 
-# shairport-sync image entrypoint starts dbus and avahi daemons that we don't need
+# shairport-sync image entrypoint starts dbus and avahi — we manage those via supervisor
 ENTRYPOINT []
-CMD ["supervisord","-c","/usr/src/supervisor.conf"]
+CMD ["supervisord", "-c", "/usr/src/supervisor.conf"]

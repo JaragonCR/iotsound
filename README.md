@@ -16,7 +16,7 @@
 | **PulseAudio → PipeWire** | Replaced PulseAudio 15 with PipeWire + WirePlumber on Alpine 3.21. `pipewire-pulse` maintains full TCP 4317 backward compatibility with all audio clients. |
 | **Audio block wrapper** | Replaced the abandoned `balena-audio` npm package (4+ years unmaintained) with `PulseAudioWrapper` — a drop-in replacement using `pactl` and Node.js built-ins. Zero new dependencies. |
 | **librespot → go-librespot** | Replaced the aging librespot Rust implementation with [go-librespot](https://github.com/devgianlu/go-librespot) for better Spotify Connect stability and zeroconf support. |
-| **Node.js 14 → 20 LTS** | Upgraded sound-supervisor from EOL Node 14 to Node 20 LTS. |
+| **Node.js 14 → 24 LTS** | Upgraded sound-supervisor from EOL Node 14 to Node 24 LTS. |
 | **TypeScript 3.9 → 5.4.5** | Modernized TypeScript compiler and updated tsconfig target to ES2022. |
 | **13 CVEs fixed** | Addressed all Dependabot security alerts: `axios`, `express`, `async`, `lodash`, `js-yaml`, `braces`, `socket.io-parser` and more. |
 | **Hostname fix** | Fixed Day 1 issue where `${SOUND_DEVICE_NAME}` was never resolved due to balena not supporting docker-compose variable substitution syntax. Replaced with self-contained supervisor API script. |
@@ -32,7 +32,7 @@
 |---|---|
 | **Karaoke support** | Integrating [pitube-karaoke](https://github.com/JaragonCR/pitube-karaoke) — Go-based karaoke with HDMI video output and 3.5mm audio input |
 | **Airplay plugin update** | shairport-sync version bump and base image update |
-| **Multiroom modernization** | Snapcast server/client — consider switching from build-from-source to official Docker images |
+| **Multiroom modernization** | Snapcast upgrade + PipeWire-native pipe source, mDNS auto-discovery, mode simplification — see [MULTIROOM.md](docs/MULTIROOM.md) |
 | **UPnP plugin update** | gmrender-resurrect base image update |
 
 ---
@@ -78,7 +78,7 @@ Set these in your balenaCloud fleet or device variables:
 |---|---|---|
 | `SOUND_VOLUME` | Default volume (0–100) | `75` |
 | `AUDIO_OUTPUT` | Output device — `AUTO`, device name substring, or device number | `AUTO` |
-| `AUDIO_LOG_LEVEL` | PulseAudio log verbosity: `ERROR`, `WARN`, `NOTICE`, `INFO`, `DEBUG` | `NOTICE` |
+| `AUDIO_LOG_LEVEL` | Audio log verbosity: `ERROR`, `WARN`, `NOTICE`, `INFO`, `DEBUG` | `NOTICE` |
 
 #### Microphone input & filtering
 
@@ -99,6 +99,8 @@ Set these in your balenaCloud fleet or device variables:
 | `SOUND_OUTPUT_LATENCY` | Output loopback latency in ms | `200` |
 
 #### Multiroom (Snapcast)
+
+See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of how auto-election works, setup instructions, and the planned PipeWire-native simplification.
 
 | Variable | Description | Default |
 |---|---|---|

@@ -1,13 +1,12 @@
-ARG BALENA_ARCH=%%BALENA_ARCH%%
-
-FROM balenalib/$BALENA_ARCH-alpine:3.21-run
+FROM alpine:3.21
 WORKDIR /usr/src
 
-ENV UDEV=on
 ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
 ENV XDG_RUNTIME_DIR=/tmp/pw-runtime
 
-RUN install_packages \
+RUN apk add --no-cache \
+  bash \
+  eudev \
   alsa-utils \
   mawk \
   pipewire \
