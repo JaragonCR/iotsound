@@ -3,7 +3,6 @@ import * as express from 'express'
 import { Application } from 'express'
 import SoundConfig from './SoundConfig'
 import PulseAudioWrapper from './PulseAudioWrapper'
-import * as asyncHandler from 'express-async-handler'
 import { constants } from './constants'
 import { restartDevice, rebootDevice, shutdownDevice } from './utils'
 import { BalenaSDK } from 'balena-sdk'
@@ -43,7 +42,7 @@ export default class SoundAPI {
     this.api.get('/version', (_req, res) => res.send(VERSION) )
 
     // Config variables -- update mode
-    this.api.post('/mode', asyncHandler(async (req, res) => {
+    this.api.post('/mode', async (req, res) => {
       const updated: boolean = this.config.setMode(req.body.mode)
       if (updated) {
         try {
@@ -54,19 +53,19 @@ export default class SoundAPI {
         }
       }
       res.json({ mode: this.config.mode, updated })
-    }))
+    })
 
     // Audio block
-    this.api.get('/audio', asyncHandler(async (_req, res) => res.json(await this.audioBlock.getInfo())))
-    this.api.get('/audio/volume', asyncHandler(async (_req, res) => res.json(await this.audioBlock.getVolume())))
-    this.api.post('/audio/volume', asyncHandler(async (req, res) => res.json(await this.audioBlock.setVolume(req.body.volume))))
-    this.api.get('/audio/sinks', asyncHandler(async (_req, res) => res.json(stringify(await this.audioBlock.getSinks()))))
+    this.api.get('/audio', async (_req, res) => res.json(await this.audioBlock.getInfo()))
+    this.api.get('/audio/volume', async (_req, res) => res.json(await this.audioBlock.getVolume()))
+    this.api.post('/audio/volume', async (req, res) => res.json(await this.audioBlock.setVolume(req.body.volume)))
+    this.api.get('/audio/sinks', async (_req, res) => res.json(stringify(await this.audioBlock.getSinks())))
 
     // Device management
-    this.api.post('/device/restart', asyncHandler(async (_req, res) => res.json(await restartDevice())))
-    this.api.post('/device/reboot', asyncHandler(async (_req, res) => res.json(await rebootDevice())))
-    this.api.post('/device/shutdown', asyncHandler(async (_req, res) => res.json(await shutdownDevice())))
-    this.api.post('/device/dtoverlay', asyncHandler(async (req, res) => {
+    this.api.post('/device/restart', async (_req, res) => res.json(await restartDevice()))
+    this.api.post('/device/reboot', async (_req, res) => res.json(await rebootDevice()))
+    this.api.post('/device/shutdown', async (_req, res) => res.json(await shutdownDevice()))
+    this.api.post('/device/dtoverlay', async (req, res) => {
       const { dtoverlay } = req.body
       try {
         console.log(`Applying BALENA_HOST_CONFIG_dtoverlay=${dtoverlay}...`)
@@ -76,10 +75,10 @@ export default class SoundAPI {
         console.log(error)
         res.json({ error: error })
       }
-    }))
+    })
 
     // Support endpoint -- Gathers information for troubleshooting
-    this.api.get('/support', asyncHandler(async (_req, res) => {
+    this.api.get('/support', async (_req, res) => {
       res.json({
         version: VERSION,
         config: this.config,
@@ -88,7 +87,7 @@ export default class SoundAPI {
         volume: await this.audioBlock.getVolume(),
         constants: constants
       })
-    }))
+    })
 
     // Local UI
     this.api.use('/', express.static(path.join(__dirname, 'ui')))
