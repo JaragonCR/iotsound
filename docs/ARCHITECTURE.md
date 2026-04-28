@@ -10,14 +10,14 @@ IoTSound services can be divided in three groups:
 
 - Sound core: `sound-supervisor` and `audio`.
 - Multiroom: `multiroom-server` and `multiroom-client`
-- Plugins: `spotify`, `airplay2`, `bluetooth`, `upnp`, etc.
+- Plugins: `librespot`, `airplay`, `bluetooth`, etc.
 
 ### Sound core
 
 This is the heart of IoTSound as it contains the most important services: `sound-supervisor` and `audio`.
 
 **audio**
-The `audio` block is a [balena block](https://www.balena.io/blog/introducing-balenablocks-jumpstart-your-iot-app-development/) that provides an easy way to work with audio in containerized environments such as balenaOS. You can read more about it [here](https://github.com/balenablocks/audio). In a nutshell, the `audio` block is the main "audio router". It connects to all audio sources and sinks and handles audio routing, which will change depending on the mode of operation (multi-room vs standalone), the output interface selected (onboard audio, HDMI, DAC, USB soundcard), etc. The `audio` block allows you to build complex audio apps such as IoTSound without having to dive deep into ALSA or PulseAudio configuration. One of the key features for IoTSound is that it allows us to define input and output audio layers and then perform all the complex audio routing without knowing/caring about where the audio is being generated or where it should go to. The `audio routing` section belows covers this process in detail.
+The `audio` service runs PipeWire + WirePlumber on Alpine 3.21. It is the main "audio router" — it connects to all audio sources and sinks and handles audio routing, which changes depending on the mode of operation (multi-room vs standalone), the output interface selected (onboard audio, HDMI, DAC, USB soundcard), etc. `pipewire-pulse` exposes a PulseAudio-compatible TCP server on port 4317, so all plugin containers can connect via `PULSE_SERVER=tcp:localhost:4317` without any PipeWire-specific configuration. One of the key features for IoTSound is that it allows us to define input and output audio layers and then perform all the complex audio routing without knowing/caring about where the audio is being generated or where it should go to. The `audio routing` section below covers this process in detail.
 
 **sound-supervisor**
 The `sound-supervisor`, as its name suggests, is the service that orchestrates all the others. It's not really involved in the audio routing but it does a few key things that enable the other services to be simpler. Here are some of the most important features of the `sound-supervisor`:
@@ -46,11 +46,11 @@ Audio routing is the most crucial part of IoTSound, and it also changes signific
 - the `audio` block is the key one as it's the one actually routing audio so we'll zoom into it in sections below.
 - `sound-supervisor` on the other hand, is responsible for changing the routing according to what the current mode is. It will modify how sinks are internally connected depending on the mode of operation.
 
-**Note**: audio routing relies mainly on routing PulseAudio sinks. [Here](https://gavv.github.io/articles/pulseaudio-under-the-hood/) is an awesome resource on PulseAudio in case you are not familiar with it.
+**Note**: audio routing relies mainly on routing PipeWire sinks (exposed via the PulseAudio-compatible `pipewire-pulse` interface). [Here](https://pipewire.pages.freedesktop.org/wireplumber/) is the WirePlumber documentation for background on the session manager that coordinates routing.
 
 ### Input and output layers
 
-One of the advantages of using the `audio` block is that, since it's based on PulseAudio, we can use all the audio processing tools and tricks that are widely available, in this particular case `virtual sinks`. PulseAudio clients can send audio to sinks; usually audio soundcards have a sink that represents them, so sending audio to the audio jack sink will result in that audio coming out of the audio jack. Virtual sinks are virtual nodes that can be used to route audio in and out of them.
+One of the advantages of using the `audio` block is that, since it's based on PipeWire (with `pipewire-pulse` providing a PulseAudio-compatible interface), we can use all the audio processing tools and tricks that are widely available, in this particular case `virtual sinks`. PipeWire clients can send audio to sinks; usually audio soundcards have a sink that represents them, so sending audio to the audio jack sink will result in that audio coming out of the audio jack. Virtual sinks are virtual nodes that can be used to route audio in and out of them.
 
 For IoTSound we use two virtual sinks in order to simplify how audio is being routed:
 
@@ -87,11 +87,11 @@ This setup allows us to decouple the multiroom feature from the `audio` block wh
 
 As described above, plugins are the services generating the audio to be streamed/played. Plugins are responsible for sending the audio into the `audio` block, particularly into `balena-sound.input` sink. There are two alternatives for how this can be accomplished. A detailed explanation can be found [here](https://github.com/balenablocks/audio#usage), in our case:
 
-**PulseAudio backend**
+**PulseAudio-compatible backend (recommended)**
 
-Most audio applications support using PulseAudio as an audio backend. This means they were coded to allow sending audio directly to PulseAudio (and hence the `audio` block). This is usually configurable via a CLI option flag or configuration files. You should check your application's documentation and figure out if this is the case.
+Most audio applications support PulseAudio as an audio backend. Since `pipewire-pulse` is fully compatible with the PulseAudio protocol, any application that can talk to PulseAudio will work without modification. This is usually configurable via a CLI flag or config file — check your application's documentation.
 
-If the application supports PulseAudio backend, the only configuration you need is to specify where the PulseAudio server can be located. This can be done by setting the `PULSE_SERVER` environment variable, we recommend doing it in the `Dockerfile`:
+Set the `PULSE_SERVER` environment variable in your plugin `Dockerfile`:
 
 ```
 ENV PULSE_SERVER=tcp:localhost:4317
@@ -99,12 +99,10 @@ ENV PULSE_SERVER=tcp:localhost:4317
 
 **ALSA bridge**
 
-If your application does not have built-in PulseAudio support, you can create a bridge to it by using ALSA. This can't be added in easily, so we wrote a little script that will do the work for you:
+If your application does not have built-in PulseAudio support, you can create a bridge to it by using ALSA. Install the `pipewire-alsa` package (Alpine) or `pipewire-audio` (Debian) in the plugin container, and set:
 
 ```
 ENV PULSE_SERVER=tcp:localhost:4317
-RUN curl -skL https://raw.githubusercontent.com/balenablocks/audio/master/scripts/alsa-bridge/debian-setup.sh | sh
 ```
 
-Check the [audio block](https://github.com/balenablocks/audio/tree/master/scripts/alsa-bridge) repository for alternative scripts if you are not running a debian based container.
-Note that you still need to set the `PULSE_SERVER` variable.
+The ALSA→PipeWire bridge will route audio through the shared `PULSE_SERVER` socket.

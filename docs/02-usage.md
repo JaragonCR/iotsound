@@ -9,9 +9,8 @@ To connect to your IoTSound device:
 - If using Bluetooth: search for your device on your phone or laptop and pair.
 - If using Airplay: select the IoTSound device from your audio output options.
 - If using Spotify Connect: open Spotify and choose the IoTSound device as an alternate output.
-- If using UPnP: select the IoTSound device from your UPnP app like [BubbleUPnP](https://play.google.com/store/apps/details?id=com.bubblesoft.android.bubbleupnp) (Android) or [JuP&P](https://apps.apple.com/app/jup-p-upnp-player-und-fernbedienung/id1069722311) (IOS).
 
-The `balenaSound <plugin> xxxx` name is used by default, where `xxxx` will be the first 4 characters of the device UUID in the balenaCloud dashboard.
+The `iotsound` name is used by default. Set `SOUND_DEVICE_NAME` to customize the name broadcast by Bluetooth, AirPlay, and Spotify Connect.
 
 Let the music play!
 
@@ -59,16 +58,15 @@ IoTSound has been re-designed to easily allow integration with audio streaming s
 
 | Plugin          | Library/Project                                                                                                                                                                                                                                                                                 |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spotify         | [raspotify](https://github.com/dtcooper/raspotify/) Spotify Connect only works with Spotify Premium accounts. Zeroconf authentication via your phone/device Spotify client is supported as well as providing user and password, see [customization](customization#plugins) section for details. |
+| Spotify Connect | [go-librespot](https://github.com/devgianlu/go-librespot) — Spotify Connect only works with Spotify Premium accounts. Zeroconf authentication via your phone/device Spotify client is supported as well as providing user and password, see [customization](customization#plugins) section for details. |
 | AirPlay2        | [shairport-sync](https://github.com/mikebrady/shairport-sync/)                                                                                                                                                                                                                                  |
-| UPnP            | [gmrenderer-resurrect](https://github.com/hzeller/gmrender-resurrect)                                                                                                                                                                                                                           |
-| Bluetooth       | balena [bluetooth](https://github.com/balenablocks/bluetooth/) and [audio](https://github.com/balenablocks/audio) blocks                                                                                                                                                                        |
-| Soundcard input | Experimental support through the balena [audio](https://github.com/balenablocks/audio) block. Check the [customization](customization#plugins) section to learn how to enable it.                                                                                                               |
+| Bluetooth       | Custom bluetooth-agent (vendored) with BlueALSA for audio routing                                                                                                                                                                                                                              |
+| Soundcard input | Experimental — enable via `AUDIO_INPUT_LOOPBACK=true`. See [customization](customization#plugins) section.                                                                                                                                                                                      |
 
 If your desired audio source is not supported feel free to [reach out](support#contact-us) and leave us a comment. We've also considerably simplified the process of adding new plugins, so [PR's are welcome](https://github.com/iotsound/iotsound/blob/master/CONTRIBUTING.md) too (be be sure to check out our IoTSound [architecture](https://github.com/iotsound/iotsound/blob/master/docs/ARCHITECTURE.md) guide)!
 
 ## Audio interfaces
 
-IoTSound supports all audio interfaces present on our [supported devices](device-support) be it 3.5mm audio jack, HDMI, I2C DAC's or USB soundcards. We rely on [balena's audio block](https://github.com/balenablocks/audio) to do the configuration required for this to work.
+IoTSound supports all audio interfaces present on our [supported devices](device-support) be it 3.5mm audio jack, HDMI, I2C DAC's or USB soundcards. The `audio` service handles device detection and routing automatically.
 
 Some audio interfaces require special configuration, you can read more about this in the [audio interfaces](audio-interfaces) configuration section.
