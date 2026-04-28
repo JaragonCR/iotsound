@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.5.0
+## (2026-04-28)
+
+* fix(audio): add eudev and start udevd for WirePlumber ALSA discovery [JaragonCR]
+* feat(deps): Wave 4 — drop balenalib from audio block [JaragonCR]
+* fix(compose): align restart policies with service ownership model [JaragonCR]
+* fix: correct service names in mode switch (spotify→librespot, drop upnp) [JaragonCR]
+* fix: apply current mode on startup to recover stopped services [JaragonCR]
+* fix(ts): widen safeService type to Promise<unknown> [JaragonCR]
+* fix: harden bluetooth and airplay autostart after reboot [JaragonCR]
+* fix: setMode crash, mode persistence, and librespot YAML injection [JaragonCR]
+* fix(airplay): fix backend name pa→pulseaudio for shairport-sync 5.x [JaragonCR]
+* feat(deps): bump airplay to shairport-sync 5.0.4, drop ALSA bridge [JaragonCR]
+* fix(bluetooth): add bash and remove balenalib entrypoint call [JaragonCR]
+* feat(config): default SOUND_MODE to STANDALONE for all devices [JaragonCR]
+* fix(deps): add libboost-dev and libexpat1-dev to snapcast builder [JaragonCR]
+* fix(deps): add ca-certificates to snapcast builder stage [JaragonCR]
+* feat(deps): Wave 3B — build snapcast from source at pinned tag [JaragonCR]
+* feat(deps): Wave 3A — drop balenalib from watchdog and bluetooth [JaragonCR]
+* feat(ui): add multiroom on/off toggle to sound-supervisor web UI [JaragonCR]
+* docs(multiroom): clarify whole-house broadcast behavior and zone control [JaragonCR]
+* docs: add MULTIROOM.md — architecture, usage, and future direction [JaragonCR]
+* fix(deps): add iproute2 to multiroom images for ip route lookup [JaragonCR]
+* feat(deps): Wave 2 — replace private multiroom registry with Debian packages [JaragonCR]
+* feat(deps): Wave 1 — drop Buster EOL and pin hostname base image [JaragonCR]
+
 # v4.4.0
 ## (2026-04-25)
 

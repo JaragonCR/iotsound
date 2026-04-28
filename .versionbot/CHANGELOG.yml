@@ -1,4 +1,367 @@
 - commits:
+    - subject: "fix(audio): add eudev and start udevd for WirePlumber ALSA discovery"
+      hash: c22b63db3b7351e34464770ff2ae79cdd8b55f15
+      body: |
+        Without udev, WirePlumber's SPA ALSA plugin finds no hardware sinks and
+        PipeWire falls back to auto_null. This is what balenalib's UDEV=on +
+        /usr/bin/entry.sh was providing implicitly.
+
+        Add eudev package (provides udevd + libudev) and start udevd early in
+        entry.sh before PipeWire launches in start.sh Phase 6, so the device
+        enumeration is populated when WirePlumber initializes.
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "feat(deps): Wave 4 — drop balenalib from audio block"
+      hash: 5dbfe3528413824471e46ccc1f1a475af4d9beda
+      body: |
+        Replace balenalib/%%BALENA_ARCH%%-alpine:3.21-run with alpine:3.21.
+        - install_packages → apk add --no-cache
+        - Add bash (entry.sh and start.sh both use #!/bin/bash)
+        - Remove UDEV=on (balenalib-specific env var, no-op outside balenalib)
+        - Remove /usr/bin/entry.sh call in entry.sh (balenalib init hook)
+
+        The PipeWire stack, D-Bus session, hardware detection, and all
+        PulseAudio routing logic are pure bash + Alpine packages — unchanged.
+        Hardware discovery works via privileged container access to /dev/snd
+        and the host D-Bus socket (io.balena.features.dbus label).
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "fix(compose): align restart policies with service ownership model"
+      hash: f905edca881fe8b650f52677ac7c42a86a58622e
+      body: |
+        - audio, sound-supervisor: add restart:unless-stopped (core services,
+          must always be running, were implicitly relying on balenaOS default)
+        - librespot: unless-stopped → on-failure (sound-supervisor manages
+          start/stop; unless-stopped fights mode switching by restarting a
+          container that was intentionally stopped via the supervisor API)
+
+        Design rule: unless-stopped for core infrastructure that owns itself;
+        on-failure for plugins owned by sound-supervisor (clean stop = stay
+        stopped until sound-supervisor says otherwise).
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "fix: correct service names in mode switch (spotify→librespot, drop
+        upnp)"
+      hash: 37e50b504a1ba102c66a996fe2a6fed08b451054
+      body: |
+        The original upstream code referenced 'spotify' (renamed to 'librespot'
+        in this fork) and 'upnp' (orphaned, not in docker-compose). Both caused
+        404 errors on every mode apply. Fixed all three switch cases.
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "fix: apply current mode on startup to recover stopped services"
+      hash: 993b7bad8d54311e06ca088647bb6c41883526e4
+      body: |
+        balenaOS persists the stopped-via-API state of services across device
+        reboots. Without this, airplay and bluetooth stay stopped forever if
+        they were stopped (e.g. by a prior partial mode switch or crash) before
+        a reboot — even though the configured mode expects them running.
+
+        Refactors the mode switch body into applyModeServices() and adds
+        applyCurrentMode(), called once in init() after PulseAudio is ready.
+        On STANDALONE boot this calls startBalenaService for airplay/bluetooth/
+        spotify/upnp and stopBalenaService for multiroom-server/client,
+        correcting any stale supervisor state before the device is usable.
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "fix(ts): widen safeService type to Promise<unknown>"
+      hash: cf2c9802899821a03eebdfe702912663fed61c0f
+      body: |
+        startBalenaService/stopBalenaService return Promise<AxiosResponse<...>>
+        not Promise<void>; tsc rejected the narrower type with TS2345.
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "fix: harden bluetooth and airplay autostart after reboot"
+      hash: 913ef9c410d1ded20d97def78c72bd4082b7575f
+      body: |
+        airplay: add nc wait loop (up to 60s) before launching shairport-sync
+        so the process does not fast-fail its startretries before PulseAudio
+        is ready. Raise supervisord startretries to 20 as a belt-and-suspenders.
+
+        bluetooth: exit 1 (not 0) when the HCI interface is not found so
+        restart:on-failure retries instead of treating the failure as success.
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "fix: setMode crash, mode persistence, and librespot YAML injection"
+      hash: c0e955e2524303d66a8664e6700cfa6d1a4dbc1c
+      body: |
+        - SoundConfig: wrap all start/stop/restart balena service calls in
+          safeService() so a 404 (container not running) logs and continues
+          rather than crashing sound-supervisor with an unhandled rejection
+        - SoundAPI: POST /mode now persists SOUND_MODE as a device env var
+          via sdk.models.device.envVar.set() so mode survives container restart
+        - librespot/start.sh: strip non-digit chars from SOUND_SPOTIFY_BITRATE
+          and SOUND_SPOTIFY_INITIAL_VOLUME before writing the YAML config to
+          prevent newline/colon injection via those env vars
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "fix(airplay): fix backend name pa→pulseaudio for shairport-sync 5.x"
+      hash: 04721ee47306721d14ef17aa47fd252c84d5ecb2
+      body: |
+        In shairport-sync 5.0.4 the PulseAudio backend was renamed from "pa"
+        to "pulseaudio" in audio_pa.c. --output=pa caused a fatal startup error.
+
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+      footer:
+        Change-type: minor
+        change-type: minor
+      author: JaragonCR
+    - subject: "feat(deps): bump airplay to shairport-sync 5.0.4, drop ALSA bridge"
+      hash: 641b6928650174d31ea55b8eb2611a2a6775e353
+      body: |
+        shairport-sync 5.0.4 is built with --with-pulseaudio --with-pipewire
+        --with-alsa. The 5.0.4 release specifically fixes a PulseAudio backend
+        init bug, making --output=pa reliable.
+
+        Switched from --output=alsa -- -d pulse (ALSA → alsa-plugins-pulse →
+        libpulse → TCP:4317) to --output=pa (libpulse → TCP:4317 directly).
+        Eliminates the ALSA bridge (alpine-setup.sh) entirely — one fewer
+        translation layer. PULSE_SERVER=tcp:localhost:4317 unchanged since
+        airplay uses network_mode:host.
+
+        Also fixed start.sh: [[ ]] bash-ism changed to POSIX [ ], and the
+        broken exec ... | echo pipe removed (exec replaces the shell process,
+        so the echo never ran).
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(bluetooth): add bash and remove balenalib entrypoint call"
+      hash: 068cab604e84d229818f21da1afc4b24789a581e
+      body: >
+        alpine:3.21 ships only sh/ash — entry.sh uses #!/bin/bash and bash-
+
+        specific syntax ([[ ]], arrays). Added bash via apk.
+
+
+        entry.sh also called /usr/bin/entry.sh which is balenalib's own base
+
+        image init hook; it does not exist in alpine:3.21. Removed the call —
+
+        the only effect was running a no-op echo through the balenalib
+        entrypoint.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(config): default SOUND_MODE to STANDALONE for all devices"
+      hash: e9707ea449fd65c66c5e3126e62e928d4fb01172
+      body: |
+        Previously defaultMode() returned MULTI_ROOM for any device not in the
+        Pi 1/2 exception list (e.g. Pi 4 defaulted to MULTI_ROOM). Multiroom
+        is now opt-in: devices start in STANDALONE and users switch via the UI
+        toggle or SOUND_MODE env var.
+
+        The device-level SOUND_MODE=STANDALONE override in balena cloud is now
+        redundant and has been removed — the code default takes effect instead.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(deps): add libboost-dev and libexpat1-dev to snapcast builder"
+      hash: f1e04c07d43e798d13bfece76af21d00d256f560
+      body: |
+        snapcast 0.27.0 CMakeLists requires Boost >= 1.74 and expat. Both were
+        missing from the builder stage, causing cmake to fail.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(deps): add ca-certificates to snapcast builder stage"
+      hash: d032edb8b55c9e686048346f49dbcc23a2429784
+      body: |
+        debian:bookworm-slim ships without ca-certificates; git clone over HTTPS
+        to github.com fails with "certificate verification failed". Adding
+        ca-certificates to the builder apt install fixes the TLS handshake.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(deps): Wave 3B — build snapcast from source at pinned tag"
+      hash: c1ad166cf2a900790b45a130244c62e6f0f839b2
+      body: |
+        Replaces apt-installed snapcast 0.26.0 (Debian bookworm, 2022) with a
+        multi-stage build from the upstream repo at a pinned release tag.
+
+        Builder stage installs cmake + audio codec libs and runs:
+          git clone --depth 1 --branch v0.27.0 badaix/snapcast
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/snapcast/bin
+          cmake --build build --target snapserver|snapclient
+
+        Runtime stage copies only the produced binary; keeps libpulse0 and
+        libasound2-plugins for the existing ALSA bridge (snapserver.conf uses
+        stream = alsa://?device=pulse). Pipe source migration is Wave 4.
+
+        Avahi/mDNS support is compiled in (libavahi-client-dev in builder,
+        libavahi-client3 in runtime) — required for Multiroom 2.0 mDNS mode.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(deps): Wave 3A — drop balenalib from watchdog and bluetooth"
+      hash: 412c9d325a52809948e0a99ea1c717549f66e97f
+      body: |
+        watchdog: balenalib/%%BALENA_MACHINE_NAME%%-debian-python:3.11-run
+                  → python:3.12-slim + apt-get (upgrades 3.11→3.12)
+
+        bluetooth: balenalib/%%BALENA_MACHINE_NAME%%-alpine-python:3.12-run
+                   → alpine:3.21 + apk python3
+
+        Used alpine:3.21 (not python:3.12-alpine) for bluetooth because
+        py3-dbus and py3-gobject3 are Alpine system packages that link against
+        Alpine's own Python interpreter — using the Docker Hub Python image
+        would create a dual-interpreter conflict where the dbus module is
+        invisible to the image's Python.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(ui): add multiroom on/off toggle to sound-supervisor web UI"
+      hash: c31bbd008545171d7bb4b5bcb3faa8614b02b127
+      body: |
+        Uncomments and rewrites the mode selector that was present but disabled
+        upstream. Simplified from a 3-option dropdown to a 2-button toggle:
+        Multiroom (MULTI_ROOM) and Standalone. The /mode POST endpoint in
+        SoundAPI already supports this; the button group reflects current mode
+        on page load and updates optimistically on click.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "docs(multiroom): clarify whole-house broadcast behavior and zone
+        control"
+      hash: f86123633ac648b01b627fa6071ccfa1ae739295
+      body: |
+        Add prominent callout that multiroom plays on ALL devices simultaneously
+        — it's a broadcast, not a zone selector. Document Snapcast client groups
+        as a future zone-control candidate.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "docs: add MULTIROOM.md — architecture, usage, and future direction"
+      hash: 390cd2bfaeceae37ad0865bbeeb45d475e6c4055
+      body: |
+        Documents the full multiroom stack: how play-triggered master election
+        works today (cote pub/sub + snapclient restart), how to configure it,
+        and the planned simplification (mDNS auto-discovery, PipeWire pipe
+        source, mode removal). Answers the 'how do I trigger it?' question and
+        links the original PR #541 and issue #689 as context.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(deps): add iproute2 to multiroom images for ip route lookup"
+      hash: e47aa2893ae4e53305b633a9a395e8e4828290ef
+      body: |
+        debian:bookworm-slim doesn't include iproute2; start.sh uses
+        `ip route | awk '/default/'` to find the sound supervisor IP.
+        Without it the gateway resolves to empty and the supervisor health
+        check loops forever at :80.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(deps): Wave 2 — replace private multiroom registry with Debian
+        packages"
+      hash: 88beae425fdcacac188bb0e9c24ff4b68ac0fb59
+      body: >
+        - multiroom-server: bh.cr/g_tomas_migone1/multiroom-%%BALENA_ARCH%% →
+        debian:bookworm-slim
+
+        - multiroom-client: same
+
+
+        Both images are now self-contained — snapserver/snapclient installed
+        from
+
+        official Debian Bookworm repos. No dependency on personal Balena Hub
+        account.
+
+        Adds libpulse0 + libasound2-plugins for ALSA/PulseAudio bridge
+        compatibility.
+
+        start.sh and snapserver.conf unchanged.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(deps): Wave 1 — drop Buster EOL and pin hostname base image"
+      hash: 4c2d86ab174642d5074a8b7970598f3ad7464219
+      body: |
+        - upnp: balenalib/debian:buster (EOL Sept 2024) → debian:bookworm-slim
+        - hostname: balenalib/alpine (untagged) → alpine:3.21
+
+        Both services use official Docker Hub multi-arch images, removing the
+        %%BALENA_MACHINE_NAME%% / %%BALENA_ARCH%% substitution entirely.
+        Replaces install_packages with apt-get / apk equivalents.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.5.0
+  title: ""
+  date: 2026-04-28T00:58:59.734Z
+- commits:
     - subject: "docs: expand fleet variables reference to full 40+ var coverage"
       hash: 6fb598ed61eb19f7ea378a02c780ebcfaaaec744
       body: >
