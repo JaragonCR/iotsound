@@ -30,11 +30,16 @@ if [[ -n "${blacklisted[$BALENA_DEVICE_TYPE]}" ]]; then
 fi
 
 # Tell ALSA to use PulseAudio as the default PCM so snapserver can reach pipewire-pulse
-cat > /etc/asound.conf <<'ASOUND'
+cat > /etc/asound.conf <<ASOUND
 pcm.default { type pulse }
 ctl.default { type pulse }
 pcm.pulse { type pulse }
 ctl.pulse { type pulse }
+pcm.snapmonitor {
+    type pulse
+    server "tcp:${GW}:4317"
+    device "snapcast.monitor"
+}
 ASOUND
 
 # Start snapserver

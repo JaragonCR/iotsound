@@ -32,10 +32,18 @@ else
 fi
 
 # Tell ALSA to use PulseAudio as the default PCM so snapclient can reach pipewire-pulse
-cat > /etc/asound.conf <<'ASOUND'
-pcm.default { type pulse }
+cat > /etc/asound.conf <<ASOUND
+pcm.default {
+    type pulse
+    server "tcp:${GW}:4317"
+    device "balena-sound.output"
+}
 ctl.default { type pulse }
-pcm.pulse { type pulse }
+pcm.pulse {
+    type pulse
+    server "tcp:${GW}:4317"
+    device "balena-sound.output"
+}
 ctl.pulse { type pulse }
 ASOUND
 
