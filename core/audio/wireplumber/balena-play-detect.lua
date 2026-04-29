@@ -1,6 +1,6 @@
--- 99-balena-play-detect.lua
--- Spike-1: detect streams linking to balena-sound.input via native WirePlumber events.
--- When a stream links, notifies sound-supervisor via HTTP so it can trigger master election.
+-- balena-play-detect.lua
+-- Spike-1: detect streams linking to balena-sound.input via WirePlumber 0.5 events.
+-- Notifies sound-supervisor via HTTP to trigger master election.
 --
 -- Reads env vars (set by start.sh before wireplumber starts):
 --   SOUND_SUPERVISOR_URL  e.g. "http://172.17.0.1:80"
@@ -9,7 +9,6 @@
 local supervisor_url = os.getenv("SOUND_SUPERVISOR_URL") or ""
 local input_sink     = os.getenv("SOUND_INPUT_SINK") or "balena-sound.input"
 
--- print() goes straight to stdout regardless of WirePlumber log level
 print("[play-detect] script loaded. input_sink=" .. input_sink .. " supervisor=" .. supervisor_url)
 
 if supervisor_url == "" then
@@ -18,17 +17,19 @@ end
 
 local input_node_id = nil
 
--- Track the balena-sound.input node so we can match links by node ID
+-- Catch all nodes; log their names so we can verify what PipeWire calls balena-sound.input.
+-- Match by node.name manually instead of using a Constraint filter.
 local nodes_om = ObjectManager {
-  Interest {
-    type = "node",
-    Constraint { "node.name", "=", input_sink },
-  }
+  Interest { type = "node" }
 }
 
 nodes_om:connect("object-added", function(_, node)
-  input_node_id = node.id
-  print(string.format("[play-detect] Tracking '%s' node id=%d", input_sink, node.id))
+  local name = node.properties["node.name"] or "(nil)"
+  print(string.format("[play-detect] node-added: name=%s id=%d", name, node.id))
+  if name == input_sink then
+    input_node_id = node.id
+    print(string.format("[play-detect] Tracking '%s' node id=%d", input_sink, node.id))
+  end
 end)
 
 nodes_om:connect("object-removed", function(_, node)

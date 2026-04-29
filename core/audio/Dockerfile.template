@@ -33,7 +33,7 @@ COPY wireplumber/99-balena-play-detect.conf /etc/wireplumber/wireplumber.conf.d/
 COPY udev/95-balena-audio.rules /etc/udev/rules.d/95-balena-audio.rules
 
 # This valid ENV command safely busts the cache for the COPY steps below
-ENV CACHE_BUST=2026-04-29c
+ENV CACHE_BUST=2026-04-29d
 COPY entry.sh .
 COPY . .
 
