@@ -503,8 +503,8 @@ log "  /etc/wireplumber:       $(ls -R /etc/wireplumber/ 2>/dev/null | tr '\n' '
 export SOUND_SUPERVISOR_URL="http://$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_PORT"
 log "SOUND_SUPERVISOR_URL=$SOUND_SUPERVISOR_URL"
 
-# Level 2 = W+I: shows script load errors and our Log.info() without trace spam
-export WIREPLUMBER_DEBUG=2
+# Level W: warnings only from WirePlumber; our print() calls bypass this entirely
+export WIREPLUMBER_DEBUG=W
 wireplumber 2>&1 | tee /var/log/wireplumber.log &
 sleep 1
 log_ok "WirePlumber daemon started"

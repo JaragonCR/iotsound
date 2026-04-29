@@ -9,8 +9,11 @@
 local supervisor_url = os.getenv("SOUND_SUPERVISOR_URL") or ""
 local input_sink     = os.getenv("SOUND_INPUT_SINK") or "balena-sound.input"
 
+-- print() goes straight to stdout regardless of WirePlumber log level
+print("[play-detect] script loaded. input_sink=" .. input_sink .. " supervisor=" .. supervisor_url)
+
 if supervisor_url == "" then
-  Log.warning("[play-detect] SOUND_SUPERVISOR_URL not set — play events will only be logged")
+  print("[play-detect] WARNING: SOUND_SUPERVISOR_URL not set — play events will only be logged")
 end
 
 local input_node_id = nil
@@ -25,13 +28,13 @@ local nodes_om = ObjectManager {
 
 nodes_om:connect("object-added", function(_, node)
   input_node_id = node.id
-  Log.info(string.format("[play-detect] Tracking '%s' node id=%d", input_sink, node.id))
+  print(string.format("[play-detect] Tracking '%s' node id=%d", input_sink, node.id))
 end)
 
 nodes_om:connect("object-removed", function(_, node)
   if node.id == input_node_id then
     input_node_id = nil
-    Log.info("[play-detect] Input node removed")
+    print("[play-detect] Input node removed")
   end
 end)
 
@@ -43,10 +46,8 @@ local links_om = ObjectManager {
 links_om:connect("object-added", function(_, link)
   local in_node = tonumber(link.properties["link.input.node"])
   if input_node_id and in_node == input_node_id then
-    Log.info("[play-detect] Stream linked to " .. input_sink)
+    print("[play-detect] Stream linked to " .. input_sink)
     if supervisor_url ~= "" then
-      -- Fire-and-forget: notify sound-supervisor of play event.
-      -- os.execute with & returns immediately on Linux.
       os.execute(string.format(
         "curl -sf -X POST %s/internal/play >/dev/null 2>&1 &",
         supervisor_url
