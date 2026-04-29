@@ -30,21 +30,23 @@ if [[ -n "${blacklisted[$BALENA_DEVICE_TYPE]}" ]]; then
 fi
 
 # Tell ALSA to use PulseAudio as the default PCM so snapserver can reach pipewire-pulse
-cat > /etc/asound.conf <<ASOUND
-pcm.default { type pulse }
-ctl.default { type pulse }
-pcm.pulse { type pulse }
-ctl.pulse { type pulse }
-pcm.snapmonitor {
-    type pulse
-    server "tcp:${GW}:4317"
-    device "snapcast.monitor"
-}
-ASOUND
-
 # Start snapserver
 if [[ "$MODE" == "MULTI_ROOM" ]]; then
   echo "Starting multi-room server..."
+  # Create a FIFO for snapserver to read from
+  FIFO=/tmp/snapserver-audio
+  rm -f "$FIFO"
+  mkfifo "$FIFO"
+  # Capture snapcast.monitor via pacat (raw s16le 48000 stereo) and feed the FIFO
+  PULSE_SERVER="tcp:${GW}:4317" pacat \
+    --record \
+    --device=snapcast.monitor \
+    --format=s16le \
+    --rate=48000 \
+    --channels=2 \
+    --raw \
+    > "$FIFO" &
+  echo "pacat PID: $!"
   /usr/bin/snapserver
 else
   echo "Multi-room server disabled. Exiting..."

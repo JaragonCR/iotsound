@@ -36,6 +36,7 @@ ENV PULSE_SOURCE=snapcast.monitor
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpulse0 \
+    pulseaudio-utils \
     libasound2-plugins \
     libasound2 \
     libopus0 \
