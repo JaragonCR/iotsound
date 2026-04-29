@@ -32,24 +32,17 @@ else
 fi
 
 # Tell ALSA to use PulseAudio as the default PCM so snapclient can reach pipewire-pulse
-cat > /etc/asound.conf <<ASOUND
-pcm.default {
-    type pulse
-    server "tcp:${GW}:4317"
-    device "balena-sound.output"
-}
-ctl.default { type pulse }
-pcm.pulse {
-    type pulse
-    server "tcp:${GW}:4317"
-    device "balena-sound.output"
-}
-ctl.pulse { type pulse }
-ASOUND
-
-# Start snapclient
+# Start snapclient using the native PulseAudio player (built in at compile time via libpulse-dev).
+# This bypasses ALSA entirely and connects directly to pipewire-pulse.
+# PULSE_SINK=balena-sound.output (set in Dockerfile) routes output to the right PipeWire sink.
 if [[ "$MODE" == "MULTI_ROOM" || "$MODE" == "MULTI_ROOM_CLIENT" ]]; then
-  /usr/bin/snapclient --host $SNAPSERVER $LATENCY --hostID $SNAPCAST_CLIENT_ID --logfilter *:error
+  PULSE_SERVER="tcp:${GW}:4317" \
+  /usr/bin/snapclient \
+    --player pulse \
+    --host $SNAPSERVER \
+    $LATENCY \
+    --hostID $SNAPCAST_CLIENT_ID \
+    --logfilter *:error
 else
   echo "Multi-room client disabled. Exiting..."
   exit 0
