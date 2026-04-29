@@ -50,16 +50,15 @@ function set_loopback_latency() {
 }
 
 function route_input_sink() {
-  local MODE="$1"
-  declare -A options=( ["MULTI_ROOM"]=0 ["MULTI_ROOM_CLIENT"]=1 ["STANDALONE"]=2 )
-  case "${options[$MODE]}" in
-    ${options["STANDALONE"]} | ${options["MULTI_ROOM_CLIENT"]})
+  local ROLE="$1"
+  case "$ROLE" in
+    disabled)
       sed -i "s/%INPUT_SINK%/sink=balena-sound.output/" "$CONFIG_FILE"
-      log "Routing 'balena-sound.input' to 'balena-sound.output'."
+      log "Routing 'balena-sound.input' to 'balena-sound.output' (role: $ROLE)."
       ;;
-    ${options["MULTI_ROOM"]} | *)
+    auto|host|join|*)
       sed -i "s/%INPUT_SINK%/sink=snapcast/" "$CONFIG_FILE"
-      log "Routing 'balena-sound.input' to 'snapcast'."
+      log "Routing 'balena-sound.input' to 'snapcast' (role: $ROLE)."
       ;;
   esac
 }
@@ -98,13 +97,13 @@ function wait_for_sound_supervisor() {
   return 1
 }
 
-function get_sound_supervisor_mode() {
-  local mode=$(curl --silent "$SOUND_SUPERVISOR/mode" 2>/dev/null || echo "")
-  if [ -z "$mode" ]; then
-    log_warn "Could not retrieve mode from sound supervisor, defaulting to STANDALONE"
-    mode="STANDALONE"
+function get_sound_supervisor_role() {
+  local role=$(curl --silent "$SOUND_SUPERVISOR/role" 2>/dev/null || echo "")
+  if [ -z "$role" ]; then
+    log_warn "Could not retrieve role from sound supervisor, defaulting to disabled"
+    role="disabled"
   fi
-  echo "$mode"
+  echo "$role"
 }
 
 function wait_for_pulseaudio() {
@@ -249,12 +248,12 @@ SOUND_SUPERVISOR="$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_
 log "Sound supervisor address: $SOUND_SUPERVISOR"
 
 if wait_for_sound_supervisor; then
-  MODE=$(get_sound_supervisor_mode)
+  ROLE=$(get_sound_supervisor_role)
 else
-  MODE="STANDALONE"
+  ROLE="disabled"
 fi
 
-log_ok "Sound supervisor mode: $MODE"
+log_ok "Sound supervisor role: $ROLE"
 
 # ============================================================================
 # PHASE 2: PIPEWIRE FILTER CONFIGURATION (BEFORE services start)
@@ -439,7 +438,7 @@ SOUND_OUTPUT_LATENCY=${SOUND_OUTPUT_LATENCY:-200}
 
 log_step "Preparing audio routing configuration..."
 reset_sound_config
-route_input_sink "$MODE"
+route_input_sink "$ROLE"
 set_loopback_latency "INPUT_LATENCY" "$SOUND_INPUT_LATENCY"
 set_loopback_latency "OUTPUT_LATENCY" "$SOUND_OUTPUT_LATENCY"
 
@@ -496,6 +495,8 @@ sleep 1
 log_ok "PipeWire daemon started (PID: $PIPEWIRE_PID)"
 
 log_step "Starting WirePlumber daemon..."
+# Expose supervisor URL so 99-balena-play-detect.lua can call back for play events
+export SOUND_SUPERVISOR_URL="http://$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_PORT"
 wireplumber > /var/log/wireplumber.log 2>&1 &
 WIREPLUMBER_PID=$!
 sleep 1
@@ -758,7 +759,7 @@ log "  - Input Source: $(cat /run/pulse/audio-input-device 2>/dev/null || echo '
 log "  - Mic Loopback: ${AUDIO_INPUT_LOOPBACK:-false}"
 log "  - Input Latency: ${SOUND_INPUT_LATENCY}ms"
 log "  - Output Latency: ${SOUND_OUTPUT_LATENCY}ms"
-log "  - Mode: $MODE"
+log "  - Role: $ROLE"
 log ""
 
 wait $PW_PULSE_PID

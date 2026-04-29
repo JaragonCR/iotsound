@@ -1,111 +1,100 @@
 import { getIPAddress } from './utils'
-import { SoundModes } from "./types"
+import { MultiroomRole, SoundModes } from './types'
 import { constants } from './constants'
-import { startBalenaService, stopBalenaService, restartBalenaService } from './utils'
-import PulseAudioWrapper from './PulseAudioWrapper'
-
-interface MultiRoomConfig {
-  master: string,
-  forced: boolean
-}
+import { startBalenaService, stopBalenaService } from './utils'
 
 interface DeviceConfig {
-  ip: string,
+  ip: string
   type: string
 }
 
 export default class SoundConfig {
-  public mode: SoundModes = constants.mode
+  public role: MultiroomRole = constants.role
+  public groupName: string | undefined = constants.groupName
   public device: DeviceConfig = {
     ip: getIPAddress() ?? 'localhost',
     type: constants.balenaDeviceType
   }
-  public multiroom: MultiRoomConfig = {
-    master: constants.multiroom.master ?? this.device.ip,
-    forced: constants.multiroom.forced
-  }
-  private audioBlock: PulseAudioWrapper
-
-  bindAudioBlock(audioBlock: PulseAudioWrapper) {
-    this.audioBlock = audioBlock
-  }
-
-  setMultiRoomMaster(master: string) {
-    this.multiroom.master = master
-    this.safeService(restartBalenaService, 'multiroom-client')
-  }
-
   private safeService(fn: (s: string) => Promise<unknown>, service: string): void {
     fn(service).catch((err: Error) => console.log(`Service call failed [${service}]: ${err.message}`))
   }
 
-  private applyModeServices(): void {
-    switch (this.mode) {
-      case SoundModes.MULTI_ROOM:
+  private applyRoleServices(): void {
+    switch (this.role) {
+      case MultiroomRole.AUTO:
+      case MultiroomRole.HOST:
+        // All plugins run; Avahi + WirePlumber decide who becomes server
         this.safeService(startBalenaService, 'multiroom-server')
         this.safeService(startBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
         this.safeService(startBalenaService, 'librespot')
         this.safeService(startBalenaService, 'bluetooth')
-        this.audioBlock.moveSinkInputByName('balena-sound.input', 'snapcast')
         break
-      case SoundModes.MULTI_ROOM_CLIENT:
+      case MultiroomRole.JOIN:
+        // Invisible to streaming apps; only snapcast client runs
         this.safeService(stopBalenaService, 'multiroom-server')
         this.safeService(stopBalenaService, 'airplay')
         this.safeService(stopBalenaService, 'librespot')
         this.safeService(stopBalenaService, 'bluetooth')
         this.safeService(startBalenaService, 'multiroom-client')
         break
-      case SoundModes.STANDALONE:
+      case MultiroomRole.DISABLED:
+        // Standalone only; no multiroom participation
         this.safeService(stopBalenaService, 'multiroom-server')
         this.safeService(stopBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
         this.safeService(startBalenaService, 'librespot')
         this.safeService(startBalenaService, 'bluetooth')
-        this.audioBlock.moveSinkInputByName('balena-sound.input', 'balena-sound.output')
-        break
-      default:
         break
     }
   }
 
-  applyCurrentMode(): void {
-    console.log(`Applying current mode on startup: ${this.mode}`)
-    this.applyModeServices()
+  applyCurrentRole(): void {
+    const group = this.groupName ? ` (group: ${this.groupName})` : ''
+    console.log(`Applying role on startup: ${this.role}${group}`)
+    this.applyRoleServices()
   }
 
+  setRole(role: MultiroomRole): boolean {
+    if (!Object.values(MultiroomRole).includes(role)) {
+      console.log(`Invalid role: ${role}`)
+      return false
+    }
+    const changed = role !== this.role
+    this.role = role
+    if (changed) {
+      this.applyRoleServices()
+    }
+    return changed
+  }
+
+  setGroupName(name: string): void {
+    this.groupName = name || undefined
+  }
+
+  getMultiroomStatus() {
+    return {
+      role: this.role,
+      groupName: this.groupName ?? null,
+      deviceIp: this.device.ip,
+      groupLatency: constants.groupLatency,
+      hwLatency: constants.hwLatency
+    }
+  }
+
+  /** @deprecated Use setRole(). Kept for /mode backward-compat. */
   setMode(mode: SoundModes): boolean {
-    let oldMode: SoundModes = this.mode
-    let modeUpdated: boolean = mode !== oldMode
-
-    if (mode && Object.values(SoundModes).includes(mode)) {
-      this.mode = SoundModes[mode]
-      if (modeUpdated) {
-        this.applyModeServices()
-      }
-    } else {
-      console.log(`Error setting mode, invalid mode: ${mode}`)
+    console.warn(`[DEPRECATED] POST /mode — use POST /multiroom/role instead`)
+    const modeToRole: Record<string, MultiroomRole> = {
+      [SoundModes.MULTI_ROOM]: MultiroomRole.AUTO,
+      [SoundModes.MULTI_ROOM_CLIENT]: MultiroomRole.JOIN,
+      [SoundModes.STANDALONE]: MultiroomRole.DISABLED,
     }
-
-    return modeUpdated
+    const role = modeToRole[mode]
+    if (!role) {
+      console.log(`Unknown mode: ${mode}`)
+      return false
+    }
+    return this.setRole(role)
   }
-
-  isMultiRoomEnabled(): boolean {
-    let mrModes: SoundModes[] = [SoundModes.MULTI_ROOM, SoundModes.MULTI_ROOM_CLIENT]
-    return mrModes.includes(this.mode)
-  }
-
-  isMultiRoomServer(): boolean {
-    let mrModes: SoundModes[] = [SoundModes.MULTI_ROOM]
-    return mrModes.includes(this.mode)
-  }
-
-  isMultiRoomMaster(): boolean {
-    return this.isMultiRoomServer() && this.device.ip === this.multiroom.master
-  }
-
-  isNewMultiRoomMaster(master: string): boolean {
-    return this.isMultiRoomEnabled() && this.multiroom.master !== master
-  }
-
 }

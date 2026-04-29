@@ -1,24 +1,12 @@
-import * as cote from 'cote'
 import PulseAudioWrapper from './PulseAudioWrapper'
 import SoundAPI from './SoundAPI'
 import SoundConfig from './SoundConfig'
 import { constants } from './constants'
 import sdk from './BalenaClient'
 
-// balenaSound core
 const config: SoundConfig = new SoundConfig()
 const audioBlock: PulseAudioWrapper = new PulseAudioWrapper(`tcp:${config.device.ip}:4317`)
 const soundAPI: SoundAPI = new SoundAPI(config, audioBlock)
-config.bindAudioBlock(audioBlock)
-
-// Fleet communication
-let discoveryOptions: any = {
-  log: false,
-  helloLogsEnabled: false,
-  statusLogsEnabled: false
-}
-const fleetPublisher: cote.Publisher = new cote.Publisher({ name: 'balenaSound publisher' }, discoveryOptions)
-const fleetSubscriber: cote.Subscriber = new cote.Subscriber({ name: 'balenaSound subscriber' }, discoveryOptions)
 
 init()
 async function init() {
@@ -28,81 +16,30 @@ async function init() {
   await audioBlock.listen()
   await audioBlock.setVolume(constants.volume)
 
-  // Ensure balena service state matches the configured mode on every startup.
+  // Ensure balena service state matches the configured role on every startup.
   // balenaOS persists stopped-via-API state across reboots, so we must
   // explicitly start/stop services to recover from any prior crash or partial
-  // mode switch.
-  config.applyCurrentMode()
-
-  // For multi room, allow cote to establish connections before sending fleet-sync
-  if (config.isMultiRoomEnabled()) {
-    await timeout(constants.coteDelay)
-    console.log('Joining the fleet, requesting master info with fleet-sync...')
-    fleetPublisher.publish('fleet-sync', { type: 'sync', origin: config.device.ip })
-  }
-
-  // Periodically sync the fleet
-  setInterval(() => {
-    if (config.isMultiRoomEnabled()) {
-      fleetPublisher.publish('fleet-sync', { type: 'sync', origin: config.device.ip })
-    }
-  }, constants.multiroom.pollInterval)
+  // role switch.
+  config.applyCurrentRole()
 }
 
-// Event: "play"
-// Source: audio block
-// On audio playback, set this server as the multiroom-master
-// We check the input sink that receives all audio sources
+// TODO(multiroom-2 spike-1): Replace this with WirePlumber Lua stream-linked event.
+// WirePlumber fires when a stream links to balena-sound.input; sound-supervisor
+// receives it and triggers master election (auto/host) or stays silent (join/disabled).
 audioBlock.on('play', async (sink: any) => {
   if (constants.debug) {
     console.log(`[event] Audio block: play`)
     console.log(sink)
   }
 
-  if (config.isMultiRoomServer() && sink.name === constants.inputSink) {
-    console.log(`Playback started, announcing ${config.device.ip} as multi-room master!`)
-    fleetPublisher.publish('fleet-update', { type: 'master', master: config.device.ip })
-  }
-
-  // Temporary usage tracking for balenaHub metrics
+  // Usage tracking for balenaHub metrics
   try {
-    await sdk.models.device.tags.set(process.env.BALENA_DEVICE_UUID!, 'metrics:play', '') // BALENA_DEVICE_UUID is always present in balenaOS
+    await sdk.models.device.tags.set(process.env.BALENA_DEVICE_UUID!, 'metrics:play', '')
   } catch (error) {
     console.log((error as Error).message)
   }
-
 })
 
-// Event: "fleet-update"
-// Source: fleet
-// If the master server changed, reset multiroom-client service
-fleetSubscriber.on('fleet-update', async (data: any) => {
-  if (constants.debug) {
-    console.log(`[event] fleet: fleet-update`)
-    console.log(data)
-  }
-
-  if (config.isNewMultiRoomMaster(data.master) && !config.multiroom.forced && !constants.multiroom.disallowUpdates) {
-    console.log(`Multi-room master has changed to ${data.master}, restarting snapcast-client...`)
-    config.setMultiRoomMaster(data.master)
-  }
-})
-
-// Event: "fleet-sync"
-// Source: fleet
-// When it receives this event the multiroom master announces itself as the master
-// This happens when a new device joines the fleet but also periodically
-fleetSubscriber.on('fleet-sync', (data: any) => {
-  if (constants.debug) {
-    console.log(`[event] fleet: fleet-sync`)
-    console.log(data)
-  }
-
-  if (config.isMultiRoomMaster() && data.origin !== config.device.ip) {
-    fleetPublisher.publish('fleet-update', { type: 'master', master: config.multiroom.master })
-  }
-})
-
-async function timeout (delay: number): Promise<void> {
+async function timeout(delay: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, delay))
 }
