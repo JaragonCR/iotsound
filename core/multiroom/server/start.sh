@@ -33,6 +33,8 @@ fi
 cat > /etc/asound.conf <<'ASOUND'
 pcm.default { type pulse }
 ctl.default { type pulse }
+pcm.pulse { type pulse }
+ctl.pulse { type pulse }
 ASOUND
 
 # Start snapserver
