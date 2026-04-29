@@ -498,6 +498,7 @@ log_step "Starting WirePlumber daemon..."
 log "WirePlumber version: $(wireplumber --version 2>&1 || echo 'unknown')"
 log "  /usr/share/wireplumber: $(ls /usr/share/wireplumber/ 2>/dev/null | tr '\n' ' ')"
 log "  /etc/wireplumber:       $(ls -R /etc/wireplumber/ 2>/dev/null | tr '\n' ' ')"
+log "  /usr/share/wireplumber/scripts: $(ls /usr/share/wireplumber/scripts/ 2>/dev/null | tr '\n' ' ')"
 
 # Expose supervisor URL so 99-balena-play-detect.lua can call back for play events
 export SOUND_SUPERVISOR_URL="http://$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_PORT"
