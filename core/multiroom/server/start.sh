@@ -72,6 +72,7 @@ SNAPEOF
     --rate=48000 \
     --channels=2 \
     --raw \
+    --latency-msec=50 \
     > "$FIFO" &
   echo "pacat PID: $!"
   /usr/bin/snapserver --config /tmp/snapserver.conf
