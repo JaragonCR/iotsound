@@ -2,7 +2,10 @@
 set -e
 
 SOUND_SUPERVISOR_PORT=${SOUND_SUPERVISOR_PORT:-80}
-SOUND_SUPERVISOR="$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_PORT"
+GW="$(ip route | awk '/default / { print $3 }')"
+SOUND_SUPERVISOR="$GW:$SOUND_SUPERVISOR_PORT"
+# audio container uses network_mode:host; override PULSE_SERVER to reach it via gateway IP
+export PULSE_SERVER="tcp:$GW:4317"
 # Wait for sound supervisor to start
 while ! curl --silent --output /dev/null "$SOUND_SUPERVISOR/ping"; do sleep 5; echo "Waiting for sound supervisor to start at $SOUND_SUPERVISOR"; done
 
