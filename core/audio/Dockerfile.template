@@ -26,13 +26,14 @@ COPY pulseaudio/daemon.conf /etc/pulse/daemon.conf
 RUN mkdir -p /etc/pipewire/pipewire-pulse.conf.d/
 COPY pulseaudio/pulse-server.conf /etc/pipewire/pipewire-pulse.conf.d/server.conf
 
-RUN mkdir -p /etc/wireplumber/main.lua.d
-COPY wireplumber/99-balena-play-detect.lua /etc/wireplumber/main.lua.d/
+RUN mkdir -p /etc/wireplumber/scripts /etc/wireplumber/wireplumber.conf.d
+COPY wireplumber/balena-play-detect.lua /etc/wireplumber/scripts/
+COPY wireplumber/99-balena-play-detect.conf /etc/wireplumber/wireplumber.conf.d/
 
 COPY udev/95-balena-audio.rules /etc/udev/rules.d/95-balena-audio.rules
 
 # This valid ENV command safely busts the cache for the COPY steps below
-ENV CACHE_BUST=2026-04-29
+ENV CACHE_BUST=2026-04-29b
 COPY entry.sh .
 COPY . .
 
