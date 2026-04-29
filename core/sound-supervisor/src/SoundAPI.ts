@@ -3,6 +3,7 @@ import * as express from 'express'
 import { Application } from 'express'
 import SoundConfig from './SoundConfig'
 import PulseAudioWrapper from './PulseAudioWrapper'
+import SnapserverMonitor from './SnapserverMonitor'
 import { constants } from './constants'
 import { restartDevice, rebootDevice, shutdownDevice } from './utils'
 import { MultiroomRole, SoundModes } from './types'
@@ -22,6 +23,11 @@ interface KnownGroup {
 export default class SoundAPI {
   private api: Application
   private sdk: BalenaSDK
+  private monitor: SnapserverMonitor | null = null
+
+  setMonitor(monitor: SnapserverMonitor): void {
+    this.monitor = monitor
+  }
 
   constructor(public config: SoundConfig, public audioBlock: PulseAudioWrapper) {
     this.sdk = sdk
@@ -121,6 +127,34 @@ export default class SoundAPI {
         console.log(`Failed to clear SOUND_KNOWN_GROUPS: ${(err as Error).message}`)
         res.status(500).json({ error: (err as Error).message })
       }
+    })
+
+    // GET /multiroom/buffer — returns { configured, effective, mode }
+    // multiroom-server/start.sh reads this on every (re)start to know which bufferMs to use.
+    this.api.get('/multiroom/buffer', (_req, res) => {
+      const status = this.monitor
+        ? this.monitor.getStatus()
+        : { configured: constants.multiroomBufferMs, effective: 50, mode: 'standalone' as const }
+      res.json(status)
+    })
+
+    // POST /multiroom/buffer — update the configured multi-room buffer (50–2000ms).
+    // If currently in multi-room mode, triggers a snapserver restart with the new value.
+    this.api.post('/multiroom/buffer', async (req, res) => {
+      const { bufferMs } = req.body
+      if (typeof bufferMs !== 'number' || bufferMs < 50 || bufferMs > 2000) {
+        res.status(400).json({ error: 'bufferMs must be a number between 50 and 2000' })
+        return
+      }
+      this.monitor?.setConfiguredBuffer(bufferMs)
+      try {
+        await this.sdk.models.device.envVar.set(process.env.BALENA_DEVICE_UUID!, 'SOUND_MULTIROOM_BUFFER_MS', String(bufferMs))
+        console.log(`SOUND_MULTIROOM_BUFFER_MS persisted: ${bufferMs}`)
+      } catch (err) {
+        console.log(`Failed to persist SOUND_MULTIROOM_BUFFER_MS: ${(err as Error).message}`)
+      }
+      const status = this.monitor?.getStatus() ?? { configured: bufferMs, effective: 50, mode: 'standalone' as const }
+      res.json(status)
     })
 
     // --- Internal (WirePlumber → supervisor events) ---

@@ -100,6 +100,29 @@
             <div class="col-sm-6">
               <div class="card text-center h-100">
                 <div class="card-body">
+                  <h5 class="card-title">Multi-room buffer</h5>
+                  <p class="card-text">
+                    Sync buffer when remote clients connect.<br/>
+                    Status: <strong><span id="buffer-mode-text">—</span></strong>
+                    (<span id="buffer-effective-text">—</span>ms active)
+                  </p>
+                  <input
+                    type="range"
+                    min="100"
+                    max="1000"
+                    step="50"
+                    value="400"
+                    class="form-range"
+                    id="buffer-slider"
+                  />
+                  <small class="text-muted">Configured: <span id="buffer-configured-text">400</span>ms when clients join</small>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-sm-6">
+              <div class="card text-center h-100">
+                <div class="card-body">
                   <h5 class="card-title">
                     DAC device tree overlay
                     <span
@@ -271,6 +294,37 @@
         );
       };
 
+      // Buffer slider
+      var bufferSlider = document.getElementById("buffer-slider");
+      var bufferConfiguredText = document.getElementById("buffer-configured-text");
+      var bufferModeText = document.getElementById("buffer-mode-text");
+      var bufferEffectiveText = document.getElementById("buffer-effective-text");
+
+      bufferSlider.oninput = function () {
+        bufferConfiguredText.innerHTML = this.value;
+        var $this = $(this);
+        clearTimeout($this.data("timeout"));
+        $this.data(
+          "timeout",
+          setTimeout(async function () {
+            await postAPI("/multiroom/buffer", "bufferMs", parseInt($this.val()));
+            await refreshBuffer();
+          }, 400)
+        );
+      };
+
+      async function refreshBuffer() {
+        let buf = await getAPI("/multiroom/buffer");
+        if (buf && typeof buf === "object") {
+          bufferSlider.value = buf.configured;
+          bufferConfiguredText.innerHTML = buf.configured;
+          bufferEffectiveText.innerHTML = buf.effective;
+          bufferModeText.innerHTML = buf.mode === "standalone" ? "Standalone" : "Multi-room";
+        }
+      }
+
+      setInterval(refreshBuffer, 5000);
+
       init();
       async function init() {
         let volume = await getAPI("/audio/volume");
@@ -281,6 +335,8 @@
 
         let mode = await getAPI("/mode");
         updateModeButtons(mode);
+
+        await refreshBuffer();
       }
 
       function updateModeButtons(mode) {

@@ -9,7 +9,7 @@ export PULSE_SERVER="tcp:$GW:4317"
 # Wait for sound supervisor to start
 while ! curl --silent --output /dev/null "$SOUND_SUPERVISOR/ping"; do sleep 5; echo "Waiting for sound supervisor to start at $SOUND_SUPERVISOR"; done
 
-# Get mode from sound supervisor. 
+# Get mode from sound supervisor.
 # mode: default to MULTI_ROOM
 MODE=$(curl --silent "$SOUND_SUPERVISOR/mode" || true)
 
@@ -29,10 +29,37 @@ if [[ -n "${blacklisted[$BALENA_DEVICE_TYPE]}" ]]; then
   exit 0
 fi
 
-# Tell ALSA to use PulseAudio as the default PCM so snapserver can reach pipewire-pulse
-# Start snapserver
 if [[ "$MODE" == "MULTI_ROOM" ]]; then
   echo "Starting multi-room server..."
+
+  # Fetch the effective buffer from sound-supervisor.
+  # Returns JSON: {"configured":400,"effective":50,"mode":"standalone"}
+  # On first start there are no remote clients yet, so effective will be the standalone value (50ms).
+  # The monitor will restart this service with the right buffer once a remote client joins.
+  BUFFER_RESPONSE=$(curl --silent "$SOUND_SUPERVISOR/multiroom/buffer" || echo '{"effective":400}')
+  BUFFER_MS=$(echo "$BUFFER_RESPONSE" | sed -n 's/.*"effective":\([0-9]*\).*/\1/p')
+  if [[ -z "$BUFFER_MS" || ! "$BUFFER_MS" =~ ^[0-9]+$ ]]; then BUFFER_MS=400; fi
+  echo "- Snapcast buffer: ${BUFFER_MS}ms"
+
+  # Write dynamic snapserver config with the current effective buffer
+  cat > /tmp/snapserver.conf << SNAPEOF
+[server]
+datadir = /var/cache/snapcast/
+
+[http]
+enabled = true
+bind_to_address = 0.0.0.0
+port = 1780
+doc_root = /var/www/
+
+[stream]
+stream = pipe:///tmp/snapserver-audio?name=balenaSound&sampleformat=48000:16:2&codec=pcm&bufferMs=${BUFFER_MS}
+sampleformat = 48000:16:2
+
+[logging]
+filter = *:error
+SNAPEOF
+
   # Create a FIFO for snapserver to read from
   FIFO=/tmp/snapserver-audio
   rm -f "$FIFO"
@@ -47,7 +74,7 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
     --raw \
     > "$FIFO" &
   echo "pacat PID: $!"
-  /usr/bin/snapserver
+  /usr/bin/snapserver --config /tmp/snapserver.conf
 else
   echo "Multi-room server disabled. Exiting..."
   exit 0

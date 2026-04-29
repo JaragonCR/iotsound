@@ -1,6 +1,7 @@
 import PulseAudioWrapper from './PulseAudioWrapper'
 import SoundAPI from './SoundAPI'
 import SoundConfig from './SoundConfig'
+import SnapserverMonitor from './SnapserverMonitor'
 import { constants } from './constants'
 import sdk from './BalenaClient'
 
@@ -21,6 +22,12 @@ async function init() {
   // explicitly start/stop services to recover from any prior crash or partial
   // role switch.
   config.applyCurrentRole()
+
+  // Start monitoring snapserver client connections to dynamically adjust buffer.
+  // Polls localhost:1780 every 5s; transitions standalone ↔ multi-room on client join/leave.
+  const monitor = new SnapserverMonitor(constants.multiroomBufferMs)
+  soundAPI.setMonitor(monitor)
+  monitor.start()
 }
 
 // TODO(multiroom-2 spike-1): Replace this with WirePlumber Lua stream-linked event.
