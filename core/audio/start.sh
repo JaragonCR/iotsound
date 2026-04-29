@@ -497,10 +497,10 @@ log_ok "PipeWire daemon started (PID: $PIPEWIRE_PID)"
 log_step "Starting WirePlumber daemon..."
 # Expose supervisor URL so 99-balena-play-detect.lua can call back for play events
 export SOUND_SUPERVISOR_URL="http://$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_PORT"
-wireplumber > /var/log/wireplumber.log 2>&1 &
-WIREPLUMBER_PID=$!
+# tee so WirePlumber logs appear in balena device logs AND in /var/log/wireplumber.log
+wireplumber 2>&1 | tee /var/log/wireplumber.log &
 sleep 1
-log_ok "WirePlumber daemon started (PID: $WIREPLUMBER_PID)"
+log_ok "WirePlumber daemon started"
 
 log_step "Starting PipeWire-Pulse compatibility layer..."
 pipewire-pulse > /var/log/pipewire-pulse.log 2>&1 &
