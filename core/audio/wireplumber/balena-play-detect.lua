@@ -1,8 +1,9 @@
 -- balena-play-detect.lua
--- Spike-1: detect streams linking to balena-sound.input via WirePlumber 0.5 events.
+-- Spike-1: detect playback streams targeting balena-sound.input via WirePlumber 0.5.
+-- Watches for Stream/Output/Audio nodes whose target matches balena-sound.input.
 -- Notifies sound-supervisor via HTTP to trigger master election.
 --
--- Reads env vars (set by start.sh before wireplumber starts):
+-- Env vars (set by start.sh before wireplumber starts):
 --   SOUND_SUPERVISOR_URL  e.g. "http://172.17.0.1:80"
 --   SOUND_INPUT_SINK      e.g. "balena-sound.input" (default)
 
@@ -15,39 +16,35 @@ if supervisor_url == "" then
   print("[play-detect] WARNING: SOUND_SUPERVISOR_URL not set — play events will only be logged")
 end
 
-local input_node_id = nil
-
--- Catch all nodes; log their names so we can verify what PipeWire calls balena-sound.input.
--- Match by node.name manually instead of using a Constraint filter.
-local nodes_om = ObjectManager {
+-- Debug: log all nodes with their media.class to understand the object landscape.
+-- Remove after spike is confirmed working.
+local all_nodes_om = ObjectManager {
   Interest { type = "node" }
 }
-
-nodes_om:connect("object-added", function(_, node)
-  local name = node.properties["node.name"] or "(nil)"
-  print(string.format("[play-detect] node-added: name=%s id=%d", name, node.id))
-  if name == input_sink then
-    input_node_id = node.id
-    print(string.format("[play-detect] Tracking '%s' node id=%d", input_sink, node.id))
-  end
+all_nodes_om:connect("object-added", function(_, node)
+  local name  = node.properties["node.name"]  or "(nil)"
+  local class = node.properties["media.class"] or "(nil)"
+  print(string.format("[play-detect] node: name=%s class=%s id=%d", name, class, node.id))
 end)
+all_nodes_om:activate()
 
-nodes_om:connect("object-removed", function(_, node)
-  if node.id == input_node_id then
-    input_node_id = nil
-    print("[play-detect] Input node removed")
-  end
-end)
-
--- Watch links; fire when a stream connects to balena-sound.input
-local links_om = ObjectManager {
-  Interest { type = "link" }
+-- Watch for client output stream nodes. When a plugin (librespot, shairport, etc.)
+-- starts playing, PipeWire creates a Stream/Output/Audio node for it. WirePlumber
+-- routes it to a sink; the node's target properties tell us which sink.
+local streams_om = ObjectManager {
+  Interest {
+    type = "node",
+    Constraint { "media.class", "=", "Stream/Output/Audio" },
+  }
 }
 
-links_om:connect("object-added", function(_, link)
-  local in_node = tonumber(link.properties["link.input.node"])
-  if input_node_id and in_node == input_node_id then
-    print("[play-detect] Stream linked to " .. input_sink)
+streams_om:connect("object-added", function(_, node)
+  local name   = node.properties["node.name"]    or "(nil)"
+  local target = node.properties["node.target"]  or
+                 node.properties["target.object"] or "(none)"
+  print(string.format("[play-detect] stream-added: name=%s target=%s id=%d", name, target, node.id))
+  if target == input_sink then
+    print("[play-detect] Playback detected targeting " .. input_sink)
     if supervisor_url ~= "" then
       os.execute(string.format(
         "curl -sf -X POST %s/internal/play >/dev/null 2>&1 &",
@@ -57,5 +54,4 @@ links_om:connect("object-added", function(_, link)
   end
 end)
 
-nodes_om:activate()
-links_om:activate()
+streams_om:activate()
