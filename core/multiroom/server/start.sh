@@ -29,6 +29,12 @@ if [[ -n "${blacklisted[$BALENA_DEVICE_TYPE]}" ]]; then
   exit 0
 fi
 
+# Tell ALSA to use PulseAudio as the default PCM so snapserver can reach pipewire-pulse
+cat > /etc/asound.conf <<'ASOUND'
+pcm.default { type pulse }
+ctl.default { type pulse }
+ASOUND
+
 # Start snapserver
 if [[ "$MODE" == "MULTI_ROOM" ]]; then
   echo "Starting multi-room server..."

@@ -31,6 +31,12 @@ else
     SNAPCAST_CLIENT_ID=$(echo $SOUND_DEVICE_NAME | sed -e 's/[^A-Za-z0-9.-]/-/g')
 fi
 
+# Tell ALSA to use PulseAudio as the default PCM so snapclient can reach pipewire-pulse
+cat > /etc/asound.conf <<'ASOUND'
+pcm.default { type pulse }
+ctl.default { type pulse }
+ASOUND
+
 # Start snapclient
 if [[ "$MODE" == "MULTI_ROOM" || "$MODE" == "MULTI_ROOM_CLIENT" ]]; then
   /usr/bin/snapclient --host $SNAPSERVER $LATENCY --hostID $SNAPCAST_CLIENT_ID --logfilter *:error
