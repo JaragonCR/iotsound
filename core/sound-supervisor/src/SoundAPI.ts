@@ -54,6 +54,17 @@ export default class SoundAPI {
       res.json(this.config.getMultiroomStatus())
     })
 
+    // GET /multiroom/master — returns the snapserver IP for multiroom-client to connect to.
+    // For auto/host roles, this device is the server; for join, master is discovered externally (Multiroom 2.0).
+    this.api.get('/multiroom/master', (_req, res) => {
+      const { role, deviceIp } = this.config.getMultiroomStatus()
+      if (role === MultiroomRole.AUTO || role === MultiroomRole.HOST) {
+        res.send(deviceIp)
+      } else {
+        res.send(deviceIp) // best-effort until Multiroom 2.0 mDNS discovery
+      }
+    })
+
     // POST /multiroom/role — change role, persist to device env var
     this.api.post('/multiroom/role', async (req, res) => {
       const { role } = req.body
@@ -154,6 +165,14 @@ export default class SoundAPI {
 
     // --- Deprecated ---
 
+    // GET /mode — backward compat for multiroom-server/client start.sh scripts that check
+    // for MULTI_ROOM / MULTI_ROOM_CLIENT / STANDALONE before deciding whether to start.
+    this.api.get('/mode', (_req, res) => {
+      const mode = roleToLegacyMode(this.config.role)
+      console.warn(`[DEPRECATED] GET /mode → ${mode} (role=${this.config.role})`)
+      res.send(mode)
+    })
+
     // POST /mode — kept for backward compat; use POST /multiroom/role instead
     this.api.post('/mode', async (req, res) => {
       console.warn('[DEPRECATED] POST /mode — use POST /multiroom/role')
@@ -207,6 +226,16 @@ export default class SoundAPI {
     } catch {
       return []
     }
+  }
+}
+
+function roleToLegacyMode(role: MultiroomRole): string {
+  switch (role) {
+    case MultiroomRole.HOST: return SoundModes.MULTI_ROOM
+    case MultiroomRole.JOIN: return SoundModes.MULTI_ROOM_CLIENT
+    case MultiroomRole.DISABLED: return SoundModes.STANDALONE
+    case MultiroomRole.AUTO:
+    default: return SoundModes.MULTI_ROOM
   }
 }
 
