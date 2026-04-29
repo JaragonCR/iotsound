@@ -496,17 +496,15 @@ log_ok "PipeWire daemon started (PID: $PIPEWIRE_PID)"
 
 log_step "Starting WirePlumber daemon..."
 log "WirePlumber version: $(wireplumber --version 2>&1 || echo 'unknown')"
-log "WirePlumber config dirs:"
-ls /usr/share/wireplumber/ 2>/dev/null | sed 's/^/  /'
-ls /etc/wireplumber/ 2>/dev/null | sed 's/^/  /; s/^/[etc] /'
+log "  /usr/share/wireplumber: $(ls /usr/share/wireplumber/ 2>/dev/null | tr '\n' ' ')"
+log "  /etc/wireplumber:       $(ls -R /etc/wireplumber/ 2>/dev/null | tr '\n' ' ')"
 
 # Expose supervisor URL so 99-balena-play-detect.lua can call back for play events
 export SOUND_SUPERVISOR_URL="http://$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_PORT"
 log "SOUND_SUPERVISOR_URL=$SOUND_SUPERVISOR_URL"
 
-# WIREPLUMBER_DEBUG=5 forces all output to stderr so tee captures it
-export WIREPLUMBER_DEBUG=5
-export G_MESSAGES_DEBUG=all
+# Level 2 = W+I: shows script load errors and our Log.info() without trace spam
+export WIREPLUMBER_DEBUG=2
 wireplumber 2>&1 | tee /var/log/wireplumber.log &
 sleep 1
 log_ok "WirePlumber daemon started"
