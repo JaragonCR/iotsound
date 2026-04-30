@@ -12,7 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio-utils \
     curl \
     dbus \
-    avahi-utils \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src
 COPY core/sound-supervisor/package*.json ./
