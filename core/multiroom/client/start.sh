@@ -23,9 +23,9 @@ echo "Starting multi-room client..."
 echo "- balenaSound mode: $MODE"
 echo "- Target snapcast server: $SNAPSERVER"
 
-# Wait for PulseAudio to be ready before launching snapclient — prevents the
-# startup race where pipewire-pulse hasn't initialised the TCP server yet.
-until PULSE_SERVER="tcp:${GW}:4317" pactl stat >/dev/null 2>&1; do
+# Wait for PulseAudio TCP server to be ready — prevents the startup race
+# where pipewire-pulse hasn't initialised yet. Uses bash /dev/tcp (no extra tools).
+until (exec 3<>/dev/tcp/${GW}/4317) 2>/dev/null; do
   echo "[snapclient] Waiting for PulseAudio at tcp:${GW}:4317..."
   sleep 2
 done
