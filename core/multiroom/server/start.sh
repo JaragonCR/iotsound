@@ -60,22 +60,54 @@ sampleformat = 48000:16:2
 filter = *:error
 SNAPEOF
 
-  # Create a FIFO for snapserver to read from
   FIFO=/tmp/snapserver-audio
   rm -f "$FIFO"
   mkfifo "$FIFO"
-  # Capture snapcast.monitor via pacat (raw s16le 48000 stereo) and feed the FIFO
-  PULSE_SERVER="tcp:${GW}:4317" pacat \
-    --record \
-    --device=snapcast.monitor \
-    --format=s16le \
-    --rate=48000 \
-    --channels=2 \
-    --raw \
-    --latency-msec=50 \
-    > "$FIFO" &
-  echo "pacat PID: $!"
-  /usr/bin/snapserver --config /tmp/snapserver.conf
+
+  # PACAT_PID is global — updated by start_pacat() and read by the watchdog.
+  PACAT_PID=""
+
+  start_pacat() {
+    # Wait for snapcast.monitor to exist before starting — prevents the startup
+    # race where the audio container hasn't loaded the snapcast sink module yet.
+    until PULSE_SERVER="tcp:${GW}:4317" pactl list short sources 2>/dev/null | grep -q "snapcast.monitor"; do
+      echo "[pacat] Waiting for PulseAudio snapcast.monitor..."
+      sleep 2
+    done
+    PULSE_SERVER="tcp:${GW}:4317" pacat \
+      --record \
+      --device=snapcast.monitor \
+      --format=s16le \
+      --rate=48000 \
+      --channels=2 \
+      --raw \
+      --latency-msec=50 \
+      > "$FIFO" &
+    PACAT_PID=$!
+    echo "[pacat] Started (PID: $PACAT_PID)"
+  }
+
+  # Start snapserver in background (it blocks on FIFO open until a writer appears).
+  /usr/bin/snapserver --config /tmp/snapserver.conf &
+  SNAPSERVER_PID=$!
+
+  # Hold the FIFO write-end open in this shell so snapserver never reads EOF while
+  # pacat is restarting. Blocks here until snapserver opens the read end.
+  exec 3>"$FIFO"
+
+  start_pacat
+
+  # Watchdog: if pacat exits for any reason, restart it.
+  # The held fd 3 keeps the FIFO alive so snapserver doesn't see EOF during the gap.
+  while kill -0 "$SNAPSERVER_PID" 2>/dev/null; do
+    if [[ -n "$PACAT_PID" ]] && ! kill -0 "$PACAT_PID" 2>/dev/null; then
+      echo "[pacat-watchdog] pacat (PID $PACAT_PID) exited — restarting..."
+      start_pacat
+    fi
+    sleep 5
+  done
+
+  wait "$SNAPSERVER_PID"
 else
   echo "Multi-room server disabled. Exiting..."
   exit 0

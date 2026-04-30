@@ -23,6 +23,13 @@ echo "Starting multi-room client..."
 echo "- balenaSound mode: $MODE"
 echo "- Target snapcast server: $SNAPSERVER"
 
+# Wait for PulseAudio to be ready before launching snapclient — prevents the
+# startup race where pipewire-pulse hasn't initialised the TCP server yet.
+until PULSE_SERVER="tcp:${GW}:4317" pactl stat >/dev/null 2>&1; do
+  echo "[snapclient] Waiting for PulseAudio at tcp:${GW}:4317..."
+  sleep 2
+done
+
 # Set the snapcast device name for https://github.com/iotsound/iotsound/issues/332
 if [[ -z $SOUND_DEVICE_NAME ]]; then
     SNAPCAST_CLIENT_ID=$BALENA_DEVICE_UUID
