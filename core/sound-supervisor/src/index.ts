@@ -23,9 +23,14 @@ async function init() {
   // role switch.
   config.applyCurrentRole()
 
-  // Start monitoring snapserver client connections to dynamically adjust buffer.
-  // Polls localhost:1780 every 5s; transitions standalone ↔ multi-room on client join/leave.
-  const monitor = new SnapserverMonitor(constants.multiroomBufferMs)
+  const monitor = new SnapserverMonitor({
+    bufferMs: constants.multiroomBufferMs,
+    groupName: constants.groupName,
+    deviceUuid: process.env.BALENA_DEVICE_UUID ?? '',
+    groupLatency: constants.groupLatency,
+    hwLatency: constants.hwLatency,
+    localIp: config.device.ip,
+  })
   soundAPI.setMonitor(monitor)
   monitor.start()
 }

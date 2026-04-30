@@ -60,15 +60,11 @@ export default class SoundAPI {
       res.json(this.config.getMultiroomStatus())
     })
 
-    // GET /multiroom/master — returns the snapserver IP for multiroom-client to connect to.
-    // For auto/host roles, this device is the server; for join, master is discovered externally (Multiroom 2.0).
+    // GET /multiroom/master — returns the snapcast server IP for multiroom-client to connect to.
+    // Returns mDNS-discovered master IP when available, falls back to this device's own IP.
     this.api.get('/multiroom/master', (_req, res) => {
-      const { role, deviceIp } = this.config.getMultiroomStatus()
-      if (role === MultiroomRole.AUTO || role === MultiroomRole.HOST) {
-        res.send(deviceIp)
-      } else {
-        res.send(deviceIp) // best-effort until Multiroom 2.0 mDNS discovery
-      }
+      const masterIp = this.monitor?.getMasterIp() ?? this.config.getMultiroomStatus().deviceIp
+      res.send(masterIp)
     })
 
     // POST /multiroom/role — change role, persist to device env var
@@ -178,7 +174,12 @@ export default class SoundAPI {
     // --- Audio block ---
     this.api.get('/audio', async (_req, res) => res.json(await this.audioBlock.getInfo()))
     this.api.get('/audio/volume', async (_req, res) => res.json(await this.audioBlock.getVolume()))
-    this.api.post('/audio/volume', async (req, res) => res.json(await this.audioBlock.setVolume(req.body.volume)))
+    this.api.post('/audio/volume', async (req, res) => {
+      const result = await this.audioBlock.setVolume(req.body.volume)
+      // Propagate to all snapcast clients so remote speakers change volume too
+      this.monitor?.setGroupVolume(req.body.volume).catch(() => {})
+      res.json(result)
+    })
     this.api.get('/audio/sinks', async (_req, res) => res.json(stringify(await this.audioBlock.getSinks())))
 
     // --- Device management ---
