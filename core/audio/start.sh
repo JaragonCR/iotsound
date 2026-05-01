@@ -433,8 +433,8 @@ fi
 
 log_section "PHASE 3: PulseAudio Configuration"
 
-SOUND_INPUT_LATENCY=${SOUND_INPUT_LATENCY:-50}
-SOUND_OUTPUT_LATENCY=${SOUND_OUTPUT_LATENCY:-50}
+SOUND_INPUT_LATENCY=${SOUND_INPUT_LATENCY:-200}
+SOUND_OUTPUT_LATENCY=${SOUND_OUTPUT_LATENCY:-200}
 
 log_step "Preparing audio routing configuration..."
 reset_sound_config
