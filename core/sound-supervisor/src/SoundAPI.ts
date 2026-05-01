@@ -24,9 +24,14 @@ export default class SoundAPI {
   private api: Application
   private sdk: BalenaSDK
   private monitor: SnapserverMonitor | null = null
+  private playHandler: (() => Promise<void>) | null = null
 
   setMonitor(monitor: SnapserverMonitor): void {
     this.monitor = monitor
+  }
+
+  setPlayHandler(fn: () => Promise<void>): void {
+    this.playHandler = fn
   }
 
   constructor(public config: SoundConfig, public audioBlock: PulseAudioWrapper) {
@@ -156,18 +161,10 @@ export default class SoundAPI {
     // --- Internal (WirePlumber → supervisor events) ---
 
     // POST /internal/play — fired by WirePlumber Lua (99-balena-play-detect.lua) when a
-    // stream links to balena-sound.input. Triggers master election for auto/host roles.
-    // TODO(multiroom-2 spike-1): wire election logic here once Avahi spike is done.
+    // stream links to balena-sound.input. For AUTO devices not yet master, delegates to
+    // handlePlayDetect() (wired via setPlayHandler() in index.ts) to trigger re-election.
     this.api.post('/internal/play', (_req, res) => {
-      console.log('[play-detect] Playback started on this device')
-      if (this.config.role === MultiroomRole.AUTO || this.config.role === MultiroomRole.HOST) {
-        if (this.config.groupName) {
-          console.log(`[play-detect] role=${this.config.role} group=${this.config.groupName} → eligible for master election`)
-          // TODO: trigger Avahi server advertisement (spike-2)
-        } else {
-          console.log('[play-detect] No group name set — skipping election')
-        }
-      }
+      this.playHandler?.().catch((err: Error) => console.log(`[play-detect] handler error: ${err.message}`))
       res.json({ received: true })
     })
 

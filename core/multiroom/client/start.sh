@@ -9,19 +9,12 @@ export PULSE_SERVER="tcp:$GW:4317"
 # Wait for sound supervisor to start
 while ! curl --silent --output /dev/null "$SOUND_SUPERVISOR/ping"; do sleep 5; echo "Waiting for sound supervisor to start at $SOUND_SUPERVISOR"; done
 
-# Get mode and snapserver from sound supervisor
-# mode: default to MULTI_ROOM
-# snapserver: default to multiroom-server (local)
+# Get mode from sound supervisor (determines whether to start snapclient at all).
 MODE=$(curl --silent "$SOUND_SUPERVISOR/mode" || true)
-SNAPSERVER=$(curl --silent "$SOUND_SUPERVISOR/multiroom/master" || true)
 
 # --- ENV VARS ---
 # SOUND_MULTIROOM_LATENCY: latency in milliseconds to compensate for speaker hardware sync issues
 LATENCY=${SOUND_MULTIROOM_LATENCY:+"--latency $SOUND_MULTIROOM_LATENCY"}
-
-echo "Starting multi-room client..."
-echo "- balenaSound mode: $MODE"
-echo "- Target snapcast server: $SNAPSERVER"
 
 # Wait until PulseAudio is actually ready to serve connections.
 # pactl info speaks the PA protocol — it only succeeds once pipewire-pulse
@@ -38,6 +31,12 @@ until PULSE_SERVER="tcp:${GW}:4317" pactl info >/dev/null 2>&1; do
   _pa_waited=$(( _pa_waited + 5 ))
 done
 echo "[snapclient] PulseAudio ready (waited ${_pa_waited}s)"
+
+# Fetch master IP after election completes (supervisor election runs in parallel with audio init).
+SNAPSERVER=$(curl --silent "$SOUND_SUPERVISOR/multiroom/master" || true)
+echo "Starting multi-room client..."
+echo "- balenaSound mode: $MODE"
+echo "- Target snapcast server: $SNAPSERVER"
 
 # Set the snapcast device name for https://github.com/iotsound/iotsound/issues/332
 if [[ -z $SOUND_DEVICE_NAME ]]; then

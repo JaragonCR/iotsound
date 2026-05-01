@@ -2,6 +2,7 @@ import { getIPAddress } from './utils'
 import { MultiroomRole, SoundModes } from './types'
 import { constants } from './constants'
 import { startBalenaService, stopBalenaService } from './utils'
+import type { ElectedRole } from './ElectionManager'
 
 interface DeviceConfig {
   ip: string
@@ -15,23 +16,32 @@ export default class SoundConfig {
     ip: getIPAddress() ?? 'localhost',
     type: constants.balenaDeviceType
   }
+  private electedRole: ElectedRole | null = null
+
   private safeService(fn: (s: string) => Promise<unknown>, service: string): void {
     fn(service).catch((err: Error) => console.log(`Service call failed [${service}]: ${err.message}`))
   }
 
   private applyRoleServices(): void {
     switch (this.role) {
-      case MultiroomRole.AUTO:
       case MultiroomRole.HOST:
-        // All plugins run; Avahi + WirePlumber decide who becomes server
+        // HOST is always master — start everything including server immediately.
         this.safeService(startBalenaService, 'multiroom-server')
         this.safeService(startBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
         this.safeService(startBalenaService, 'librespot')
         this.safeService(startBalenaService, 'bluetooth')
         break
+      case MultiroomRole.AUTO:
+        // Start plugins + client; server start is deferred to election result.
+        // applyElectionResult() will start/stop multiroom-server after election.
+        this.safeService(startBalenaService, 'multiroom-client')
+        this.safeService(startBalenaService, 'airplay')
+        this.safeService(startBalenaService, 'librespot')
+        this.safeService(startBalenaService, 'bluetooth')
+        break
       case MultiroomRole.JOIN:
-        // Invisible to streaming apps; only snapcast client runs
+        // Invisible to streaming apps; only snapcast client runs.
         this.safeService(stopBalenaService, 'multiroom-server')
         this.safeService(stopBalenaService, 'airplay')
         this.safeService(stopBalenaService, 'librespot')
@@ -39,7 +49,7 @@ export default class SoundConfig {
         this.safeService(startBalenaService, 'multiroom-client')
         break
       case MultiroomRole.DISABLED:
-        // Standalone only; no multiroom participation
+        // Standalone only; no multiroom participation.
         this.safeService(stopBalenaService, 'multiroom-server')
         this.safeService(stopBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
@@ -53,6 +63,24 @@ export default class SoundConfig {
     const group = this.groupName ? ` (group: ${this.groupName})` : ''
     console.log(`Applying role on startup: ${this.role}${group}`)
     this.applyRoleServices()
+  }
+
+  // Called after election completes. Starts or stops multiroom-server accordingly.
+  applyElectionResult(elected: ElectedRole): void {
+    this.electedRole = elected
+    if (elected === 'master') {
+      console.log('[election] Elected master — starting multiroom-server')
+      this.safeService(startBalenaService, 'multiroom-server')
+    } else {
+      console.log('[election] Elected client — ensuring multiroom-server is stopped')
+      this.safeService(stopBalenaService, 'multiroom-server')
+    }
+  }
+
+  isElectedMaster(): boolean {
+    if (this.role === MultiroomRole.HOST) return true
+    if (this.role === MultiroomRole.AUTO) return this.electedRole === 'master'
+    return false
   }
 
   setRole(role: MultiroomRole): boolean {

@@ -2,12 +2,17 @@ import PulseAudioWrapper from './PulseAudioWrapper'
 import SoundAPI from './SoundAPI'
 import SoundConfig from './SoundConfig'
 import SnapserverMonitor from './SnapserverMonitor'
+import { electMaster } from './ElectionManager'
+import { MultiroomRole } from './types'
 import { constants } from './constants'
 import sdk from './BalenaClient'
 
+const deviceUuid = process.env.BALENA_DEVICE_UUID ?? ''
 const config: SoundConfig = new SoundConfig()
 const audioBlock: PulseAudioWrapper = new PulseAudioWrapper(`tcp:${config.device.ip}:4317`)
 const soundAPI: SoundAPI = new SoundAPI(config, audioBlock)
+
+let monitor: SnapserverMonitor
 
 init()
 async function init() {
@@ -20,38 +25,59 @@ async function init() {
   // Ensure balena service state matches the configured role on every startup.
   // balenaOS persists stopped-via-API state across reboots, so we must
   // explicitly start/stop services to recover from any prior crash or partial
-  // role switch.
+  // role switch. For AUTO, this starts plugins + client but defers server to election.
   config.applyCurrentRole()
 
-  const monitor = new SnapserverMonitor({
+  // Run master election. For HOST: immediate master. For AUTO: mDNS conflict detection
+  // with UUID-based jitter tiebreaker. For JOIN/DISABLED: always client.
+  const elected = await electMaster(config.role, config.groupName, deviceUuid)
+  config.applyElectionResult(elected)
+
+  soundAPI.setPlayHandler(handlePlayDetect)
+
+  monitor = new SnapserverMonitor({
     bufferMs: constants.multiroomBufferMs,
     groupName: constants.groupName,
-    deviceUuid: process.env.BALENA_DEVICE_UUID ?? '',
+    deviceUuid,
     groupLatency: constants.groupLatency,
     hwLatency: constants.hwLatency,
     localIp: config.device.ip,
+    isMaster: config.isElectedMaster(),
   })
   soundAPI.setMonitor(monitor)
   monitor.start()
 }
 
-// TODO(multiroom-2 spike-1): Replace this with WirePlumber Lua stream-linked event.
-// WirePlumber fires when a stream links to balena-sound.input; sound-supervisor
-// receives it and triggers master election (auto/host) or stays silent (join/disabled).
+// WirePlumber Lua fires POST /internal/play when a stream links to balena-sound.input.
+// That endpoint delegates to this handler via SoundAPI.setPlayHandler().
+// For AUTO devices that are currently clients, a play event triggers a re-election
+// so the device can promote to master if no one else is serving the group.
 audioBlock.on('play', async (sink: any) => {
   if (constants.debug) {
-    console.log(`[event] Audio block: play`)
-    console.log(sink)
+    console.log('[event] Audio block: play', sink)
   }
 
   // Usage tracking for balenaHub metrics
   try {
-    await sdk.models.device.tags.set(process.env.BALENA_DEVICE_UUID!, 'metrics:play', '')
+    await sdk.models.device.tags.set(deviceUuid, 'metrics:play', '')
   } catch (error) {
     console.log((error as Error).message)
   }
 })
 
-async function timeout(delay: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, delay))
+// Called by SoundAPI when /internal/play fires and the device is AUTO + not yet master.
+export async function handlePlayDetect(): Promise<void> {
+  if (!monitor) return
+  if (config.role !== MultiroomRole.AUTO || config.isElectedMaster()) return
+
+  console.log('[play-detect] AUTO device not yet master — re-running election')
+  const elected = await electMaster(config.role, config.groupName, deviceUuid)
+  if (elected === 'master') {
+    config.applyElectionResult('master')
+    monitor.setMaster(true)
+  }
+}
+
+async function timeout(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

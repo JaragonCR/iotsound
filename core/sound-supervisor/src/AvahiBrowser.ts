@@ -8,7 +8,7 @@ export interface SnapcastService {
   txt: Record<string, string>
 }
 
-export function browseSnapcast(timeoutMs = 8000): Promise<SnapcastService[]> {
+export function browseSnapcast(groupName?: string, timeoutMs = 8000): Promise<SnapcastService[]> {
   return new Promise((resolve) => {
     const bonjour = new Bonjour()
     const found: SnapcastService[] = []
@@ -22,6 +22,7 @@ export function browseSnapcast(timeoutMs = 8000): Promise<SnapcastService[]> {
           txt[k] = String(v)
         }
       }
+      if (groupName && txt['group'] !== groupName) return
       found.push({ name: service.name, ip, port: service.port, txt })
     })
 

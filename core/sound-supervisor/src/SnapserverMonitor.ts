@@ -22,6 +22,7 @@ export interface MonitorConfig {
   groupLatency: number
   hwLatency: number
   localIp: string
+  isMaster: boolean
 }
 
 export default class SnapserverMonitor {
@@ -43,6 +44,7 @@ export default class SnapserverMonitor {
   private readonly groupLatency: number
   private readonly hwLatency: number
   private readonly localIp: string
+  private isMaster: boolean
 
   constructor(cfg: MonitorConfig) {
     this.configuredBufferMs = cfg.bufferMs
@@ -51,6 +53,7 @@ export default class SnapserverMonitor {
     this.groupLatency = cfg.groupLatency
     this.hwLatency = cfg.hwLatency
     this.localIp = cfg.localIp
+    this.isMaster = cfg.isMaster
   }
 
   // --- Public API ---
@@ -91,9 +94,12 @@ export default class SnapserverMonitor {
   }
 
   start(): void {
-    this.pollInterval = setInterval(() => this.poll(), POLL_INTERVAL_MS)
+    // Poll snapserver HTTP API only if this device is the elected master.
+    // Client devices run discovery only so they can find the master IP.
+    if (this.isMaster) {
+      this.pollInterval = setInterval(() => this.poll(), POLL_INTERVAL_MS)
+    }
     this.discoveryInterval = setInterval(() => this.discover(), DISCOVERY_INTERVAL_MS)
-    // Kick off first discovery immediately (non-blocking)
     this.discover().catch(() => {})
   }
 
@@ -101,6 +107,21 @@ export default class SnapserverMonitor {
     if (this.pollInterval) { clearInterval(this.pollInterval); this.pollInterval = null }
     if (this.discoveryInterval) { clearInterval(this.discoveryInterval); this.discoveryInterval = null }
     this.advertiser.unpublish()
+  }
+
+  // Called when election result changes at runtime (e.g. play-detect promotes client → master).
+  setMaster(isMaster: boolean): void {
+    if (this.isMaster === isMaster) return
+    this.isMaster = isMaster
+    console.log(`[snapserver-monitor] Role transition → ${isMaster ? 'master' : 'client'}`)
+    if (isMaster && !this.pollInterval) {
+      this.pollInterval = setInterval(() => this.poll(), POLL_INTERVAL_MS)
+    } else if (!isMaster && this.pollInterval) {
+      clearInterval(this.pollInterval)
+      this.pollInterval = null
+      this.advertiser.unpublish()
+      this.serverWasUp = false
+    }
   }
 
   // --- Private ---
@@ -150,11 +171,8 @@ export default class SnapserverMonitor {
     if (this.discovering) return
     this.discovering = true
     try {
-      const services = await browseSnapcast()
-      const matching = this.groupName
-        ? services.find(s => s.txt['group'] === this.groupName)
-        : null
-      const newIp = matching?.ip ?? null
+      const services = await browseSnapcast(this.groupName)
+      const newIp = services[0]?.ip ?? null
       if (newIp !== this.discoveredMasterIp) {
         console.log(`[snapserver-monitor] Master IP: ${this.discoveredMasterIp ?? '(none)'} → ${newIp ?? '(none)'}`)
         this.discoveredMasterIp = newIp
