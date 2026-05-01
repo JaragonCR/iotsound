@@ -70,9 +70,16 @@ SNAPEOF
   start_pacat() {
     # Wait for snapcast.monitor to exist before starting — prevents the startup
     # race where the audio container hasn't loaded the snapcast sink module yet.
+    # Timeout after 120s so the container exits and on-failure restarts it if PA is down.
+    local waited=0
     until PULSE_SERVER="tcp:${GW}:4317" pactl list short sources 2>/dev/null | grep -q "snapcast.monitor"; do
-      echo "[pacat] Waiting for PulseAudio snapcast.monitor..."
+      echo "[pacat] Waiting for PulseAudio snapcast.monitor... (${waited}s)"
       sleep 2
+      waited=$((waited + 2))
+      if [ "$waited" -ge 120 ]; then
+        echo "[pacat] ERROR: snapcast.monitor unavailable after 120s — exiting for container restart"
+        exit 1
+      fi
     done
     PULSE_SERVER="tcp:${GW}:4317" pacat \
       --record \

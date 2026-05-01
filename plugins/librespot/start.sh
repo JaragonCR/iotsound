@@ -1,14 +1,25 @@
-#!/bin/sh
+#!/bin/bash
 CONFIG_DIR="/config"
 CONFIG_PATH="$CONFIG_DIR/config.yml"
 
 mkdir -p "$CONFIG_DIR"
 
+# Wait for PulseAudio (pipewire-pulse) to be ready before starting the daemon.
+# Without this, go-librespot crashes immediately on restart and spins in a
+# fast on-failure loop that can destabilise PipeWire for other plugins.
+until (exec 3<>/dev/tcp/localhost/4317) 2>/dev/null; do
+  echo "[librespot] Waiting for PulseAudio at localhost:4317..."
+  sleep 2
+done
+echo "[librespot] PulseAudio ready"
+
 SOUND_DEVICE_NAME=${SOUND_DEVICE_NAME:-"balenaSound Spotify $(echo "$BALENA_DEVICE_UUID" | cut -c -4)"}
 SOUND_DEVICE_NAME=${SOUND_DEVICE_NAME}
 SOUND_SPOTIFY_BITRATE=$(printf '%s' "${SOUND_SPOTIFY_BITRATE:-160}" | tr -cd '0-9'); SOUND_SPOTIFY_BITRATE=${SOUND_SPOTIFY_BITRATE:-160}
 SOUND_SPOTIFY_INITIAL_VOLUME=$(printf '%s' "${SOUND_SPOTIFY_INITIAL_VOLUME:-50}" | tr -cd '0-9'); SOUND_SPOTIFY_INITIAL_VOLUME=${SOUND_SPOTIFY_INITIAL_VOLUME:-50}
-SOUND_SPOTIFY_BACKEND=${SOUND_SPOTIFY_BACKEND:-alsa}
+# Use pulseaudio backend so go-librespot routes through pipewire-pulse →
+# balena-sound.input, not raw ALSA which PipeWire holds exclusively.
+SOUND_SPOTIFY_BACKEND=${SOUND_SPOTIFY_BACKEND:-pulseaudio}
 LOG_LEVEL=${LOG_LEVEL:-info}
 
 if [ "$SOUND_SPOTIFY_DISABLE_NORMALISATION" = "1" ]; then
