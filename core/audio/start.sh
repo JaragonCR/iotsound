@@ -488,23 +488,6 @@ log_ok "D-Bus daemon started"
 
 log_section "PHASE 6: PipeWire Stack Initialization"
 
-# Write quantum config before PipeWire starts. Caps the graph quantum to
-# 8192 samples (170ms at 48kHz) so PipeWire doesn't lock to a large ALSA
-# period and inflate pacat/loopback latency into the seconds.
-# The 200ms loopback latency above is safely larger than this max-quantum.
-# If Alpine's PipeWire doesn't load pipewire.conf.d drop-ins, this is a
-# no-op — harmless either way.
-mkdir -p /etc/pipewire/pipewire.conf.d/
-cat > /etc/pipewire/pipewire.conf.d/10-quantum.conf << 'PWEOF'
-context.properties = {
-    default.clock.rate        = 48000
-    default.clock.quantum     = 1024
-    default.clock.min-quantum = 32
-    default.clock.max-quantum = 8192
-}
-PWEOF
-log_ok "PipeWire quantum config written (target 21ms, max 170ms)"
-
 log_step "Starting PipeWire daemon..."
 pipewire > /var/log/pipewire.log 2>&1 &
 PIPEWIRE_PID=$!
