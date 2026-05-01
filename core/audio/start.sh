@@ -433,14 +433,16 @@ fi
 
 log_section "PHASE 3: PulseAudio Configuration"
 
-SOUND_INPUT_LATENCY=${SOUND_INPUT_LATENCY:-200}
-SOUND_OUTPUT_LATENCY=${SOUND_OUTPUT_LATENCY:-200}
+# Capture user overrides now; final defaults are set after output device
+# detection (Phase 8A) so HDMI can use a larger buffer automatically.
+SOUND_INPUT_LATENCY_OVERRIDE="${SOUND_INPUT_LATENCY:-}"
+SOUND_OUTPUT_LATENCY_OVERRIDE="${SOUND_OUTPUT_LATENCY:-}"
 
 log_step "Preparing audio routing configuration..."
 reset_sound_config
 route_input_sink "$ROLE"
-set_loopback_latency "INPUT_LATENCY" "$SOUND_INPUT_LATENCY"
-set_loopback_latency "OUTPUT_LATENCY" "$SOUND_OUTPUT_LATENCY"
+# Latency placeholders (%INPUT_LATENCY%, %OUTPUT_LATENCY%) are filled after
+# Phase 8A once the output device type is known.
 
 if [[ -n "$SOUND_ENABLE_SOUNDCARD_INPUT" ]]; then
   log_step "Enabling soundcard input routing..."
@@ -605,6 +607,20 @@ if sed -i "s/%OUTPUT_SINK%/sink=$HW_SINK/" "$CONFIG_FILE" 2>/dev/null; then
 else
   log_warn "Failed to update configuration file"
 fi
+
+# Resolve loopback latency defaults now that HW_SINK is known.
+# HDMI (mailbox driver) can have hardware periods of 341-682ms, so it needs
+# a large loopback buffer. I2S (HiFiBerry), USB, and 3.5mm run at ~21ms.
+if echo "${HW_SINK:-}" | grep -qi "mailbox\|hdmi"; then
+  SOUND_INPUT_LATENCY="${SOUND_INPUT_LATENCY_OVERRIDE:-500}"
+  SOUND_OUTPUT_LATENCY="${SOUND_OUTPUT_LATENCY_OVERRIDE:-500}"
+else
+  SOUND_INPUT_LATENCY="${SOUND_INPUT_LATENCY_OVERRIDE:-100}"
+  SOUND_OUTPUT_LATENCY="${SOUND_OUTPUT_LATENCY_OVERRIDE:-100}"
+fi
+set_loopback_latency "INPUT_LATENCY" "$SOUND_INPUT_LATENCY"
+set_loopback_latency "OUTPUT_LATENCY" "$SOUND_OUTPUT_LATENCY"
+log "Loopback latencies: input=${SOUND_INPUT_LATENCY}ms output=${SOUND_OUTPUT_LATENCY}ms"
 
 # ============================================================================
 # PHASE 8B: INPUT DEVICE DETECTION (FOR KARAOKE AND MIC INPUT)

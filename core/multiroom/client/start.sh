@@ -44,6 +44,7 @@ fi
 # PULSE_SINK=balena-sound.output (set in Dockerfile) routes output to the right PipeWire sink.
 if [[ "$MODE" == "MULTI_ROOM" || "$MODE" == "MULTI_ROOM_CLIENT" ]]; then
   PULSE_SERVER="tcp:${GW}:4317" \
+  PULSE_LATENCY_MSEC=200 \
   /usr/bin/snapclient \
     --player pulse \
     --host $SNAPSERVER \
