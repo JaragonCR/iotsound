@@ -23,14 +23,21 @@ echo "Starting multi-room client..."
 echo "- balenaSound mode: $MODE"
 echo "- Target snapcast server: $SNAPSERVER"
 
-# Wait until PulseAudio is actually ready to serve connections, not just
-# that the port is open. /dev/tcp passes on stale sockets from a dying
-# previous session; pactl info speaks the PA protocol so it only succeeds
-# when pipewire-pulse is fully initialised.
+# Wait until PulseAudio is actually ready to serve connections.
+# pactl info speaks the PA protocol — it only succeeds once pipewire-pulse
+# is fully initialised, unlike /dev/tcp which passes on stale sockets.
+# Poll at 5s intervals so we don't hammer PA during audio container startup.
+# Log only on first wait and every 30s after to keep logs readable.
+_pa_waited=0
+_pa_log_interval=30
 until PULSE_SERVER="tcp:${GW}:4317" pactl info >/dev/null 2>&1; do
-  echo "[snapclient] Waiting for PulseAudio at tcp:${GW}:4317..."
-  sleep 2
+  if [ $_pa_waited -eq 0 ] || [ $(( _pa_waited % _pa_log_interval )) -eq 0 ]; then
+    echo "[snapclient] Waiting for PulseAudio at tcp:${GW}:4317... (${_pa_waited}s)"
+  fi
+  sleep 5
+  _pa_waited=$(( _pa_waited + 5 ))
 done
+echo "[snapclient] PulseAudio ready (waited ${_pa_waited}s)"
 
 # Set the snapcast device name for https://github.com/iotsound/iotsound/issues/332
 if [[ -z $SOUND_DEVICE_NAME ]]; then
