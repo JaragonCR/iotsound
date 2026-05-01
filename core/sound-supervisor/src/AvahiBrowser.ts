@@ -28,7 +28,6 @@ export function browseSnapcast(timeoutMs = 8000): Promise<SnapcastService[]> {
     setTimeout(() => {
       browser.stop()
       bonjour.destroy()
-      console.log(`[mdns-browse] Found ${found.length} snapcast service(s)`)
       resolve(found)
     }, timeoutMs)
   })
