@@ -30,7 +30,8 @@ RUN apk add --no-cache \
     gcompat \
     alsa-lib \
     libogg \
-    libvorbis
+    libvorbis \
+    flac
 
 ENV PULSE_SERVER=tcp:localhost:4317
 
