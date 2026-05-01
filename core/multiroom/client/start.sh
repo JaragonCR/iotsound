@@ -43,7 +43,11 @@ fi
 # This bypasses ALSA entirely and connects directly to pipewire-pulse.
 # PULSE_SINK=balena-sound.output (set in Dockerfile) routes output to the right PipeWire sink.
 if [[ "$MODE" == "MULTI_ROOM" || "$MODE" == "MULTI_ROOM_CLIENT" ]]; then
+  # PULSE_LATENCY_MSEC caps snapclient's libpulse playback buffer.
+  # Without it, PipeWire's pipewire-pulse may default to a ~2s buffer,
+  # which alone accounts for most of the observed 3s pipeline delay.
   PULSE_SERVER="tcp:${GW}:4317" \
+  PULSE_LATENCY_MSEC=50 \
   /usr/bin/snapclient \
     --player pulse \
     --host $SNAPSERVER \
