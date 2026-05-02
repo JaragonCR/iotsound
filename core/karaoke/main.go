@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -380,8 +381,8 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 func searchInvidious(q string) []SearchResult {
 	client := &http.Client{Timeout: 4 * time.Second}
 	for _, inst := range invidiousInstances {
-		url := inst + "/api/v1/search?q=" + q + "&type=video&fields=videoId,title,author,lengthSeconds,videoThumbnails"
-		resp, err := client.Get(url)
+		reqURL := inst + "/api/v1/search?q=" + url.QueryEscape(q) + "&type=video&fields=videoId,title,author,lengthSeconds,videoThumbnails"
+		resp, err := client.Get(reqURL)
 		if err != nil {
 			continue
 		}

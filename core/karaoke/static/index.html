@@ -238,14 +238,8 @@ function doSearch() {
 // ── Actions ───────────────────────────────────────────────────────────────────
 function addSong(ytID, title, thumb, url='', duration='') {
   const u = url || 'https://www.youtube.com/watch?v=' + ytID;
-  const f = new FormData();
-  f.append('singer', singerName);
-  f.append('yt_id', ytID);
-  f.append('url', u);
-  f.append('title', title);
-  f.append('thumbnail', thumb);
-  f.append('duration', duration);
-  fetch('/add',{method:'POST',body:f}).then(r=>r.json()).then(d=>{
+  const body = new URLSearchParams({singer: singerName, yt_id: ytID, url: u, title, thumbnail: thumb, duration});
+  fetch('/add',{method:'POST',body}).then(r=>r.json()).then(d=>{
     if (d.status === 'duplicate_warning') {
       if (!confirm(`"${d.title}" is already queued by ${d.queued_by}. Add anyway?`)) return;
       // Re-submit without dedup check by using a different URL
