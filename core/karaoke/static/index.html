@@ -142,6 +142,15 @@
 </div>
 
 <script>
+// ── Render diffing (prevents DOM flicker on every poll) ───────────────────────
+const lastKey = {};
+function changed(id, val) {
+  const k = JSON.stringify(val);
+  if (lastKey[id] === k) return false;
+  lastKey[id] = k;
+  return true;
+}
+
 // ── Singer ──────────────────────────────────────────────────────────────────
 let singerName = localStorage.getItem('karaoke_singer') || '';
 let historyFilter = 'all';
@@ -244,6 +253,7 @@ function renderQueue(queue) {
   const el = document.getElementById('queue-list');
   if (!queue || !queue.length) { card.style.display='none'; return; }
   card.style.display='';
+  if (!changed('queue', queue.map(j=>({i:j.id,s:j.status,p:j.progress,k:j.key_offset})))) return;
   el.innerHTML = queue.map(j=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
       ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
@@ -264,6 +274,7 @@ function renderQueue(queue) {
 function renderHistory(history) {
   const el = document.getElementById('history-list');
   if (!history || !history.length) { el.innerHTML='<div class="sub">No history yet</div>'; return; }
+  if (!changed('history', history.map(h=>({i:h.yt_id,c:h.play_count})))) return;
   el.innerHTML = history.map(j=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
       ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}

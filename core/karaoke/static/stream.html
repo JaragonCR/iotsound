@@ -19,7 +19,12 @@
 
   /* Overlays */
   #back-btn{top:16px;left:16px;pointer-events:all;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;cursor:pointer;font-size:.9rem;padding:8px 14px;position:absolute;z-index:20}
-  #singer-pill{top:16px;right:16px;background:rgba(187,134,252,.15);border:1px solid #bb86fc;border-radius:20px;color:#bb86fc;font-size:.85rem;font-weight:700;padding:6px 14px;position:absolute;text-decoration:none;z-index:20}
+  #singer-pill{top:56px;left:16px;background:rgba(187,134,252,.15);border:1px solid #bb86fc;border-radius:20px;color:#bb86fc;font-size:.85rem;font-weight:700;padding:6px 14px;position:absolute;text-decoration:none;z-index:20}
+  /* Next Up info — top right */
+  #next-up-box{position:absolute;top:16px;right:16px;z-index:20;text-align:right;display:none;max-width:220px}
+  #next-up-box .nu-label{color:#03dac6;font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  #next-up-box .nu-singer{color:#fff;font-size:1rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #next-up-box .nu-title{color:#aaa;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   /* Controls panel (bottom bar) */
   #controls{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.85));padding:24px 16px 16px;z-index:20;display:flex;align-items:center;gap:16px}
@@ -32,8 +37,6 @@
   .mode-btn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#aaa;cursor:pointer;font-size:.75rem;padding:5px 10px}
   .mode-btn.active{background:#03dac6;border-color:#03dac6;color:#000;font-weight:700}
 
-  /* Next up overlay pill (shows while playing) */
-  #next-up-pill{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);background:rgba(3,218,198,.15);border:1px solid #03dac6;border-radius:20px;color:#03dac6;font-size:.8rem;padding:5px 14px;white-space:nowrap;z-index:20;display:none}
 
   /* QR */
   #qr-wrap{bottom:72px;left:16px;position:absolute;cursor:pointer;z-index:20}
@@ -58,7 +61,12 @@
 <button id="back-btn" onclick="window.location='/'">← Queue</button>
 <a id="singer-pill" href="#" onclick="goProfile(event)">Singer: <span id="pill-name">Guest</span></a>
 
-<div id="next-up-pill" id="next-up-pill"></div>
+<!-- Next Up — top right -->
+<div id="next-up-box">
+  <div class="nu-label">Next Up</div>
+  <div class="nu-singer" id="nu-singer"></div>
+  <div class="nu-title" id="nu-title"></div>
+</div>
 
 <div id="qr-wrap">
   <img id="qr-img" src="/api/qr" alt="QR" onerror="document.getElementById('qr-wrap').style.display='none'">
@@ -146,12 +154,13 @@ function pollStatus() {
   fetch('/api/data').then(r=>r.json()).then(d=>{
     applyAudioMode(d.audio_mode || 'local');
 
-    const nextPill = document.getElementById('next-up-pill');
+    const nuBox = document.getElementById('next-up-box');
     if (d.next_up && d.state === 'playing') {
-      nextPill.textContent = 'Next: ' + (d.next_up.singer||'') + ' — ' + (d.next_up.title||'');
-      nextPill.style.display = '';
-    } else {
-      nextPill.style.display = 'none';
+      document.getElementById('nu-singer').textContent = d.next_up.singer || '';
+      document.getElementById('nu-title').textContent = d.next_up.title || '';
+      nuBox.style.display = '';
+    } else if (d.state !== 'up_next') {
+      nuBox.style.display = 'none';
     }
 
     if (d.state === 'up_next') {

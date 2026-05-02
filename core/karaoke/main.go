@@ -106,6 +106,9 @@ var (
 	audioModeMu sync.RWMutex
 )
 
+// modeChangeCh is signalled when audioMode changes during playback
+var modeChangeCh = make(chan struct{}, 1)
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
@@ -795,45 +798,71 @@ func playerWorker() {
 	}
 }
 
-// play runs ffmpeg processes for audio and HLS based on the current audioMode.
-// "local": process A (audio→PipeWire) + process B (video-only HLS). Waits on A.
-// "stream": process B only (video+audio HLS). Waits on B.
+// play runs ffmpeg processes for the current audioMode. If the mode changes
+// mid-song (via modeChangeCh) it kills and restarts from the beginning.
+// "local": PipeWire audio + video-only HLS. Returns when audio finishes.
+// "stream": video+audio HLS only. Returns when HLS finishes.
 func play(filename string, semitones int) {
-	audioModeMu.RLock()
-	mode := audioMode
-	audioModeMu.RUnlock()
-
 	pitch := math.Pow(2, float64(semitones)/12)
 	syncMs, _ := strconv.Atoi(configGet("sync_offset_ms", "0"))
 
-	playerMu.Lock()
-	hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, mode == "stream")...)
-	hlsCmd.Start()
+	for {
+		audioModeMu.RLock()
+		mode := audioMode
+		audioModeMu.RUnlock()
 
-	if mode == "local" {
-		playerCmd = exec.Command("ffmpeg",
-			"-nostdin", "-i", filename,
-			"-vn",
-			"-af", fmt.Sprintf("rubberband=pitch=%f", pitch),
-			"-f", "pulse", "karaoke",
-		)
-		playerCmd.Env = os.Environ()
-		playerCmd.Start()
+		playerMu.Lock()
+		hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, mode == "stream")...)
+		hlsCmd.Start()
+		if mode == "local" {
+			playerCmd = exec.Command("ffmpeg",
+				"-nostdin", "-i", filename, "-vn",
+				"-af", fmt.Sprintf("rubberband=pitch=%f", pitch),
+				"-f", "pulse", "karaoke",
+			)
+			playerCmd.Env = os.Environ()
+			playerCmd.Start()
+		}
+		playerMu.Unlock()
+
+		// Wait for natural song end in a goroutine so we can also select on modeChangeCh.
+		done := make(chan struct{})
+		go func(localMode bool) {
+			if localMode && playerCmd != nil {
+				playerCmd.Wait()
+			} else {
+				hlsCmd.Wait()
+			}
+			close(done)
+		}(mode == "local")
+
+		select {
+		case <-done:
+			// Song finished normally.
+			playerMu.Lock()
+			killCmd(playerCmd)
+			killCmd(hlsCmd)
+			playerCmd = nil
+			hlsCmd = nil
+			playerMu.Unlock()
+			return
+
+		case <-modeChangeCh:
+			// Audio mode changed — kill current processes and restart with new mode.
+			playerMu.Lock()
+			killCmd(playerCmd)
+			killCmd(hlsCmd)
+			playerCmd = nil
+			hlsCmd = nil
+			playerMu.Unlock()
+			// Drain done so the goroutine doesn't block.
+			select {
+			case <-done:
+			default:
+			}
+			log.Printf("[player] audio mode changed, restarting")
+		}
 	}
-	playerMu.Unlock()
-
-	if mode == "local" && playerCmd != nil {
-		playerCmd.Wait()
-	} else {
-		hlsCmd.Wait()
-	}
-
-	playerMu.Lock()
-	killCmd(playerCmd)
-	killCmd(hlsCmd)
-	playerCmd = nil
-	hlsCmd = nil
-	playerMu.Unlock()
 }
 
 func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool) []string {
@@ -908,6 +937,11 @@ func handleSetAudioMode(w http.ResponseWriter, r *http.Request) {
 	audioModeMu.Lock()
 	audioMode = body.Mode
 	audioModeMu.Unlock()
+	// Signal play() to restart with new audio routing (non-blocking send)
+	select {
+	case modeChangeCh <- struct{}{}:
+	default:
+	}
 	writeJSON(w, map[string]string{"mode": body.Mode})
 }
 
