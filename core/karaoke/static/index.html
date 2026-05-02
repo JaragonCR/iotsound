@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IoTSound Karaoke</title>
+<style>
+  :root { --bg:#121212;--surface:#1e1e1e;--card:#2a2a2a;--primary:#bb86fc;--accent:#03dac6;--warn:#cf6679;--text:#e0e0e0;--sub:#999 }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:700px;margin:auto}
+  h2{color:var(--primary);margin-bottom:12px}
+  .card{background:var(--card);border-radius:12px;padding:16px;margin-bottom:16px}
+  input[type=text]{background:var(--surface);border:1px solid #444;border-radius:8px;color:var(--text);padding:10px 14px;width:100%;font-size:1rem}
+  button{background:var(--primary);border:none;border-radius:8px;color:#000;cursor:pointer;font-weight:700;padding:10px 18px}
+  button.danger{background:var(--warn);color:#fff}
+  button.secondary{background:var(--surface);color:var(--primary);border:1px solid var(--primary)}
+  button:disabled{opacity:.4;cursor:default}
+  .tag{display:inline-block;background:var(--primary);color:#000;border-radius:6px;padding:2px 8px;font-size:.75rem;font-weight:700}
+  .tag.warn{background:var(--warn);color:#fff}
+  .tag.accent{background:var(--accent);color:#000}
+  .thumb{width:64px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0}
+  .row{display:flex;align-items:center;gap:10px}
+  .grow{flex:1;min-width:0}
+  .truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{color:var(--sub);font-size:.85rem}
+  .sep{border:none;border-top:1px solid #333;margin:12px 0}
+  /* now playing */
+  #now-playing-card{border:2px solid var(--primary)}
+  .song-title{font-size:1.1rem;font-weight:700}
+  /* next up */
+  #next-up-card{border:2px solid var(--accent);background:#1a2a2a}
+  #next-up-card h3{color:var(--accent)}
+  /* tabs */
+  .tabs{display:flex;gap:8px;margin-bottom:12px}
+  .tab{background:var(--surface);border:1px solid #444;border-radius:8px;color:var(--sub);cursor:pointer;padding:6px 14px;font-size:.85rem}
+  .tab.active{background:var(--primary);color:#000;border-color:var(--primary);font-weight:700}
+  /* top bar */
+  #top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  #singer-pill{background:var(--surface);border:1px solid var(--primary);border-radius:20px;padding:6px 14px;cursor:pointer;color:var(--primary);font-weight:700;text-decoration:none}
+  /* key badge */
+  .key-badge{background:#333;color:var(--primary);border-radius:4px;padding:1px 6px;font-size:.75rem;font-family:monospace}
+  /* search results */
+  .result-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #333}
+  .result-item:last-child{border-bottom:none}
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="top-bar">
+  <div style="font-size:1.2rem;font-weight:700;color:var(--primary)">🎤 Karaoke</div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a id="singer-pill" href="#" onclick="goProfile(event)">👤 <span id="singer-name-label">Guest</span></a>
+    <button class="secondary" onclick="window.location='/singer-stream'">📺 Singer View</button>
+  </div>
+</div>
+
+<!-- Now Playing -->
+<div class="card" id="now-playing-card" style="display:none">
+  <div class="row">
+    <div class="grow">
+      <div style="color:var(--primary);font-size:.75rem;font-weight:700;margin-bottom:4px">▶ NOW PLAYING</div>
+      <div class="song-title truncate" id="np-title">—</div>
+      <div class="sub" id="np-singer"></div>
+    </div>
+    <span class="key-badge" id="np-key"></span>
+    <button class="danger" onclick="skipSong()" style="padding:8px 14px">⏭ Skip</button>
+  </div>
+</div>
+
+<!-- Next Up -->
+<div class="card" id="next-up-card" style="display:none">
+  <div class="row">
+    <div class="grow">
+      <h3 style="font-size:.75rem;font-weight:700;margin-bottom:4px">NEXT UP</h3>
+      <div class="song-title truncate" id="nu-title">—</div>
+      <div class="sub" id="nu-singer"></div>
+    </div>
+    <span class="key-badge" id="nu-key"></span>
+  </div>
+</div>
+
+<!-- Search -->
+<div class="card">
+  <h2>Search</h2>
+  <div class="row" style="margin-bottom:12px">
+    <input type="text" id="search-input" placeholder="Song title or artist…" onkeydown="if(event.key==='Enter')doSearch()">
+    <button onclick="doSearch()">Search</button>
+  </div>
+  <div id="search-results"></div>
+</div>
+
+<!-- Volume -->
+<div class="card">
+  <div class="row">
+    <span style="font-weight:700">🔊 Volume</span>
+    <input type="range" id="volume-slider" min="0" max="100" style="flex:1" oninput="setVolume(this.value)">
+    <span id="volume-label" style="width:36px;text-align:right">—</span>
+  </div>
+</div>
+
+<!-- Queue -->
+<div class="card">
+  <h2>Queue</h2>
+  <div id="queue-list"><div class="sub">Queue is empty</div></div>
+</div>
+
+<!-- History / Sing Again -->
+<div class="card">
+  <h2>Sing Again</h2>
+  <div class="tabs">
+    <button class="tab active" onclick="setHistoryTab('all',this)">All</button>
+    <button class="tab" onclick="setHistoryTab('me',this)">Sang by me</button>
+    <button class="tab" onclick="setHistoryTab('most',this)">Most sang</button>
+  </div>
+  <div id="history-list"><div class="sub">No history yet</div></div>
+</div>
+
+<script>
+// ── Singer ──────────────────────────────────────────────────────────────────
+let singerName = localStorage.getItem('karaoke_singer') || '';
+let historyFilter = 'all';
+
+function loadSinger() {
+  if (!singerName) {
+    singerName = prompt('Enter your name to queue songs:') || 'Guest';
+    if (singerName !== 'Guest') localStorage.setItem('karaoke_singer', singerName);
+  }
+  document.getElementById('singer-name-label').textContent = singerName;
+}
+
+function goProfile(e) {
+  e.preventDefault();
+  if (singerName && singerName !== 'Guest') window.location = '/singer/' + encodeURIComponent(singerName);
+}
+
+// ── Volume ───────────────────────────────────────────────────────────────────
+function loadVolume() {
+  fetch('/api/volume').then(r=>r.json()).then(d=>{
+    const v = d.volume ?? d.percent ?? 80;
+    document.getElementById('volume-slider').value = v;
+    document.getElementById('volume-label').textContent = v + '%';
+  }).catch(()=>{});
+}
+let volTimer;
+function setVolume(v) {
+  document.getElementById('volume-label').textContent = v + '%';
+  clearTimeout(volTimer);
+  volTimer = setTimeout(()=>{
+    fetch('/api/volume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume:parseInt(v)})});
+  }, 200);
+}
+
+// ── Data refresh ─────────────────────────────────────────────────────────────
+function fetchData() {
+  fetch('/api/data?singer='+encodeURIComponent(singerName)+'&history_filter='+historyFilter)
+    .then(r=>r.json()).then(renderAll).catch(()=>{});
+}
+
+function renderAll(d) {
+  renderNowPlaying(d.now_playing);
+  renderNextUp(d.next_up);
+  renderQueue(d.queue);
+  renderHistory(d.history);
+}
+
+function renderNowPlaying(j) {
+  const card = document.getElementById('now-playing-card');
+  if (!j) { card.style.display='none'; return; }
+  card.style.display='';
+  document.getElementById('np-title').textContent = j.title || '—';
+  document.getElementById('np-singer').textContent = j.singer || '';
+  document.getElementById('np-key').textContent = fmtKey(j.key_offset);
+}
+
+function renderNextUp(j) {
+  const card = document.getElementById('next-up-card');
+  if (!j) { card.style.display='none'; return; }
+  card.style.display='';
+  document.getElementById('nu-title').textContent = j.title || '—';
+  document.getElementById('nu-singer').textContent = j.singer || '';
+  document.getElementById('nu-key').textContent = fmtKey(j.key_offset);
+}
+
+function renderQueue(queue) {
+  const el = document.getElementById('queue-list');
+  if (!queue || !queue.length) { el.innerHTML='<div class="sub">Queue is empty</div>'; return; }
+  el.innerHTML = queue.map(j=>`
+    <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
+      ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
+      <div class="grow">
+        <div class="truncate" style="font-weight:600">${esc(j.title)}</div>
+        <div class="sub">${esc(j.singer)} &nbsp; <span class="key-badge">${fmtKey(j.key_offset)}</span></div>
+        ${j.status==='downloading' ? `<div style="font-size:.75rem;color:var(--accent)">${j.progress}</div>` : ''}
+      </div>
+      ${j.locked ? '<span class="tag warn">Locked</span>' : `
+        <select onchange="updateKey(${j.id},this.value)" ${j.locked?'disabled':''} style="background:var(--surface);color:var(--text);border:1px solid #444;border-radius:6px;padding:4px">
+          ${[-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6].map(k=>`<option value="${k}" ${k===j.key_offset?'selected':''}>${k>=0?'+'+k:k}</option>`).join('')}
+        </select>
+      `}
+      <button class="danger" style="padding:6px 10px;font-size:.8rem" onclick="deleteJob(${j.id})">✕</button>
+    </div>`).join('');
+}
+
+function renderHistory(history) {
+  const el = document.getElementById('history-list');
+  if (!history || !history.length) { el.innerHTML='<div class="sub">No history yet</div>'; return; }
+  el.innerHTML = history.map(j=>`
+    <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
+      ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
+      <div class="grow truncate">${esc(j.title)}</div>
+      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="addSong('${esc(j.yt_id)}','${esc(j.title)}','${esc(j.thumbnail)}')">Sing Again</button>
+    </div>`).join('');
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+  document.getElementById('search-results').innerHTML='<div class="sub">Searching…</div>';
+  fetch('/api/search?q='+encodeURIComponent(q)).then(r=>r.json()).then(results=>{
+    if (!results || !results.length) {
+      document.getElementById('search-results').innerHTML='<div class="sub">No results</div>';
+      return;
+    }
+    document.getElementById('search-results').innerHTML = results.map(r=>`
+      <div class="result-item">
+        ${r.thumb ? `<img class="thumb" src="${r.thumb}" onerror="this.style.display='none'">` : ''}
+        <div class="grow">
+          <div class="truncate" style="font-weight:600">${esc(r.title)}</div>
+          <div class="sub">${esc(r.uploader)} · ${r.duration}</div>
+        </div>
+        <button onclick="addSong('${esc(r.id)}','${esc(r.title)}','${esc(r.thumb)}','${esc(r.url)}','${esc(r.duration)}')">Queue</button>
+      </div>`).join('');
+  });
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function addSong(ytID, title, thumb, url='', duration='') {
+  const u = url || 'https://www.youtube.com/watch?v=' + ytID;
+  const f = new FormData();
+  f.append('singer', singerName);
+  f.append('yt_id', ytID);
+  f.append('url', u);
+  f.append('title', title);
+  f.append('thumbnail', thumb);
+  f.append('duration', duration);
+  fetch('/add',{method:'POST',body:f}).then(r=>r.json()).then(d=>{
+    if (d.status === 'duplicate_warning') {
+      if (!confirm(`"${d.title}" is already queued by ${d.queued_by}. Add anyway?`)) return;
+      // Re-submit without dedup check by using a different URL
+    }
+    fetchData();
+  });
+}
+
+function skipSong() {
+  if (!confirm('Skip current song?')) return;
+  fetch('/skip',{method:'POST'}).then(()=>fetchData());
+}
+
+function deleteJob(id) {
+  fetch('/delete',{method:'POST',body:new URLSearchParams({id})}).then(()=>fetchData());
+}
+
+function updateKey(id, key) {
+  fetch(`/api/queue/${id}/key`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({key_offset:parseInt(key)})})
+    .then(r=>{ if(!r.ok) alert('Key is locked — cannot change within 10s of playing'); else fetchData(); });
+}
+
+function setHistoryTab(filter, btn) {
+  historyFilter = filter;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  fetchData();
+}
+
+// ── Util ─────────────────────────────────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtKey(k) { return k > 0 ? '+'+k : String(k||0); }
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadSinger();
+loadVolume();
+fetchData();
+setInterval(fetchData, 1500);
+</script>
+</body>
+</html>

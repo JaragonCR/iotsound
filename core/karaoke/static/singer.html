@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Singer Profile</title>
+<style>
+  :root{--bg:#121212;--surface:#1e1e1e;--card:#2a2a2a;--primary:#bb86fc;--accent:#03dac6;--warn:#cf6679;--text:#e0e0e0;--sub:#999}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:700px;margin:auto}
+  h2{color:var(--primary);margin-bottom:12px}
+  .card{background:var(--card);border-radius:12px;padding:16px;margin-bottom:16px}
+  button{background:var(--primary);border:none;border-radius:8px;color:#000;cursor:pointer;font-weight:700;padding:10px 18px}
+  button.danger{background:var(--warn);color:#fff;width:100%;margin-top:8px;padding:14px}
+  button.secondary{background:var(--surface);color:var(--primary);border:1px solid var(--primary)}
+  .thumb{width:64px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0}
+  .row{display:flex;align-items:center;gap:10px}
+  .grow{flex:1;min-width:0}
+  .truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{color:var(--sub);font-size:.85rem}
+  input[type=range]{flex:1;accent-color:var(--primary)}
+  label{color:var(--sub);font-size:.85rem;display:block;margin-bottom:4px}
+  .tabs{display:flex;gap:8px;margin-bottom:12px}
+  .tab{background:var(--surface);border:1px solid #444;border-radius:8px;color:var(--sub);cursor:pointer;padding:6px 14px;font-size:.85rem}
+  .tab.active{background:var(--primary);color:#000;border-color:var(--primary);font-weight:700}
+  .key-badge{background:#333;color:var(--primary);border-radius:4px;padding:1px 6px;font-size:.75rem;font-family:monospace}
+</style>
+</head>
+<body>
+
+<div class="row" style="margin-bottom:16px">
+  <a href="/" style="color:var(--sub);text-decoration:none;font-size:1.2rem">←</a>
+  <h1 id="profile-name" style="color:var(--primary);flex:1">…</h1>
+  <a href="/singer-stream" style="color:var(--accent);text-decoration:none;font-size:.9rem">📺 Singer View</a>
+</div>
+
+<!-- Settings -->
+<div class="card">
+  <h2>Settings</h2>
+
+  <div style="margin-bottom:20px">
+    <label>Default Key / Pitch  <span id="key-label" style="color:var(--primary);font-weight:700">0</span> semitones</label>
+    <div class="row">
+      <span class="sub">−6</span>
+      <input type="range" id="key-slider" min="-6" max="6" step="1" value="0" oninput="onKeyChange(this.value)">
+      <span class="sub">+6</span>
+    </div>
+    <div class="sub" style="margin-top:4px">Applied to all your queued songs by default</div>
+  </div>
+
+  <div>
+    <label>Volume  <span id="vol-label" style="color:var(--primary);font-weight:700">80</span>%</label>
+    <div class="row">
+      <span class="sub">0</span>
+      <input type="range" id="vol-slider" min="0" max="100" value="80" oninput="onVolChange(this.value)">
+      <span class="sub">100</span>
+    </div>
+    <div class="sub" style="margin-top:4px">Room speaker volume</div>
+  </div>
+</div>
+
+<!-- Favorites -->
+<div class="card">
+  <h2>Favorites</h2>
+  <div id="favorites-list"><div class="sub">No favorites yet — star songs from history</div></div>
+</div>
+
+<!-- History -->
+<div class="card">
+  <h2>Your History</h2>
+  <div class="tabs">
+    <button class="tab active" onclick="setTab('me',this)">Sang by me</button>
+    <button class="tab" onclick="setTab('most',this)">Most sang</button>
+    <button class="tab" onclick="setTab('all',this)">All</button>
+  </div>
+  <div id="history-list"><div class="sub">No history yet</div></div>
+</div>
+
+<!-- Change Singer -->
+<div class="card">
+  <button class="danger" onclick="changeSinger()">🔴 Change Singer</button>
+  <div class="sub" style="margin-top:8px;text-align:center">Clears this device's saved name</div>
+</div>
+
+<script>
+const name = decodeURIComponent(location.pathname.split('/singer/')[1] || '');
+let histTab = 'me';
+
+document.title = name + ' — Karaoke';
+
+function load() {
+  fetch('/api/singer/'+encodeURIComponent(name)).then(r=>r.json()).then(d=>{
+    document.getElementById('profile-name').textContent = d.singer.name;
+
+    const key = d.singer.key_offset || 0;
+    document.getElementById('key-slider').value = key;
+    document.getElementById('key-label').textContent = (key>=0?'+':'')+key;
+
+    const vol = d.singer.volume ?? 80;
+    document.getElementById('vol-slider').value = vol;
+    document.getElementById('vol-label').textContent = vol;
+
+    renderFavorites(d.favorites);
+    renderHistory(d.history, histTab);
+  });
+}
+
+function renderFavorites(favs) {
+  const el = document.getElementById('favorites-list');
+  if (!favs || !favs.length) { el.innerHTML='<div class="sub">No favorites yet</div>'; return; }
+  el.innerHTML = favs.map(f=>`
+    <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
+      ${f.thumbnail?`<img class="thumb" src="${f.thumbnail}" onerror="this.style.display='none'">` : ''}
+      <div class="grow truncate">${esc(f.title)}</div>
+      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="queueSong('${esc(f.yt_id)}','${esc(f.title)}','${esc(f.thumbnail)}')">Queue</button>
+      <button class="secondary" style="padding:6px 10px" onclick="toggleFav('${esc(f.yt_id)}','${esc(f.title)}','${esc(f.thumbnail)}')">★</button>
+    </div>`).join('');
+}
+
+function renderHistory(hist, filter) {
+  const el = document.getElementById('history-list');
+  let items = hist || [];
+  if (filter === 'most') items = [...items].sort((a,b)=>(b.play_count||0)-(a.play_count||0));
+  if (!items.length) { el.innerHTML='<div class="sub">No history yet</div>'; return; }
+  el.innerHTML = items.map(h=>`
+    <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
+      ${h.thumbnail?`<img class="thumb" src="${h.thumbnail}" onerror="this.style.display='none'">` : ''}
+      <div class="grow">
+        <div class="truncate">${esc(h.title)}</div>
+        <div class="sub">×${h.play_count||1} &nbsp; <span class="key-badge">${fmtKey(h.key_offset)}</span></div>
+      </div>
+      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="queueSong('${esc(h.yt_id)}','${esc(h.title)}','${esc(h.thumbnail)}')">Sing Again</button>
+      <button class="secondary" style="padding:6px 10px" onclick="toggleFav('${esc(h.yt_id)}','${esc(h.title)}','${esc(h.thumbnail)}')">☆</button>
+    </div>`).join('');
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+let keyTimer, volTimer;
+function onKeyChange(v) {
+  document.getElementById('key-label').textContent = (v>=0?'+':'')+v;
+  clearTimeout(keyTimer);
+  keyTimer = setTimeout(()=>{
+    fetch('/api/singer/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key_offset:parseInt(v)})});
+  }, 400);
+}
+function onVolChange(v) {
+  document.getElementById('vol-label').textContent = v;
+  clearTimeout(volTimer);
+  volTimer = setTimeout(()=>{
+    fetch('/api/singer/'+encodeURIComponent(name),{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({volume:parseInt(v)})});
+  }, 200);
+}
+
+function queueSong(ytID, title, thumb) {
+  const f = new FormData();
+  f.append('singer', name);
+  f.append('yt_id', ytID);
+  f.append('url', 'https://www.youtube.com/watch?v='+ytID);
+  f.append('title', title);
+  f.append('thumbnail', thumb);
+  fetch('/add',{method:'POST',body:f}).then(()=>alert('Added to queue!'));
+}
+
+function toggleFav(ytID, title, thumb) {
+  fetch('/api/singer/'+encodeURIComponent(name)+'/favorites',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({yt_id:ytID,title,thumbnail:thumb})
+  }).then(()=>load());
+}
+
+function setTab(filter, btn) {
+  histTab = filter;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  load();
+}
+
+function changeSinger() {
+  if (!confirm('Clear saved singer name from this device?')) return;
+  localStorage.removeItem('karaoke_singer');
+  window.location = '/';
+}
+
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmtKey(k){return k>0?'+'+k:String(k||0)}
+
+load();
+</script>
+</body>
+</html>

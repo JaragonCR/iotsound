@@ -1,0 +1,22 @@
+FROM golang:1.24-bookworm AS builder
+
+WORKDIR /build
+COPY go.mod ./
+RUN go mod download
+COPY . .
+RUN go build -o karaoke .
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    pulseaudio-utils \
+    curl \
+    fonts-dejavu-core \
+    qrencode \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /build/karaoke .
+COPY static/ ./static/
+CMD ["./karaoke"]

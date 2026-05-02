@@ -3,6 +3,8 @@ version: "2.1"
 volumes:
   spotifycache:
   librespot-config:
+  karaoke-media:
+  karaoke-data:
 
 services:
   # Core services
@@ -89,3 +91,31 @@ services:
    restart: no
    labels:
      io.balena.features.supervisor-api: "1"
+
+  # Karaoke
+  karaoke-fetcher:
+    build: ./core/karaoke-fetcher
+    restart: on-failure
+    environment:
+      - MEDIA_PATH=/data/media
+      - KARAOKE_QUALITY=720
+    volumes:
+      - karaoke-media:/data/media
+
+  karaoke:
+    build: ./core/karaoke
+    restart: on-failure
+    ports:
+      - 8080:8080
+    environment:
+      - PULSE_SERVER=tcp:172.17.0.1:4317
+      - SOUND_SUPERVISOR_URL=http://172.17.0.1:80
+      - KARAOKE_QUALITY=720
+      - KARAOKE_MAX_QUEUE_PER_SINGER=3
+    volumes:
+      - karaoke-media:/data/media
+      - karaoke-data:/data/app
+    depends_on:
+      - audio
+      - sound-supervisor
+      - karaoke-fetcher

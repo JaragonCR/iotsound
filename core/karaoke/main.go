@@ -1,0 +1,1003 @@
+package main
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"math"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	_ "modernc.org/sqlite"
+)
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
+const (
+	downloadPath = "/data/media"
+	dataPath     = "/data/app"
+	hlsPath      = "/tmp/hls"
+	nextUpFile   = "/tmp/hls/nextup.txt"
+	fetcherBase  = "http://karaoke-fetcher:8081"
+)
+
+var (
+	listenPort  = envOr("KARAOKE_PORT", ":8080")
+	soundSuper  = envOr("SOUND_SUPERVISOR_URL", "http://172.17.0.1:80")
+	quality     = envOr("KARAOKE_QUALITY", "720")
+	maxPerSinger = envIntOr("KARAOKE_MAX_QUEUE_PER_SINGER", 3)
+)
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type Job struct {
+	ID        int64  `json:"id"`
+	YtID      string `json:"yt_id"`
+	Status    string `json:"status"`
+	Title     string `json:"title"`
+	Singer    string `json:"singer"`
+	Filename  string `json:"filename"`
+	Progress  string `json:"progress"`
+	KeyOffset int    `json:"key_offset"`
+	Locked    bool   `json:"locked"`
+	Thumbnail string `json:"thumbnail"`
+	Duration  string `json:"duration"`
+}
+
+type Singer struct {
+	Name      string `json:"name"`
+	KeyOffset int    `json:"key_offset"`
+	Volume    int    `json:"volume"`
+	LastSeen  string `json:"last_seen"`
+}
+
+type SearchResult struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Uploader string `json:"uploader"`
+	Duration string `json:"duration"`
+	URL      string `json:"url"`
+	Thumb    string `json:"thumb"`
+}
+
+type APIData struct {
+	NowPlaying *Job   `json:"now_playing"`
+	NextUp     *Job   `json:"next_up"`
+	Queue      []*Job `json:"queue"`
+	History    []*Job `json:"history"`
+}
+
+// ── Globals ──────────────────────────────────────────────────────────────────
+
+var (
+	db               *sql.DB
+	downloadProgress sync.Map  // int64 id → string progress
+	playerCmd        *exec.Cmd // process A: audio → PipeWire
+	hlsCmd           *exec.Cmd // process B: video → HLS
+	playerMu         sync.Mutex
+)
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
+func main() {
+	for _, p := range []string{downloadPath, dataPath, hlsPath} {
+		if err := os.MkdirAll(p, 0755); err != nil {
+			log.Fatalf("mkdir %s: %v", p, err)
+		}
+	}
+	writeNextUp("", "")
+	initDB()
+	resetStaleJobs()
+
+	go downloadWorker()
+	go playerWorker()
+
+	mux := http.NewServeMux()
+	registerRoutes(mux)
+
+	log.Printf("[karaoke] Listening on %s", listenPort)
+	log.Fatal(http.ListenAndServe(listenPort, mux))
+}
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+
+func registerRoutes(mux *http.ServeMux) {
+	// Pages
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/index.html")
+	})
+	mux.HandleFunc("GET /singer/{name}", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/singer.html")
+	})
+	mux.HandleFunc("GET /singer-stream", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/stream.html")
+	})
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
+	// HLS stream segments
+	mux.Handle("GET /stream/", http.StripPrefix("/stream/", http.FileServer(http.Dir(hlsPath))))
+
+	// Queue API
+	mux.HandleFunc("GET /api/data", handleAPIData)
+	mux.HandleFunc("POST /add", handleAdd)
+	mux.HandleFunc("POST /skip", handleSkip)
+	mux.HandleFunc("POST /delete", handleDelete)
+	mux.HandleFunc("POST /api/queue/{id}/key", handleQueueKey)
+
+	// Search
+	mux.HandleFunc("GET /api/search", handleSearch)
+
+	// Singer profiles
+	mux.HandleFunc("GET /api/singer/{name}", handleGetSinger)
+	mux.HandleFunc("PUT /api/singer/{name}", handleUpdateSinger)
+	mux.HandleFunc("POST /api/singer/{name}/favorites", handleToggleFavorite)
+
+	// Volume (proxied to sound-supervisor)
+	mux.HandleFunc("GET /api/volume", handleGetVolume)
+	mux.HandleFunc("POST /api/volume", handleSetVolume)
+
+	// Sync offset (Phase 2 — endpoints wired, implementation in player)
+	mux.HandleFunc("GET /api/sync", handleGetSync)
+	mux.HandleFunc("POST /api/sync", handleSetSync)
+
+	// Storage
+	mux.HandleFunc("GET /api/storage", handleStorageStats)
+	mux.HandleFunc("POST /api/storage/quota", handleSetQuota)
+
+	// System
+	mux.HandleFunc("POST /api/shutdown", handleShutdown)
+}
+
+// ── DB ───────────────────────────────────────────────────────────────────────
+
+func initDB() {
+	dbPath := filepath.Join(dataPath, "karaoke.db")
+	var err error
+	db, err = sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS jobs (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		yt_id      TEXT    DEFAULT '',
+		url        TEXT    DEFAULT '',
+		status     TEXT    NOT NULL,
+		title      TEXT    DEFAULT '',
+		singer     TEXT    DEFAULT '',
+		filename   TEXT    DEFAULT '',
+		progress   TEXT    DEFAULT '',
+		key_offset INTEGER DEFAULT 0,
+		locked     INTEGER DEFAULT 0,
+		thumbnail  TEXT    DEFAULT '',
+		duration   TEXT    DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS singers (
+		name       TEXT PRIMARY KEY,
+		key_offset INTEGER DEFAULT 0,
+		volume     INTEGER DEFAULT 80,
+		last_seen  DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE IF NOT EXISTS singer_history (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		singer     TEXT,
+		yt_id      TEXT,
+		title      TEXT    DEFAULT '',
+		thumbnail  TEXT    DEFAULT '',
+		key_offset INTEGER DEFAULT 0,
+		play_count INTEGER DEFAULT 1,
+		played_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(singer, yt_id) ON CONFLICT REPLACE
+	);
+	CREATE TABLE IF NOT EXISTS singer_favorites (
+		singer    TEXT,
+		yt_id     TEXT,
+		title     TEXT    DEFAULT '',
+		thumbnail TEXT    DEFAULT '',
+		added_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (singer, yt_id)
+	);
+	CREATE TABLE IF NOT EXISTS config (
+		key   TEXT PRIMARY KEY,
+		value TEXT DEFAULT ''
+	);`)
+	if err != nil {
+		log.Fatalf("schema: %v", err)
+	}
+}
+
+func resetStaleJobs() {
+	db.Exec(`UPDATE jobs SET status='played' WHERE status IN ('playing','downloading','pending')`)
+}
+
+// ── Queue Handlers ───────────────────────────────────────────────────────────
+
+func handleAPIData(w http.ResponseWriter, r *http.Request) {
+	lockUpcoming()
+
+	now := queryByStatus("playing", 1)
+	ready := queryByStatus("ready", 0)
+
+	var nowPlaying, nextUp *Job
+	if len(now) > 0 {
+		nowPlaying = now[0]
+	}
+	if len(ready) > 0 {
+		nextUp = ready[0]
+	}
+
+	// Full queue view: pending + downloading + ready (minus the nextUp entry)
+	all := queryMultiStatus([]string{"pending", "downloading", "ready"})
+	queue := make([]*Job, 0, len(all))
+	for _, j := range all {
+		if nextUp != nil && j.ID == nextUp.ID {
+			continue
+		}
+		queue = append(queue, j)
+	}
+
+	singer := r.URL.Query().Get("singer")
+	filter := r.URL.Query().Get("history_filter")
+	history := queryHistory(singer, filter, 60)
+
+	writeJSON(w, APIData{NowPlaying: nowPlaying, NextUp: nextUp, Queue: queue, History: history})
+}
+
+func handleAdd(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	singer    := strings.TrimSpace(r.FormValue("singer"))
+	url       := strings.TrimSpace(r.FormValue("url"))
+	title     := strings.TrimSpace(r.FormValue("title"))
+	thumbnail := strings.TrimSpace(r.FormValue("thumbnail"))
+	ytID      := strings.TrimSpace(r.FormValue("yt_id"))
+	duration  := strings.TrimSpace(r.FormValue("duration"))
+
+	if singer == "" || url == "" {
+		http.Error(w, "singer and url required", http.StatusBadRequest)
+		return
+	}
+
+	// Per-singer queue limit
+	var inQueue int
+	db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE singer=? AND status IN ('pending','downloading','ready')`, singer).Scan(&inQueue)
+	if inQueue >= maxPerSinger {
+		http.Error(w, fmt.Sprintf("max %d songs queued per singer", maxPerSinger), http.StatusTooManyRequests)
+		return
+	}
+
+	// Dedup warning: same yt_id already in active queue from any singer
+	if ytID != "" {
+		var dupTitle, dupSinger string
+		if db.QueryRow(`SELECT title, singer FROM jobs WHERE yt_id=? AND status IN ('pending','downloading','ready') LIMIT 1`, ytID).
+			Scan(&dupTitle, &dupSinger) == nil {
+			writeJSON(w, map[string]any{"status": "duplicate_warning", "queued_by": dupSinger, "title": dupTitle})
+			return
+		}
+	}
+
+	// Upsert singer profile
+	db.Exec(`INSERT OR IGNORE INTO singers(name) VALUES(?)`, singer)
+	db.Exec(`UPDATE singers SET last_seen=CURRENT_TIMESTAMP WHERE name=?`, singer)
+
+	var keyOffset int
+	db.QueryRow(`SELECT key_offset FROM singers WHERE name=?`, singer).Scan(&keyOffset)
+
+	// Cache hit: file already downloaded
+	if ytID != "" {
+		var cached string
+		if db.QueryRow(`SELECT filename FROM jobs WHERE yt_id=? AND status='played' AND filename!='' LIMIT 1`, ytID).Scan(&cached) == nil {
+			if _, err := os.Stat(cached); err == nil {
+				db.Exec(`INSERT INTO jobs(yt_id,url,status,title,singer,filename,thumbnail,key_offset,duration) VALUES(?,?,'ready',?,?,?,?,?,?)`,
+					ytID, url, title, singer, cached, thumbnail, keyOffset, duration)
+				writeJSON(w, map[string]string{"status": "cached"})
+				return
+			}
+		}
+	}
+
+	db.Exec(`INSERT INTO jobs(yt_id,url,status,title,singer,thumbnail,key_offset,duration) VALUES(?,?,'pending',?,?,?,?,?)`,
+		ytID, url, title, singer, thumbnail, keyOffset, duration)
+	writeJSON(w, map[string]string{"status": "queued"})
+}
+
+func handleSkip(w http.ResponseWriter, r *http.Request) {
+	playerMu.Lock()
+	defer playerMu.Unlock()
+	killCmd(playerCmd)
+	killCmd(hlsCmd)
+	writeJSON(w, map[string]string{"status": "skipped"})
+}
+
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	id := r.FormValue("id")
+	db.Exec(`UPDATE jobs SET status='played' WHERE id=? AND status NOT IN ('playing')`, id)
+	writeJSON(w, map[string]string{"status": "deleted"})
+}
+
+func handleQueueKey(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var locked int
+	if err := db.QueryRow(`SELECT locked FROM jobs WHERE id=?`, id).Scan(&locked); err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if locked == 1 {
+		http.Error(w, "song is locked (within 10s of playing)", http.StatusConflict)
+		return
+	}
+	var body struct {
+		KeyOffset int `json:"key_offset"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+	if body.KeyOffset < -6 || body.KeyOffset > 6 {
+		http.Error(w, "key_offset must be -6 to +6", http.StatusBadRequest)
+		return
+	}
+	db.Exec(`UPDATE jobs SET key_offset=? WHERE id=?`, body.KeyOffset, id)
+	writeJSON(w, map[string]string{"status": "updated"})
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+
+var invidiousInstances = []string{
+	"https://invidious.io.lol",
+	"https://invidious.privacyredirect.com",
+	"https://inv.nadeko.net",
+	"https://invidious.nerdvpn.de",
+	"https://yt.cdaut.de",
+	"https://invidious.fdn.fr",
+	"https://invidious.flokinet.to",
+	"https://invidious.tiekoetter.com",
+	"https://invidious.slipfox.xyz",
+}
+
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		writeJSON(w, []SearchResult{})
+		return
+	}
+	query := q + " karaoke"
+	results := searchInvidious(query)
+	if len(results) == 0 {
+		results = searchYtdlp(query)
+	}
+	writeJSON(w, results)
+}
+
+func searchInvidious(q string) []SearchResult {
+	client := &http.Client{Timeout: 4 * time.Second}
+	for _, inst := range invidiousInstances {
+		url := inst + "/api/v1/search?q=" + q + "&type=video&fields=videoId,title,author,lengthSeconds,videoThumbnails"
+		resp, err := client.Get(url)
+		if err != nil {
+			continue
+		}
+		var items []struct {
+			VideoID    string `json:"videoId"`
+			Title      string `json:"title"`
+			Author     string `json:"author"`
+			Length     int    `json:"lengthSeconds"`
+			Thumbnails []struct {
+				URL string `json:"url"`
+			} `json:"videoThumbnails"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&items)
+		resp.Body.Close()
+		if err != nil || len(items) == 0 {
+			continue
+		}
+		results := make([]SearchResult, 0, 5)
+		for i, item := range items {
+			if i >= 5 {
+				break
+			}
+			thumb := ""
+			if len(item.Thumbnails) > 0 {
+				thumb = item.Thumbnails[0].URL
+			}
+			results = append(results, SearchResult{
+				ID: item.VideoID, Title: item.Title, Uploader: item.Author,
+				Duration: formatDuration(item.Length),
+				URL:      "https://www.youtube.com/watch?v=" + item.VideoID,
+				Thumb:    thumb,
+			})
+		}
+		return results
+	}
+	return nil
+}
+
+func searchYtdlp(q string) []SearchResult {
+	out, err := exec.Command("yt-dlp",
+		"--print", "%(id)s<|>%(title)s<|>%(uploader)s<|>%(duration_string)s<|>%(thumbnail)s",
+		"--flat-playlist", "--no-warnings", "--js-runtimes", "node",
+		"ytsearch5:"+q,
+	).Output()
+	if err != nil {
+		return nil
+	}
+	var results []SearchResult
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "<|>", 5)
+		if len(parts) < 4 {
+			continue
+		}
+		thumb := ""
+		if len(parts) == 5 {
+			thumb = parts[4]
+		}
+		results = append(results, SearchResult{
+			ID: parts[0], Title: parts[1], Uploader: parts[2], Duration: parts[3],
+			URL:   "https://www.youtube.com/watch?v=" + parts[0],
+			Thumb: thumb,
+		})
+	}
+	return results
+}
+
+// ── Singer Profile Handlers ───────────────────────────────────────────────────
+
+func handleGetSinger(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	s := Singer{Name: name, KeyOffset: 0, Volume: 80}
+	db.QueryRow(`SELECT key_offset, volume, last_seen FROM singers WHERE name=?`, name).
+		Scan(&s.KeyOffset, &s.Volume, &s.LastSeen)
+
+	type HistItem struct {
+		YtID      string `json:"yt_id"`
+		Title     string `json:"title"`
+		Thumbnail string `json:"thumbnail"`
+		KeyOffset int    `json:"key_offset"`
+		PlayCount int    `json:"play_count"`
+		PlayedAt  string `json:"played_at"`
+	}
+	type FavItem struct {
+		YtID      string `json:"yt_id"`
+		Title     string `json:"title"`
+		Thumbnail string `json:"thumbnail"`
+	}
+
+	var history []HistItem
+	rows, _ := db.Query(`SELECT yt_id,title,thumbnail,key_offset,play_count,played_at FROM singer_history WHERE singer=? ORDER BY played_at DESC LIMIT 100`, name)
+	for rows.Next() {
+		var h HistItem
+		rows.Scan(&h.YtID, &h.Title, &h.Thumbnail, &h.KeyOffset, &h.PlayCount, &h.PlayedAt)
+		history = append(history, h)
+	}
+	rows.Close()
+
+	var favorites []FavItem
+	frows, _ := db.Query(`SELECT yt_id,title,thumbnail FROM singer_favorites WHERE singer=? ORDER BY added_at DESC`, name)
+	for frows.Next() {
+		var f FavItem
+		frows.Scan(&f.YtID, &f.Title, &f.Thumbnail)
+		favorites = append(favorites, f)
+	}
+	frows.Close()
+
+	writeJSON(w, map[string]any{"singer": s, "history": history, "favorites": favorites})
+}
+
+func handleUpdateSinger(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		KeyOffset *int `json:"key_offset"`
+		Volume    *int `json:"volume"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+
+	db.Exec(`INSERT OR IGNORE INTO singers(name) VALUES(?)`, name)
+	if body.KeyOffset != nil {
+		if *body.KeyOffset < -6 || *body.KeyOffset > 6 {
+			http.Error(w, "key_offset must be -6 to +6", http.StatusBadRequest)
+			return
+		}
+		db.Exec(`UPDATE singers SET key_offset=? WHERE name=?`, *body.KeyOffset, name)
+	}
+	if body.Volume != nil {
+		if *body.Volume < 0 || *body.Volume > 100 {
+			http.Error(w, "volume must be 0-100", http.StatusBadRequest)
+			return
+		}
+		db.Exec(`UPDATE singers SET volume=? WHERE name=?`, *body.Volume, name)
+		proxyVolume(*body.Volume)
+	}
+	writeJSON(w, map[string]string{"status": "updated"})
+}
+
+func handleToggleFavorite(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		YtID      string `json:"yt_id"`
+		Title     string `json:"title"`
+		Thumbnail string `json:"thumbnail"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+
+	var exists int
+	db.QueryRow(`SELECT COUNT(*) FROM singer_favorites WHERE singer=? AND yt_id=?`, name, body.YtID).Scan(&exists)
+	if exists > 0 {
+		db.Exec(`DELETE FROM singer_favorites WHERE singer=? AND yt_id=?`, name, body.YtID)
+		writeJSON(w, map[string]string{"status": "removed"})
+	} else {
+		db.Exec(`INSERT INTO singer_favorites(singer,yt_id,title,thumbnail) VALUES(?,?,?,?)`,
+			name, body.YtID, body.Title, body.Thumbnail)
+		writeJSON(w, map[string]string{"status": "added"})
+	}
+}
+
+// ── Volume / Sync / Storage Handlers ─────────────────────────────────────────
+
+func handleGetVolume(w http.ResponseWriter, r *http.Request) {
+	resp, err := http.Get(soundSuper + "/audio/volume")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	io.Copy(w, resp.Body)
+}
+
+func handleSetVolume(w http.ResponseWriter, r *http.Request) {
+	var body struct{ Volume int `json:"volume"` }
+	json.NewDecoder(r.Body).Decode(&body)
+	proxyVolume(body.Volume)
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+func handleGetSync(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]string{"sync_offset_ms": configGet("sync_offset_ms", "0")})
+}
+
+func handleSetSync(w http.ResponseWriter, r *http.Request) {
+	var body struct{ OffsetMs int `json:"offset_ms"` }
+	json.NewDecoder(r.Body).Decode(&body)
+	if body.OffsetMs < -3000 || body.OffsetMs > 3000 {
+		http.Error(w, "offset_ms must be -3000 to +3000", http.StatusBadRequest)
+		return
+	}
+	rounded := (body.OffsetMs / 50) * 50
+	configSet("sync_offset_ms", strconv.Itoa(rounded))
+	writeJSON(w, map[string]any{"status": "ok", "sync_offset_ms": rounded})
+}
+
+func handleStorageStats(w http.ResponseWriter, r *http.Request) {
+	used := dirSize(downloadPath)
+	quota := quotaBytes()
+	var count int
+	db.QueryRow(`SELECT COUNT(DISTINCT filename) FROM jobs WHERE filename!='' AND status='played'`).Scan(&count)
+	writeJSON(w, map[string]any{
+		"used_bytes":  used,
+		"quota_bytes": quota,
+		"free_bytes":  quota - used,
+		"song_count":  count,
+	})
+}
+
+func handleSetQuota(w http.ResponseWriter, r *http.Request) {
+	var body struct{ QuotaBytes int64 `json:"quota_bytes"` }
+	json.NewDecoder(r.Body).Decode(&body)
+	if body.QuotaBytes < 1<<30 {
+		http.Error(w, "minimum quota is 1 GB", http.StatusBadRequest)
+		return
+	}
+	configSet("quota_bytes", strconv.FormatInt(body.QuotaBytes, 10))
+	writeJSON(w, map[string]string{"status": "updated"})
+}
+
+func handleShutdown(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]string{"status": "shutting down"})
+	go func() { time.Sleep(300 * time.Millisecond); os.Exit(0) }()
+}
+
+// ── Workers ───────────────────────────────────────────────────────────────────
+
+var progressRe = regexp.MustCompile(`\s*(\d{1,3}(?:\.\d+)?)%`)
+
+func downloadWorker() {
+	for {
+		var id int64
+		var url, ytID, title, thumbnail, duration string
+		err := db.QueryRow(
+			`SELECT id,url,yt_id,title,thumbnail,duration FROM jobs WHERE status='pending' ORDER BY id LIMIT 1`,
+		).Scan(&id, &url, &ytID, &title, &thumbnail, &duration)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		db.Exec(`UPDATE jobs SET status='downloading' WHERE id=?`, id)
+
+		if err := ensureSpace(600 << 20); err != nil {
+			log.Printf("[storage] pre-download eviction failed: %v", err)
+			db.Exec(`UPDATE jobs SET status='failed' WHERE id=?`, id)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		outTmpl := filepath.Join(downloadPath, "%(title)s.%(ext)s")
+		args := []string{
+			"--newline", "--no-playlist",
+			"-f", fmt.Sprintf("best[height<=%s]/bestvideo[height<=%s]+bestaudio/best", quality, quality),
+			"--js-runtimes", "node",
+			"-o", outTmpl,
+			"--print", "after_move:filepath",
+			url,
+		}
+		if _, err := os.Stat("cookies.txt"); err == nil {
+			args = append(args, "--cookies", "cookies.txt")
+		}
+
+		cmd := exec.Command("yt-dlp", args...)
+		stdout, _ := cmd.StdoutPipe()
+		stderr, _ := cmd.StderrPipe()
+		go io.Copy(io.Discard, stderr)
+		cmd.Start()
+
+		var finalPath string
+		buf := make([]byte, 512)
+		for {
+			n, err := stdout.Read(buf)
+			if n > 0 {
+				line := strings.TrimSpace(string(buf[:n]))
+				if m := progressRe.FindStringSubmatch(line); m != nil {
+					downloadProgress.Store(id, m[1]+"%")
+					db.Exec(`UPDATE jobs SET progress=? WHERE id=?`, m[1]+"%", id)
+				} else if strings.HasPrefix(line, "/") {
+					finalPath = line
+				} else if strings.Contains(line, "Finalizing") {
+					downloadProgress.Store(id, "Finalizing")
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		cmd.Wait()
+		downloadProgress.Delete(id)
+
+		if finalPath != "" {
+			db.Exec(`UPDATE jobs SET status='ready', filename=? WHERE id=?`, finalPath, id)
+			log.Printf("[download] done: %s", finalPath)
+		} else {
+			db.Exec(`UPDATE jobs SET status='failed' WHERE id=?`, id)
+			log.Printf("[download] failed: %s", url)
+		}
+	}
+}
+
+func playerWorker() {
+	for {
+		var id int64
+		var filename, singer, title, ytID, thumbnail string
+		var keyOffset int
+		err := db.QueryRow(
+			`SELECT id,filename,singer,title,yt_id,thumbnail,key_offset FROM jobs WHERE status='ready' ORDER BY id LIMIT 1`,
+		).Scan(&id, &filename, &singer, &title, &ytID, &thumbnail, &keyOffset)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		// Lock this job — no more key changes
+		db.Exec(`UPDATE jobs SET status='playing', locked=1 WHERE id=?`, id)
+
+		// Write next-up overlay for whoever comes after
+		var ns, nt string
+		db.QueryRow(`SELECT singer, title FROM jobs WHERE status='ready' AND id!=? ORDER BY id LIMIT 1`, id).Scan(&ns, &nt)
+		writeNextUp(ns, nt)
+
+		log.Printf("[player] %s — %s (key %+d)", singer, title, keyOffset)
+		play(filename, keyOffset)
+
+		// Record history
+		db.Exec(`
+			INSERT INTO singer_history(singer,yt_id,title,thumbnail,key_offset,play_count,played_at)
+			VALUES(?,?,?,?,?,1,CURRENT_TIMESTAMP)
+			ON CONFLICT(singer,yt_id) DO UPDATE SET play_count=play_count+1, played_at=CURRENT_TIMESTAMP`,
+			singer, ytID, title, thumbnail, keyOffset)
+
+		db.Exec(`UPDATE jobs SET status='played' WHERE id=?`, id)
+		writeNextUp("", "")
+		time.Sleep(4 * time.Second)
+	}
+}
+
+// play runs process A (audio→PipeWire) and process B (video→HLS) concurrently.
+// Returns when process A exits (song over or skipped).
+func play(filename string, semitones int) {
+	pitch := math.Pow(2, float64(semitones)/12)
+
+	// Process A: audio → PipeWire (feeds loopback + mic mixing)
+	audioArgs := []string{
+		"-nostdin", "-i", filename,
+		"-vn",
+		"-af", fmt.Sprintf("rubberband=pitch=%f", pitch),
+		"-f", "pulse",
+		"karaoke",
+	}
+
+	// Process B: video → HLS with Next Up overlay
+	syncMs, _ := strconv.Atoi(configGet("sync_offset_ms", "0"))
+	hlsArgs := buildHLSArgs(filename, syncMs)
+
+	playerMu.Lock()
+	playerCmd = exec.Command("ffmpeg", audioArgs...)
+	playerCmd.Env = append(os.Environ()) // inherits PULSE_SERVER
+	hlsCmd = exec.Command("ffmpeg", hlsArgs...)
+	playerCmd.Start()
+	hlsCmd.Start()
+	playerMu.Unlock()
+
+	playerCmd.Wait()
+
+	playerMu.Lock()
+	killCmd(hlsCmd)
+	playerMu.Unlock()
+}
+
+func buildHLSArgs(filename string, syncOffsetMs int) []string {
+	vf := `drawtext=textfile=/tmp/hls/nextup.txt:reload=1:` +
+		`fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:` +
+		`fontsize=28:fontcolor=white:` +
+		`box=1:boxcolor=black@0.55:boxborderw=10:` +
+		`x=w-tw-24:y=24`
+	if syncOffsetMs > 0 {
+		delay := float64(syncOffsetMs) / 1000.0
+		vf = fmt.Sprintf("setpts=PTS+%f/TB,", delay) + vf
+	}
+	af := "anull"
+	if syncOffsetMs < 0 {
+		d := -syncOffsetMs
+		af = fmt.Sprintf("adelay=%d|%d", d, d)
+	}
+	return []string{
+		"-nostdin", "-i", filename,
+		"-vf", vf, "-af", af,
+		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+		"-b:v", "1500k", "-maxrate", "1500k", "-bufsize", "3000k",
+		"-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+		"-f", "hls",
+		"-hls_time", "1", "-hls_list_size", "3",
+		"-hls_flags", "delete_segments+append_list",
+		"-hls_segment_filename", "/tmp/hls/seg%d.ts",
+		"/tmp/hls/playlist.m3u8",
+	}
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+func writeNextUp(singer, title string) {
+	content := ""
+	if singer != "" && title != "" {
+		content = fmt.Sprintf("Next Up: %s — %s", singer, title)
+	}
+	os.WriteFile(nextUpFile, []byte(content), 0644)
+}
+
+func killCmd(cmd *exec.Cmd) {
+	if cmd != nil && cmd.Process != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+	}
+}
+
+func proxyVolume(percent int) {
+	body := strings.NewReader(fmt.Sprintf(`{"volume":%d}`, percent))
+	resp, err := http.Post(soundSuper+"/audio/volume", "application/json", body)
+	if err != nil {
+		log.Printf("[volume] proxy error: %v", err)
+		return
+	}
+	resp.Body.Close()
+}
+
+func lockUpcoming() {
+	// Lock the first ready job — it's up next
+	db.Exec(`UPDATE jobs SET locked=1 WHERE id=(SELECT id FROM jobs WHERE status='ready' ORDER BY id LIMIT 1)`)
+}
+
+func queryByStatus(status string, limit int) []*Job {
+	return queryMultiStatusLimited([]string{status}, limit)
+}
+
+func queryMultiStatus(statuses []string) []*Job {
+	return queryMultiStatusLimited(statuses, 0)
+}
+
+func queryMultiStatusLimited(statuses []string, limit int) []*Job {
+	ph := make([]string, len(statuses))
+	args := make([]any, len(statuses))
+	for i, s := range statuses {
+		ph[i] = "?"
+		args[i] = s
+	}
+	q := fmt.Sprintf(
+		`SELECT id,yt_id,status,title,singer,filename,progress,key_offset,locked,thumbnail,duration
+		 FROM jobs WHERE status IN (%s) ORDER BY id`, strings.Join(ph, ","))
+	if limit > 0 {
+		q += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := db.Query(q, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var jobs []*Job
+	for rows.Next() {
+		j := &Job{}
+		var lockedInt int
+		rows.Scan(&j.ID, &j.YtID, &j.Status, &j.Title, &j.Singer, &j.Filename,
+			&j.Progress, &j.KeyOffset, &lockedInt, &j.Thumbnail, &j.Duration)
+		j.Locked = lockedInt == 1
+		if p, ok := downloadProgress.Load(j.ID); ok {
+			j.Progress = p.(string)
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs
+}
+
+func queryHistory(singer, filter string, limit int) []*Job {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	switch filter {
+	case "me":
+		rows, err = db.Query(
+			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history WHERE singer=? ORDER BY played_at DESC LIMIT ?`,
+			singer, limit)
+	case "most":
+		rows, err = db.Query(
+			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history ORDER BY play_count DESC LIMIT ?`,
+			limit)
+	default:
+		rows, err = db.Query(
+			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history ORDER BY played_at DESC LIMIT ?`,
+			limit)
+	}
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var jobs []*Job
+	for rows.Next() {
+		j := &Job{Status: "played"}
+		rows.Scan(&j.YtID, &j.Title, &j.Thumbnail, &j.KeyOffset)
+		jobs = append(jobs, j)
+	}
+	return jobs
+}
+
+func quotaBytes() int64 {
+	val := configGet("quota_bytes", "")
+	if val == "" {
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(downloadPath, &stat); err == nil {
+			quota := int64(stat.Bavail) * int64(stat.Bsize) / 2
+			configSet("quota_bytes", strconv.FormatInt(quota, 10))
+			return quota
+		}
+		return 10 << 30
+	}
+	n, _ := strconv.ParseInt(val, 10, 64)
+	return n
+}
+
+func dirSize(path string) int64 {
+	var total int64
+	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
+}
+
+func ensureSpace(needed int64) error {
+	quota := quotaBytes()
+	headroom := quota / 10
+	used := dirSize(downloadPath)
+	if used+needed <= quota-headroom {
+		return nil
+	}
+	return evictLRU(needed + headroom)
+}
+
+func evictLRU(needed int64) error {
+	// Build protected set (currently playing + next in queue)
+	protected := map[string]bool{}
+	rows, _ := db.Query(`SELECT COALESCE(filename,'') FROM jobs WHERE status IN ('playing','ready') ORDER BY id LIMIT 2`)
+	for rows.Next() {
+		var f string
+		rows.Scan(&f)
+		if f != "" {
+			protected[f] = true
+		}
+	}
+	rows.Close()
+
+	// Evict oldest-played files first
+	crows, err := db.Query(
+		`SELECT DISTINCT filename FROM jobs WHERE status='played' AND filename!=''
+		 ORDER BY id ASC`)
+	if err != nil {
+		return err
+	}
+	defer crows.Close()
+
+	freed := int64(0)
+	for crows.Next() && freed < needed {
+		var fname string
+		crows.Scan(&fname)
+		if protected[fname] {
+			continue
+		}
+		info, err := os.Stat(fname)
+		if err != nil {
+			continue
+		}
+		if os.Remove(fname) == nil {
+			freed += info.Size()
+			log.Printf("[storage] evicted %s (%.1f MB)", filepath.Base(fname), float64(info.Size())/(1<<20))
+		}
+	}
+	if freed < needed {
+		return fmt.Errorf("freed %.1f MB, needed %.1f MB", float64(freed)/(1<<20), float64(needed)/(1<<20))
+	}
+	return nil
+}
+
+func configGet(key, def string) string {
+	var val string
+	if err := db.QueryRow(`SELECT value FROM config WHERE key=?`, key).Scan(&val); err != nil {
+		return def
+	}
+	return val
+}
+
+func configSet(key, val string) {
+	db.Exec(`INSERT OR REPLACE INTO config(key,value) VALUES(?,?)`, key, val)
+}
+
+func formatDuration(seconds int) string {
+	return fmt.Sprintf("%d:%02d", seconds/60, seconds%60)
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+func envIntOr(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
