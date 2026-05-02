@@ -25,6 +25,7 @@ export default class SoundAPI {
   private sdk: BalenaSDK
   private monitor: SnapserverMonitor | null = null
   private playHandler: (() => Promise<void>) | null = null
+  private stopHandler: (() => void) | null = null
 
   setMonitor(monitor: SnapserverMonitor): void {
     this.monitor = monitor
@@ -32,6 +33,10 @@ export default class SoundAPI {
 
   setPlayHandler(fn: () => Promise<void>): void {
     this.playHandler = fn
+  }
+
+  setStopHandler(fn: () => void): void {
+    this.stopHandler = fn
   }
 
   constructor(public config: SoundConfig, public audioBlock: PulseAudioWrapper) {
@@ -165,6 +170,14 @@ export default class SoundAPI {
     // handlePlayDetect() (wired via setPlayHandler() in index.ts) to trigger re-election.
     this.api.post('/internal/play', (_req, res) => {
       this.playHandler?.().catch((err: Error) => console.log(`[play-detect] handler error: ${err.message}`))
+      res.json({ received: true })
+    })
+
+    // POST /internal/stop — fired by WirePlumber Lua when a stream unlinks from
+    // balena-sound.input. Starts a 30s demotion timer; if no play arrives before
+    // it fires, an elected AUTO master demotes back to unelected client.
+    this.api.post('/internal/stop', (_req, res) => {
+      this.stopHandler?.()
       res.json({ received: true })
     })
 

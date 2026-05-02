@@ -13,6 +13,8 @@ const audioBlock: PulseAudioWrapper = new PulseAudioWrapper(`tcp:${config.device
 const soundAPI: SoundAPI = new SoundAPI(config, audioBlock)
 
 let monitor: SnapserverMonitor
+let stopTimer: NodeJS.Timeout | null = null
+const STOP_DEMOTION_MS = 30_000
 
 init()
 async function init() {
@@ -25,15 +27,19 @@ async function init() {
   // Ensure balena service state matches the configured role on every startup.
   // balenaOS persists stopped-via-API state across reboots, so we must
   // explicitly start/stop services to recover from any prior crash or partial
-  // role switch. For AUTO, this starts plugins + client but defers server to election.
+  // role switch.
   config.applyCurrentRole()
 
-  // Run master election. For HOST: immediate master. For AUTO: mDNS conflict detection
-  // with UUID-based jitter tiebreaker. For JOIN/DISABLED: always client.
-  const elected = await electMaster(config.role, config.groupName, deviceUuid)
-  config.applyElectionResult(elected)
+  // HOST is always master — elect immediately.
+  // AUTO stays unelected at boot; it promotes to master on first play via handlePlayDetect.
+  // JOIN / DISABLED are always clients — applyCurrentRole already handles service state.
+  if (config.role === MultiroomRole.HOST) {
+    const elected = await electMaster(config.role, config.groupName, deviceUuid)
+    config.applyElectionResult(elected)
+  }
 
   soundAPI.setPlayHandler(handlePlayDetect)
+  soundAPI.setStopHandler(handleStopDetect)
 
   monitor = new SnapserverMonitor({
     bufferMs: constants.multiroomBufferMs,
@@ -49,15 +55,10 @@ async function init() {
 }
 
 // WirePlumber Lua fires POST /internal/play when a stream links to balena-sound.input.
-// That endpoint delegates to this handler via SoundAPI.setPlayHandler().
-// For AUTO devices that are currently clients, a play event triggers a re-election
-// so the device can promote to master if no one else is serving the group.
 audioBlock.on('play', async (sink: any) => {
   if (constants.debug) {
     console.log('[event] Audio block: play', sink)
   }
-
-  // Usage tracking for balenaHub metrics
   try {
     await sdk.models.device.tags.set(deviceUuid, 'metrics:play', '')
   } catch (error) {
@@ -65,10 +66,19 @@ audioBlock.on('play', async (sink: any) => {
   }
 })
 
-// Called by SoundAPI when /internal/play fires and the device is AUTO + not yet master.
+// Called by SoundAPI when /internal/play fires.
+// Cancels any pending demotion timer, then promotes to master if not already.
 export async function handlePlayDetect(): Promise<void> {
   if (!monitor) return
-  if (config.role !== MultiroomRole.AUTO || config.isElectedMaster()) return
+  if (config.role !== MultiroomRole.AUTO) return
+
+  if (stopTimer) {
+    clearTimeout(stopTimer)
+    stopTimer = null
+    console.log('[play-detect] Demotion timer cancelled — still playing')
+  }
+
+  if (config.isElectedMaster()) return
 
   console.log('[play-detect] AUTO device not yet master — re-running election')
   const elected = await electMaster(config.role, config.groupName, deviceUuid)
@@ -76,6 +86,22 @@ export async function handlePlayDetect(): Promise<void> {
     config.applyElectionResult('master')
     monitor.setMaster(true)
   }
+}
+
+// Called by SoundAPI when /internal/stop fires.
+// Starts a 30s timer; if no play arrives before it fires, demotes back to client.
+export function handleStopDetect(): void {
+  if (!monitor) return
+  if (config.role !== MultiroomRole.AUTO || !config.isElectedMaster()) return
+
+  if (stopTimer) clearTimeout(stopTimer)
+  console.log(`[stop-detect] Stream stopped — demoting in ${STOP_DEMOTION_MS / 1000}s if no replay`)
+  stopTimer = setTimeout(() => {
+    stopTimer = null
+    console.log('[stop-detect] No replay — demoting to unelected client')
+    config.applyElectionResult('client')
+    monitor.setMaster(false)
+  }, STOP_DEMOTION_MS)
 }
 
 async function timeout(ms: number): Promise<void> {
