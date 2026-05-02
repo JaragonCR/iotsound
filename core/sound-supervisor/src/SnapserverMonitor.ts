@@ -183,7 +183,7 @@ export default class SnapserverMonitor {
   }
 
   private startAdvertising(): void {
-    const name = this.groupName ?? 'iotsound-default'
+    const name = this.groupName ?? 'default'
     this.advertiser.advertise(name, 1704, {
       group: this.groupName ?? 'default',
       group_latency: String(this.groupLatency),

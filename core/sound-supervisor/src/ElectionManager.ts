@@ -3,7 +3,7 @@ import { MultiroomRole } from './types'
 
 export type ElectedRole = 'master' | 'client'
 
-const ELECTION_DEFAULT_GROUP = 'iotsound-default'
+const ELECTION_DEFAULT_GROUP = 'default'
 
 // Deterministic jitter from UUID so the same device always races the same way.
 function uuidJitterMs(uuid: string, maxMs: number): number {
