@@ -1,0 +1,9 @@
+
+FROM balenalib/%%BALENA_ARCH%%-debian
+
+RUN install_packages lirc
+
+COPY . .
+COPY lircrc /etc/lirc/lircrc
+
+CMD [ "/bin/bash", "/usr/src/start.sh" ]

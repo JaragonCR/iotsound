@@ -72,3 +72,8 @@ services:
       io.balena.features.supervisor-api: 1
     environment:
       SET_HOSTNAME: balena
+
+  ir-receiver:
+    build: ./plugins/ir-receiver
+    restart: on-failure
+    privileged: true

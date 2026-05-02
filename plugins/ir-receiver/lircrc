@@ -1,0 +1,35 @@
+
+BEGIN
+    REMOTE = apple_remote
+    BUTTON = KEY_VOLUMEUP
+    PROG = irexec
+    ONCE = curl -X POST http://sound-supervisor:80/volume/change/10
+END
+
+BEGIN
+    REMOTE = apple_remote
+    BUTTON = KEY_VOLUMEDOWN
+    PROG = irexec
+    ONCE = curl -X POST http://sound-supervisor:80/volume/change/-10
+END
+
+BEGIN
+    REMOTE = apple_remote
+    BUTTON = KEY_PLAYPAUSE
+    PROG = irexec
+    ONCE = curl -X POST http://sound-supervisor:80/audio/play-pause
+END
+
+BEGIN
+    REMOTE = apple_remote
+    BUTTON = KEY_NEXT
+    PROG = irexec
+    ONCE = curl -X POST http://sound-supervisor:80/audio/next
+END
+
+BEGIN
+    REMOTE = apple_remote
+    BUTTON = KEY_PREVIOUS
+    PROG = irexec
+    ONCE = curl -X POST http://sound-supervisor:80/audio/previous
+END

@@ -8,10 +8,26 @@ import { constants } from './constants'
 import { restartDevice, rebootDevice, shutdownDevice } from './utils'
 import { getSdk, BalenaSDK } from 'balena-sdk'
 import * as fs from 'fs'
+import { exec } from 'child_process'
 
 const VERSION = fs.existsSync('VERSION') 
   ? fs.readFileSync('VERSION', 'utf8').trim() 
   : '3.11.0'; // last version before removal of VERSION```
+
+async function runCommand(command: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`exec error: ${error}`)
+        return reject(error)
+      }
+      if (stderr) {
+        console.error(`stderr: ${stderr}`)
+      }
+      resolve(stdout)
+    })
+  })
+}
 
 export default class SoundAPI {
   private api: Application
@@ -55,6 +71,19 @@ export default class SoundAPI {
     this.api.get('/audio/volume', asyncHandler(async (_req, res) => res.json(await this.audioBlock.getVolume())))
     this.api.post('/audio/volume', asyncHandler(async (req, res) => res.json(await this.audioBlock.setVolume(req.body.volume))))
     this.api.get('/audio/sinks', asyncHandler(async (_req, res) => res.json(stringify(await this.audioBlock.getSinks()))))
+
+    this.api.post('/audio/play-pause', asyncHandler(async (_req, res) => {
+      await runCommand('playerctl play-pause')
+      res.json({ status: 'OK', action: 'play-pause' })
+    }))
+    this.api.post('/audio/next', asyncHandler(async (_req, res) => {
+      await runCommand('playerctl next')
+      res.json({ status: 'OK', action: 'next' })
+    }))
+    this.api.post('/audio/previous', asyncHandler(async (_req, res) => {
+      await runCommand('playerctl previous')
+      res.json({ status: 'OK', action: 'previous' })
+    }))
 
     // Device management
     this.api.post('/device/restart', asyncHandler(async (_req, res) => res.json(await restartDevice())))
