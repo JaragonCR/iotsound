@@ -15,6 +15,8 @@
   button.danger{background:var(--warn);color:#fff}
   button.secondary{background:var(--surface);color:var(--primary);border:1px solid var(--primary)}
   button:disabled{opacity:.4;cursor:default}
+  button.mode-btn{background:var(--surface);color:var(--sub);border:1px solid #444;border-radius:8px;padding:6px 14px;font-size:.85rem;cursor:pointer}
+  button.mode-btn.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
   .tag{display:inline-block;background:var(--primary);color:#000;border-radius:6px;padding:2px 8px;font-size:.75rem;font-weight:700}
   .tag.warn{background:var(--warn);color:#fff}
   .tag.accent{background:var(--accent);color:#000}
@@ -24,34 +26,52 @@
   .truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sub{color:var(--sub);font-size:.85rem}
   .sep{border:none;border-top:1px solid #333;margin:12px 0}
-  /* now playing */
   #now-playing-card{border:2px solid var(--primary)}
-  .song-title{font-size:1.1rem;font-weight:700}
-  /* next up */
   #next-up-card{border:2px solid var(--accent);background:#1a2a2a}
   #next-up-card h3{color:var(--accent)}
-  /* tabs */
   .tabs{display:flex;gap:8px;margin-bottom:12px}
   .tab{background:var(--surface);border:1px solid #444;border-radius:8px;color:var(--sub);cursor:pointer;padding:6px 14px;font-size:.85rem}
   .tab.active{background:var(--primary);color:#000;border-color:var(--primary);font-weight:700}
-  /* top bar */
   #top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
   #singer-pill{background:var(--surface);border:1px solid var(--primary);border-radius:20px;padding:6px 14px;cursor:pointer;color:var(--primary);font-weight:700;text-decoration:none}
-  /* key badge */
   .key-badge{background:#333;color:var(--primary);border-radius:4px;padding:1px 6px;font-size:.75rem;font-family:monospace}
-  /* search results */
   .result-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #333}
   .result-item:last-child{border-bottom:none}
+  /* Up Next overlay */
+  #up-next-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.88);flex-direction:column;align-items:center;justify-content:center;gap:20px}
+  #up-next-overlay h1{color:var(--accent);font-size:2.5rem;text-align:center}
+  #up-next-overlay .singer-name{color:#fff;font-size:1.8rem;font-weight:700}
+  #up-next-overlay .song-title{color:var(--sub);font-size:1rem;max-width:400px;text-align:center}
+  #up-next-overlay .countdown{color:var(--primary);font-size:1.2rem}
+  /* QR floating */
+  #qr-float{position:fixed;bottom:20px;left:20px;z-index:50;text-align:center;cursor:pointer}
+  #qr-float img{width:72px;height:72px;border-radius:8px;opacity:.7;transition:opacity .2s;display:block}
+  #qr-float:hover img{opacity:1}
+  #qr-float span{display:block;font-size:.65rem;color:#666;margin-top:3px}
 </style>
 </head>
 <body>
 
+<!-- Up Next overlay (different singer) -->
+<div id="up-next-overlay">
+  <h1>Up Next</h1>
+  <div class="singer-name" id="overlay-singer"></div>
+  <div class="song-title" id="overlay-title"></div>
+  <div class="countdown" id="overlay-countdown"></div>
+</div>
+
+<!-- QR code (bottom-left) -->
+<div id="qr-float" onclick="this.querySelector('img').style.width='160px';this.querySelector('img').style.height='160px';this.querySelector('img').style.opacity='1'">
+  <img src="/api/qr" alt="Scan to join" onerror="this.parentElement.style.display='none'">
+  <span>Scan to join</span>
+</div>
+
 <!-- Top bar -->
 <div id="top-bar">
-  <div style="font-size:1.2rem;font-weight:700;color:var(--primary)">🎤 Karaoke</div>
+  <div style="font-size:1.2rem;font-weight:700;color:var(--primary)">Karaoke</div>
   <div style="display:flex;gap:8px;align-items:center">
-    <a id="singer-pill" href="#" onclick="goProfile(event)">👤 <span id="singer-name-label">Guest</span></a>
-    <button class="secondary" onclick="window.location='/singer-stream'">📺 Singer View</button>
+    <a id="singer-pill" href="#" onclick="goProfile(event)">Singer: <span id="singer-name-label">Guest</span></a>
+    <button class="secondary" onclick="window.location='/singer-stream'">Singer View</button>
   </div>
 </div>
 
@@ -59,12 +79,12 @@
 <div class="card" id="now-playing-card" style="display:none">
   <div class="row">
     <div class="grow">
-      <div style="color:var(--primary);font-size:.75rem;font-weight:700;margin-bottom:4px">▶ NOW PLAYING</div>
-      <div class="song-title truncate" id="np-title">—</div>
+      <div style="color:var(--primary);font-size:.75rem;font-weight:700;margin-bottom:4px">NOW PLAYING</div>
+      <div style="font-size:1.1rem;font-weight:700" class="truncate" id="np-title">—</div>
       <div class="sub" id="np-singer"></div>
     </div>
     <span class="key-badge" id="np-key"></span>
-    <button class="danger" onclick="skipSong()" style="padding:8px 14px">⏭ Skip</button>
+    <button class="danger" onclick="skipSong()" style="padding:8px 14px">Skip</button>
   </div>
 </div>
 
@@ -73,7 +93,7 @@
   <div class="row">
     <div class="grow">
       <h3 style="font-size:.75rem;font-weight:700;margin-bottom:4px">NEXT UP</h3>
-      <div class="song-title truncate" id="nu-title">—</div>
+      <div style="font-size:1.1rem;font-weight:700" class="truncate" id="nu-title">—</div>
       <div class="sub" id="nu-singer"></div>
     </div>
     <span class="key-badge" id="nu-key"></span>
@@ -90,19 +110,24 @@
   <div id="search-results"></div>
 </div>
 
-<!-- Volume -->
+<!-- Controls row: Volume + Audio output -->
 <div class="card">
-  <div class="row">
-    <span style="font-weight:700">🔊 Volume</span>
+  <div class="row" style="margin-bottom:12px">
+    <span style="font-weight:700;min-width:70px">Volume</span>
     <input type="range" id="volume-slider" min="0" max="100" style="flex:1" oninput="setVolume(this.value)">
     <span id="volume-label" style="width:36px;text-align:right">—</span>
   </div>
+  <div class="row">
+    <span style="font-weight:700;min-width:70px">Audio</span>
+    <button id="mode-local" class="mode-btn active" onclick="setAudioMode('local')">Local speakers</button>
+    <button id="mode-stream" class="mode-btn" onclick="setAudioMode('stream')">Stream (browser)</button>
+  </div>
 </div>
 
-<!-- Queue -->
-<div class="card">
-  <h2>Queue</h2>
-  <div id="queue-list"><div class="sub">Queue is empty</div></div>
+<!-- Queue (songs after Next Up) -->
+<div class="card" id="queue-card" style="display:none">
+  <h2>Coming Up</h2>
+  <div id="queue-list"></div>
 </div>
 
 <!-- History / Sing Again -->
@@ -110,7 +135,7 @@
   <h2>Sing Again</h2>
   <div class="tabs">
     <button class="tab active" onclick="setHistoryTab('all',this)">All</button>
-    <button class="tab" onclick="setHistoryTab('me',this)">Sang by me</button>
+    <button class="tab" onclick="setHistoryTab('me',this)">My songs</button>
     <button class="tab" onclick="setHistoryTab('most',this)">Most sang</button>
   </div>
   <div id="history-list"><div class="sub">No history yet</div></div>
@@ -151,17 +176,49 @@ function setVolume(v) {
   }, 200);
 }
 
+// ── Audio mode ────────────────────────────────────────────────────────────────
+function setAudioMode(mode) {
+  fetch('/api/audio-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+  document.getElementById('mode-local').classList.toggle('active', mode === 'local');
+  document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
+}
+function applyAudioMode(mode) {
+  document.getElementById('mode-local').classList.toggle('active', mode === 'local');
+  document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
+}
+
 // ── Data refresh ─────────────────────────────────────────────────────────────
+let overlayTimer;
 function fetchData() {
   fetch('/api/data?singer='+encodeURIComponent(singerName)+'&history_filter='+historyFilter)
     .then(r=>r.json()).then(renderAll).catch(()=>{});
 }
 
 function renderAll(d) {
+  applyAudioMode(d.audio_mode || 'local');
   renderNowPlaying(d.now_playing);
   renderNextUp(d.next_up);
   renderQueue(d.queue);
   renderHistory(d.history);
+  handleUpNextOverlay(d);
+}
+
+function handleUpNextOverlay(d) {
+  const overlay = document.getElementById('up-next-overlay');
+  if (d.state === 'up_next' && d.up_next_until) {
+    overlay.style.display = 'flex';
+    document.getElementById('overlay-singer').textContent = d.next_up ? d.next_up.singer : '';
+    document.getElementById('overlay-title').textContent = d.next_up ? d.next_up.title : '';
+    clearInterval(overlayTimer);
+    overlayTimer = setInterval(()=>{
+      const secs = Math.max(0, Math.ceil((d.up_next_until - Date.now()) / 1000));
+      document.getElementById('overlay-countdown').textContent = secs > 0 ? `Starting in ${secs}s` : '';
+      if (secs === 0) { clearInterval(overlayTimer); overlay.style.display = 'none'; }
+    }, 500);
+  } else {
+    clearInterval(overlayTimer);
+    overlay.style.display = 'none';
+  }
 }
 
 function renderNowPlaying(j) {
@@ -179,12 +236,14 @@ function renderNextUp(j) {
   card.style.display='';
   document.getElementById('nu-title').textContent = j.title || '—';
   document.getElementById('nu-singer').textContent = j.singer || '';
-  document.getElementById('nu-key').textContent = fmtKey(j.key_offset);
+  document.getElementById('nu-key').textContent = j.key_offset !== undefined ? fmtKey(j.key_offset) : '';
 }
 
 function renderQueue(queue) {
+  const card = document.getElementById('queue-card');
   const el = document.getElementById('queue-list');
-  if (!queue || !queue.length) { el.innerHTML='<div class="sub">Queue is empty</div>'; return; }
+  if (!queue || !queue.length) { card.style.display='none'; return; }
+  card.style.display='';
   el.innerHTML = queue.map(j=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
       ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
@@ -194,7 +253,7 @@ function renderQueue(queue) {
         ${j.status==='downloading' ? `<div style="font-size:.75rem;color:var(--accent)">${j.progress}</div>` : ''}
       </div>
       ${j.locked ? '<span class="tag warn">Locked</span>' : `
-        <select onchange="updateKey(${j.id},this.value)" ${j.locked?'disabled':''} style="background:var(--surface);color:var(--text);border:1px solid #444;border-radius:6px;padding:4px">
+        <select onchange="updateKey(${j.id},this.value)" style="background:var(--surface);color:var(--text);border:1px solid #444;border-radius:6px;padding:4px">
           ${[-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6].map(k=>`<option value="${k}" ${k===j.key_offset?'selected':''}>${k>=0?'+'+k:k}</option>`).join('')}
         </select>
       `}
@@ -242,7 +301,6 @@ function addSong(ytID, title, thumb, url='', duration='') {
   fetch('/add',{method:'POST',body}).then(r=>r.json()).then(d=>{
     if (d.status === 'duplicate_warning') {
       if (!confirm(`"${d.title}" is already queued by ${d.queued_by}. Add anyway?`)) return;
-      // Re-submit without dedup check by using a different URL
     }
     fetchData();
   });
@@ -271,10 +329,9 @@ function setHistoryTab(filter, btn) {
 }
 
 // ── Util ─────────────────────────────────────────────────────────────────────
-function esc(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtKey(k) { return k > 0 ? '+'+k : String(k||0); }
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmtKey(k){return k>0?'+'+k:String(k||0)}
 
-// ── Init ─────────────────────────────────────────────────────────────────────
 loadSinger();
 loadVolume();
 fetchData();

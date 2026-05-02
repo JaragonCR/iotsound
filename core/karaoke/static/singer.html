@@ -13,6 +13,8 @@
   button{background:var(--primary);border:none;border-radius:8px;color:#000;cursor:pointer;font-weight:700;padding:10px 18px}
   button.danger{background:var(--warn);color:#fff;width:100%;margin-top:8px;padding:14px}
   button.secondary{background:var(--surface);color:var(--primary);border:1px solid var(--primary)}
+  button.mode-btn{background:var(--surface);color:var(--sub);border:1px solid #444;border-radius:8px;padding:6px 14px;font-size:.85rem;cursor:pointer}
+  button.mode-btn.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
   .thumb{width:64px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0}
   .row{display:flex;align-items:center;gap:10px}
   .grow{flex:1;min-width:0}
@@ -24,6 +26,8 @@
   .tab{background:var(--surface);border:1px solid #444;border-radius:8px;color:var(--sub);cursor:pointer;padding:6px 14px;font-size:.85rem}
   .tab.active{background:var(--primary);color:#000;border-color:var(--primary);font-weight:700}
   .key-badge{background:#333;color:var(--primary);border-radius:4px;padding:1px 6px;font-size:.75rem;font-family:monospace}
+  #now-card{border:2px solid var(--primary)}
+  #next-card{border:2px solid var(--accent);background:#1a2a2a}
 </style>
 </head>
 <body>
@@ -31,7 +35,31 @@
 <div class="row" style="margin-bottom:16px">
   <a href="/" style="color:var(--sub);text-decoration:none;font-size:1.2rem">←</a>
   <h1 id="profile-name" style="color:var(--primary);flex:1">…</h1>
-  <a href="/singer-stream" style="color:var(--accent);text-decoration:none;font-size:.9rem">📺 Singer View</a>
+  <a href="/singer-stream" style="color:var(--accent);text-decoration:none;font-size:.9rem">Singer View</a>
+</div>
+
+<!-- Now Playing -->
+<div class="card" id="now-card" style="display:none">
+  <div class="row">
+    <div class="grow">
+      <div style="color:var(--primary);font-size:.75rem;font-weight:700;margin-bottom:4px">NOW PLAYING</div>
+      <div class="truncate" style="font-size:1.05rem;font-weight:700" id="np-title">—</div>
+      <div class="sub" id="np-singer"></div>
+    </div>
+    <span class="key-badge" id="np-key"></span>
+  </div>
+</div>
+
+<!-- Next Up -->
+<div class="card" id="next-card" style="display:none">
+  <div class="row">
+    <div class="grow">
+      <div style="color:var(--accent);font-size:.75rem;font-weight:700;margin-bottom:4px">NEXT UP</div>
+      <div class="truncate" style="font-size:1.05rem;font-weight:700" id="nu-title">—</div>
+      <div class="sub" id="nu-singer"></div>
+    </div>
+    <span class="key-badge" id="nu-key"></span>
+  </div>
 </div>
 
 <!-- Settings -->
@@ -39,7 +67,7 @@
   <h2>Settings</h2>
 
   <div style="margin-bottom:20px">
-    <label>Default Key / Pitch  <span id="key-label" style="color:var(--primary);font-weight:700">0</span> semitones</label>
+    <label>Default key / pitch  <span id="key-label" style="color:var(--primary);font-weight:700">0</span> semitones</label>
     <div class="row">
       <span class="sub">−6</span>
       <input type="range" id="key-slider" min="-6" max="6" step="1" value="0" oninput="onKeyChange(this.value)">
@@ -48,14 +76,30 @@
     <div class="sub" style="margin-top:4px">Applied to all your queued songs by default</div>
   </div>
 
-  <div>
-    <label>Volume  <span id="vol-label" style="color:var(--primary);font-weight:700">80</span>%</label>
+  <div style="margin-bottom:20px">
+    <label>Profile volume  <span id="vol-label" style="color:var(--primary);font-weight:700">80</span>%</label>
     <div class="row">
       <span class="sub">0</span>
       <input type="range" id="vol-slider" min="0" max="100" value="80" oninput="onVolChange(this.value)">
       <span class="sub">100</span>
     </div>
-    <div class="sub" style="margin-top:4px">Room speaker volume</div>
+  </div>
+
+  <div style="margin-bottom:8px">
+    <label style="margin-bottom:8px">Device volume  <span id="dev-vol-label" style="color:var(--primary);font-weight:700">—</span>%</label>
+    <div class="row">
+      <span class="sub">0</span>
+      <input type="range" id="dev-vol-slider" min="0" max="100" value="80" oninput="onDevVolChange(this.value)">
+      <span class="sub">100</span>
+    </div>
+  </div>
+
+  <div>
+    <label style="margin-bottom:8px">Audio output</label>
+    <div class="row">
+      <button id="mode-local" class="mode-btn active" onclick="setAudioMode('local')">Local speakers</button>
+      <button id="mode-stream" class="mode-btn" onclick="setAudioMode('stream')">Stream (browser)</button>
+    </div>
   </div>
 </div>
 
@@ -78,7 +122,7 @@
 
 <!-- Change Singer -->
 <div class="card">
-  <button class="danger" onclick="changeSinger()">🔴 Change Singer</button>
+  <button class="danger" onclick="changeSinger()">Change Singer</button>
   <div class="sub" style="margin-top:8px;text-align:center">Clears this device's saved name</div>
 </div>
 
@@ -103,6 +147,38 @@ function load() {
     renderFavorites(d.favorites);
     renderHistory(d.history, histTab);
   });
+}
+
+function loadLiveData() {
+  fetch('/api/data').then(r=>r.json()).then(d=>{
+    applyAudioMode(d.audio_mode || 'local');
+    const nowCard = document.getElementById('now-card');
+    if (d.now_playing) {
+      nowCard.style.display = '';
+      document.getElementById('np-title').textContent = d.now_playing.title || '—';
+      document.getElementById('np-singer').textContent = d.now_playing.singer || '';
+      document.getElementById('np-key').textContent = fmtKey(d.now_playing.key_offset);
+    } else {
+      nowCard.style.display = 'none';
+    }
+    const nextCard = document.getElementById('next-card');
+    if (d.next_up) {
+      nextCard.style.display = '';
+      document.getElementById('nu-title').textContent = d.next_up.title || '—';
+      document.getElementById('nu-singer').textContent = d.next_up.singer || '';
+      document.getElementById('nu-key').textContent = d.next_up.key_offset !== undefined ? fmtKey(d.next_up.key_offset) : '';
+    } else {
+      nextCard.style.display = 'none';
+    }
+  }).catch(()=>{});
+}
+
+function loadVolume() {
+  fetch('/api/volume').then(r=>r.json()).then(d=>{
+    const v = d.volume ?? d.percent ?? 80;
+    document.getElementById('dev-vol-slider').value = v;
+    document.getElementById('dev-vol-label').textContent = v;
+  }).catch(()=>{});
 }
 
 function renderFavorites(favs) {
@@ -135,7 +211,8 @@ function renderHistory(hist, filter) {
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────
-let keyTimer, volTimer;
+let keyTimer, volTimer, devVolTimer;
+
 function onKeyChange(v) {
   document.getElementById('key-label').textContent = (v>=0?'+':'')+v;
   clearTimeout(keyTimer);
@@ -144,6 +221,7 @@ function onKeyChange(v) {
       body:JSON.stringify({key_offset:parseInt(v)})});
   }, 400);
 }
+
 function onVolChange(v) {
   document.getElementById('vol-label').textContent = v;
   clearTimeout(volTimer);
@@ -153,14 +231,28 @@ function onVolChange(v) {
   }, 200);
 }
 
+function onDevVolChange(v) {
+  document.getElementById('dev-vol-label').textContent = v;
+  clearTimeout(devVolTimer);
+  devVolTimer = setTimeout(()=>{
+    fetch('/api/volume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume:parseInt(v)})});
+  }, 200);
+}
+
+function setAudioMode(mode) {
+  fetch('/api/audio-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+  applyAudioMode(mode);
+}
+
+function applyAudioMode(mode) {
+  document.getElementById('mode-local').classList.toggle('active', mode === 'local');
+  document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
+}
+
 function queueSong(ytID, title, thumb) {
-  const f = new FormData();
-  f.append('singer', name);
-  f.append('yt_id', ytID);
-  f.append('url', 'https://www.youtube.com/watch?v='+ytID);
-  f.append('title', title);
-  f.append('thumbnail', thumb);
-  fetch('/add',{method:'POST',body:f}).then(()=>alert('Added to queue!'));
+  const body = new URLSearchParams({singer: name, yt_id: ytID,
+    url: 'https://www.youtube.com/watch?v='+ytID, title, thumbnail: thumb});
+  fetch('/add',{method:'POST',body}).then(()=>alert('Added to queue!'));
 }
 
 function toggleFav(ytID, title, thumb) {
@@ -187,6 +279,9 @@ function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function fmtKey(k){return k>0?'+'+k:String(k||0)}
 
 load();
+loadVolume();
+loadLiveData();
+setInterval(loadLiveData, 2000);
 </script>
 </body>
 </html>

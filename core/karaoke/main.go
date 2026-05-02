@@ -72,10 +72,13 @@ type SearchResult struct {
 }
 
 type APIData struct {
-	NowPlaying *Job   `json:"now_playing"`
-	NextUp     *Job   `json:"next_up"`
-	Queue      []*Job `json:"queue"`
-	History    []*Job `json:"history"`
+	NowPlaying  *Job   `json:"now_playing"`
+	NextUp      *Job   `json:"next_up"`
+	Queue       []*Job `json:"queue"`
+	History     []*Job `json:"history"`
+	State       string `json:"state"`
+	UpNextUntil int64  `json:"up_next_until"` // unix ms; non-zero only in up_next state
+	AudioMode   string `json:"audio_mode"`
 }
 
 // ── Globals ──────────────────────────────────────────────────────────────────
@@ -86,6 +89,21 @@ var (
 	playerCmd        *exec.Cmd // process A: audio → PipeWire
 	hlsCmd           *exec.Cmd // process B: video → HLS
 	playerMu         sync.Mutex
+)
+
+// between-songs transition state
+var (
+	playerState  = "idle" // "idle", "playing", "up_next"
+	upNextUntil  time.Time
+	upNextSinger string
+	upNextTitle  string
+	stateMu      sync.Mutex
+)
+
+// audio routing mode (not persisted; resets to "local" on restart)
+var (
+	audioMode   = "local"
+	audioModeMu sync.RWMutex
 )
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -154,6 +172,13 @@ func registerRoutes(mux *http.ServeMux) {
 	// Storage
 	mux.HandleFunc("GET /api/storage", handleStorageStats)
 	mux.HandleFunc("POST /api/storage/quota", handleSetQuota)
+
+	// Audio mode
+	mux.HandleFunc("GET /api/audio-mode", handleGetAudioMode)
+	mux.HandleFunc("POST /api/audio-mode", handleSetAudioMode)
+
+	// QR code (PNG for join URL)
+	mux.HandleFunc("GET /api/qr", handleQR)
 
 	// System
 	mux.HandleFunc("POST /api/shutdown", handleShutdown)
@@ -227,8 +252,19 @@ func resetStaleJobs() {
 func handleAPIData(w http.ResponseWriter, r *http.Request) {
 	lockUpcoming()
 
+	stateMu.Lock()
+	state := playerState
+	until := upNextUntil
+	uSinger := upNextSinger
+	uTitle := upNextTitle
+	stateMu.Unlock()
+
+	audioModeMu.RLock()
+	mode := audioMode
+	audioModeMu.RUnlock()
+
 	now := queryByStatus("playing", 1)
-	ready := queryByStatus("ready", 0)
+	ready := queryByStatus("ready", 1)
 
 	var nowPlaying, nextUp *Job
 	if len(now) > 0 {
@@ -236,6 +272,10 @@ func handleAPIData(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(ready) > 0 {
 		nextUp = ready[0]
+	}
+	// During up_next transition the job may not be ready yet — synthesize it
+	if state == "up_next" && nextUp == nil && uSinger != "" {
+		nextUp = &Job{Singer: uSinger, Title: uTitle}
 	}
 
 	// Full queue view: pending + downloading + ready (minus the nextUp entry)
@@ -252,7 +292,20 @@ func handleAPIData(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("history_filter")
 	history := queryHistory(singer, filter, 60)
 
-	writeJSON(w, APIData{NowPlaying: nowPlaying, NextUp: nextUp, Queue: queue, History: history})
+	upNextMs := int64(0)
+	if state == "up_next" {
+		upNextMs = until.UnixMilli()
+	}
+
+	writeJSON(w, APIData{
+		NowPlaying:  nowPlaying,
+		NextUp:      nextUp,
+		Queue:       queue,
+		History:     history,
+		State:       state,
+		UpNextUntil: upNextMs,
+		AudioMode:   mode,
+	})
 }
 
 func handleAdd(w http.ResponseWriter, r *http.Request) {
@@ -682,6 +735,7 @@ func downloadWorker() {
 }
 
 func playerWorker() {
+	var lastSinger string
 	for {
 		var id int64
 		var filename, singer, title, ytID, thumbnail string
@@ -690,12 +744,35 @@ func playerWorker() {
 			`SELECT id,filename,singer,title,yt_id,thumbnail,key_offset FROM jobs WHERE status='ready' ORDER BY id LIMIT 1`,
 		).Scan(&id, &filename, &singer, &title, &ytID, &thumbnail, &keyOffset)
 		if err != nil {
+			stateMu.Lock()
+			playerState = "idle"
+			stateMu.Unlock()
+			lastSinger = ""
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
+		// Between-songs transition
+		if lastSinger != "" {
+			if singer == lastSinger {
+				time.Sleep(1 * time.Second)
+			} else {
+				stateMu.Lock()
+				playerState = "up_next"
+				upNextUntil = time.Now().Add(10 * time.Second)
+				upNextSinger = singer
+				upNextTitle = title
+				stateMu.Unlock()
+				time.Sleep(10 * time.Second)
+			}
+		}
+
 		// Lock this job — no more key changes
 		db.Exec(`UPDATE jobs SET status='playing', locked=1 WHERE id=?`, id)
+
+		stateMu.Lock()
+		playerState = "playing"
+		stateMu.Unlock()
 
 		// Write next-up overlay for whoever comes after
 		var ns, nt string
@@ -714,44 +791,52 @@ func playerWorker() {
 
 		db.Exec(`UPDATE jobs SET status='played' WHERE id=?`, id)
 		writeNextUp("", "")
-		time.Sleep(4 * time.Second)
+		lastSinger = singer
 	}
 }
 
-// play runs process A (audio→PipeWire) and process B (video→HLS) concurrently.
-// Returns when process A exits (song over or skipped).
+// play runs ffmpeg processes for audio and HLS based on the current audioMode.
+// "local": process A (audio→PipeWire) + process B (video-only HLS). Waits on A.
+// "stream": process B only (video+audio HLS). Waits on B.
 func play(filename string, semitones int) {
+	audioModeMu.RLock()
+	mode := audioMode
+	audioModeMu.RUnlock()
+
 	pitch := math.Pow(2, float64(semitones)/12)
-
-	// Process A: audio → PipeWire (feeds loopback + mic mixing)
-	audioArgs := []string{
-		"-nostdin", "-i", filename,
-		"-vn",
-		"-af", fmt.Sprintf("rubberband=pitch=%f", pitch),
-		"-f", "pulse",
-		"karaoke",
-	}
-
-	// Process B: video → HLS with Next Up overlay
 	syncMs, _ := strconv.Atoi(configGet("sync_offset_ms", "0"))
-	hlsArgs := buildHLSArgs(filename, syncMs)
 
 	playerMu.Lock()
-	playerCmd = exec.Command("ffmpeg", audioArgs...)
-	playerCmd.Env = append(os.Environ()) // inherits PULSE_SERVER
-	hlsCmd = exec.Command("ffmpeg", hlsArgs...)
-	playerCmd.Start()
+	hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, mode == "stream")...)
 	hlsCmd.Start()
+
+	if mode == "local" {
+		playerCmd = exec.Command("ffmpeg",
+			"-nostdin", "-i", filename,
+			"-vn",
+			"-af", fmt.Sprintf("rubberband=pitch=%f", pitch),
+			"-f", "pulse", "karaoke",
+		)
+		playerCmd.Env = os.Environ()
+		playerCmd.Start()
+	}
 	playerMu.Unlock()
 
-	playerCmd.Wait()
+	if mode == "local" && playerCmd != nil {
+		playerCmd.Wait()
+	} else {
+		hlsCmd.Wait()
+	}
 
 	playerMu.Lock()
+	killCmd(playerCmd)
 	killCmd(hlsCmd)
+	playerCmd = nil
+	hlsCmd = nil
 	playerMu.Unlock()
 }
 
-func buildHLSArgs(filename string, syncOffsetMs int) []string {
+func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool) []string {
 	vf := `drawtext=textfile=/tmp/hls/nextup.txt:reload=1:` +
 		`fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:` +
 		`fontsize=28:fontcolor=white:` +
@@ -761,23 +846,30 @@ func buildHLSArgs(filename string, syncOffsetMs int) []string {
 		delay := float64(syncOffsetMs) / 1000.0
 		vf = fmt.Sprintf("setpts=PTS+%f/TB,", delay) + vf
 	}
-	af := "anull"
-	if syncOffsetMs < 0 {
-		d := -syncOffsetMs
-		af = fmt.Sprintf("adelay=%d|%d", d, d)
+
+	args := []string{"-nostdin", "-i", filename, "-vf", vf}
+
+	if withAudio {
+		af := "anull"
+		if syncOffsetMs < 0 {
+			d := -syncOffsetMs
+			af = fmt.Sprintf("adelay=%d|%d", d, d)
+		}
+		args = append(args, "-af", af,
+			"-c:a", "aac", "-b:a", "128k", "-ar", "48000")
+	} else {
+		args = append(args, "-an")
 	}
-	return []string{
-		"-nostdin", "-i", filename,
-		"-vf", vf, "-af", af,
+
+	return append(args,
 		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
 		"-b:v", "1500k", "-maxrate", "1500k", "-bufsize", "3000k",
-		"-c:a", "aac", "-b:a", "128k", "-ar", "48000",
 		"-f", "hls",
 		"-hls_time", "1", "-hls_list_size", "3",
 		"-hls_flags", "delete_segments+append_list",
 		"-hls_segment_filename", "/tmp/hls/seg%d.ts",
 		"/tmp/hls/playlist.m3u8",
-	}
+	)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -795,6 +887,44 @@ func killCmd(cmd *exec.Cmd) {
 		cmd.Process.Kill()
 		cmd.Wait()
 	}
+}
+
+func handleGetAudioMode(w http.ResponseWriter, _ *http.Request) {
+	audioModeMu.RLock()
+	mode := audioMode
+	audioModeMu.RUnlock()
+	writeJSON(w, map[string]string{"mode": mode})
+}
+
+func handleSetAudioMode(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+	if body.Mode != "local" && body.Mode != "stream" {
+		http.Error(w, "mode must be 'local' or 'stream'", http.StatusBadRequest)
+		return
+	}
+	audioModeMu.Lock()
+	audioMode = body.Mode
+	audioModeMu.Unlock()
+	writeJSON(w, map[string]string{"mode": body.Mode})
+}
+
+func handleQR(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	if host == "" {
+		host = "localhost:8080"
+	}
+	joinURL := "http://" + host + "/"
+	out, err := exec.Command("qrencode", "-t", "PNG", "-o", "-", "-s", "5", joinURL).Output()
+	if err != nil {
+		http.Error(w, "qrencode: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(out)
 }
 
 func proxyVolume(percent int) {

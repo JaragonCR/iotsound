@@ -8,18 +8,38 @@
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#000;color:#fff;font-family:system-ui,sans-serif;height:100vh;overflow:hidden;position:relative}
   #player{width:100%;height:100vh;object-fit:contain;display:block}
-  #waiting{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111;gap:16px}
+
+  /* Waiting / Up Next screen */
+  #waiting{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111;gap:16px;z-index:10}
   #waiting h1{color:#bb86fc;font-size:2rem}
+  #waiting .next-singer{color:#03dac6;font-size:1.6rem;font-weight:700;margin-top:8px}
+  #waiting .next-song{color:#aaa;font-size:1rem;max-width:360px;text-align:center}
+  #waiting .countdown{color:#bb86fc;font-size:1.1rem;margin-top:4px}
   #waiting p{color:#999}
+
   /* Overlays */
-  .overlay{position:absolute;pointer-events:none}
-  #back-btn{top:16px;left:16px;pointer-events:all;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;cursor:pointer;font-size:.9rem;padding:8px 14px;position:absolute}
-  #singer-pill{top:16px;right:16px;background:rgba(187,134,252,.15);border:1px solid #bb86fc;border-radius:20px;color:#bb86fc;font-size:.85rem;font-weight:700;padding:6px 14px;position:absolute;text-decoration:none}
-  #qr-wrap{bottom:16px;left:16px;position:absolute;cursor:pointer}
-  #qr-wrap img{border-radius:8px;opacity:.75;transition:opacity .2s;width:80px;height:80px;display:block}
+  #back-btn{top:16px;left:16px;pointer-events:all;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;cursor:pointer;font-size:.9rem;padding:8px 14px;position:absolute;z-index:20}
+  #singer-pill{top:16px;right:16px;background:rgba(187,134,252,.15);border:1px solid #bb86fc;border-radius:20px;color:#bb86fc;font-size:.85rem;font-weight:700;padding:6px 14px;position:absolute;text-decoration:none;z-index:20}
+
+  /* Controls panel (bottom bar) */
+  #controls{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.85));padding:24px 16px 16px;z-index:20;display:flex;align-items:center;gap:16px}
+  #vol-wrap{display:flex;align-items:center;gap:8px;flex:1}
+  #vol-wrap label{color:#aaa;font-size:.8rem;white-space:nowrap}
+  #vol-slider{flex:1;accent-color:#bb86fc}
+  #vol-label{color:#bb86fc;font-size:.8rem;min-width:32px;text-align:right}
+  /* Audio mode toggle */
+  .mode-grp{display:flex;gap:6px}
+  .mode-btn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#aaa;cursor:pointer;font-size:.75rem;padding:5px 10px}
+  .mode-btn.active{background:#03dac6;border-color:#03dac6;color:#000;font-weight:700}
+
+  /* Next up overlay pill (shows while playing) */
+  #next-up-pill{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);background:rgba(3,218,198,.15);border:1px solid #03dac6;border-radius:20px;color:#03dac6;font-size:.8rem;padding:5px 14px;white-space:nowrap;z-index:20;display:none}
+
+  /* QR */
+  #qr-wrap{bottom:72px;left:16px;position:absolute;cursor:pointer;z-index:20}
+  #qr-wrap img{border-radius:8px;opacity:.65;transition:opacity .2s;width:72px;height:72px;display:block}
   #qr-wrap:hover img{opacity:1}
-  #qr-label{background:rgba(0,0,0,.6);border-radius:4px;color:#aaa;font-size:.7rem;margin-top:4px;padding:2px 6px;text-align:center}
-  #status{bottom:16px;right:16px;position:absolute;color:#555;font-size:.75rem}
+  #qr-label{background:rgba(0,0,0,.6);border-radius:4px;color:#aaa;font-size:.65rem;margin-top:3px;padding:2px 6px;text-align:center}
 </style>
 </head>
 <body>
@@ -27,21 +47,35 @@
 <video id="player" autoplay playsinline></video>
 
 <div id="waiting">
-  <h1>🎤 Singer View</h1>
-  <p>Waiting for a song to start…</p>
+  <h1 id="waiting-heading">Singer View</h1>
   <p id="waiting-sub" style="color:#555;font-size:.85rem"></p>
-  <a href="/" style="background:#bb86fc;border-radius:8px;color:#000;font-weight:700;padding:10px 20px;text-decoration:none">← Back to Queue</a>
+  <div class="next-singer" id="waiting-next-singer" style="display:none"></div>
+  <div class="next-song" id="waiting-next-song"></div>
+  <div class="countdown" id="waiting-countdown" style="display:none"></div>
+  <a href="/" style="background:#bb86fc;border-radius:8px;color:#000;font-weight:700;padding:10px 20px;text-decoration:none;margin-top:8px">← Back to Queue</a>
 </div>
 
 <button id="back-btn" onclick="window.location='/'">← Queue</button>
-<a id="singer-pill" href="#" onclick="goProfile(event)">👤 <span id="pill-name">Guest</span></a>
+<a id="singer-pill" href="#" onclick="goProfile(event)">Singer: <span id="pill-name">Guest</span></a>
 
-<div id="qr-wrap" onclick="this.classList.toggle('expanded')">
-  <img id="qr-img" src="" alt="QR">
+<div id="next-up-pill" id="next-up-pill"></div>
+
+<div id="qr-wrap">
+  <img id="qr-img" src="/api/qr" alt="QR" onerror="document.getElementById('qr-wrap').style.display='none'">
   <div id="qr-label">Scan to join</div>
 </div>
 
-<div id="status"></div>
+<div id="controls">
+  <div id="vol-wrap">
+    <label>Vol</label>
+    <input type="range" id="vol-slider" min="0" max="100" value="80" oninput="setVolume(this.value)">
+    <span id="vol-label">80%</span>
+  </div>
+  <div class="mode-grp">
+    <button id="mode-local" class="mode-btn active" onclick="setAudioMode('local')">Speakers</button>
+    <button id="mode-stream" class="mode-btn" onclick="setAudioMode('stream')">Stream</button>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <script>
@@ -53,10 +87,37 @@ function goProfile(e) {
   if (singerName !== 'Guest') window.location = '/singer/' + encodeURIComponent(singerName);
 }
 
+// ── Volume ────────────────────────────────────────────────────────────────────
+let volTimer;
+function loadVolume() {
+  fetch('/api/volume').then(r=>r.json()).then(d=>{
+    const v = d.volume ?? d.percent ?? 80;
+    document.getElementById('vol-slider').value = v;
+    document.getElementById('vol-label').textContent = v + '%';
+  }).catch(()=>{});
+}
+function setVolume(v) {
+  document.getElementById('vol-label').textContent = v + '%';
+  clearTimeout(volTimer);
+  volTimer = setTimeout(()=>{
+    fetch('/api/volume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume:parseInt(v)})});
+  }, 200);
+}
+
+// ── Audio mode ────────────────────────────────────────────────────────────────
+function setAudioMode(mode) {
+  fetch('/api/audio-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+  applyAudioMode(mode);
+}
+function applyAudioMode(mode) {
+  document.getElementById('mode-local').classList.toggle('active', mode === 'local');
+  document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
+}
+
 // ── HLS Player ────────────────────────────────────────────────────────────────
 const video   = document.getElementById('player');
 const waiting = document.getElementById('waiting');
-let hls, playing = false, pollTimer;
+let hls, playing = false;
 
 function startStream() {
   const src = '/stream/playlist.m3u8';
@@ -71,46 +132,68 @@ function startStream() {
     video.play();
   }
   video.onplaying = ()=>{ playing=true; waiting.style.display='none'; };
-  video.onpause   = ()=>{ if(!playing) return; };
 }
 
 function onStreamDown() {
   playing = false;
-  waiting.style.display='flex';
   if (hls) { hls.destroy(); hls=null; }
-  // Retry after 3s
   setTimeout(startStream, 3000);
 }
 
-// Poll /api/data to update waiting message with next-up info
+// ── Status polling ────────────────────────────────────────────────────────────
+let countdownTimer;
 function pollStatus() {
   fetch('/api/data').then(r=>r.json()).then(d=>{
-    const sub = document.getElementById('waiting-sub');
-    if (d.now_playing) {
-      sub.textContent = '▶ ' + (d.now_playing.singer||'') + ' is singing — stream starting…';
-    } else if (d.next_up) {
-      sub.textContent = 'Next up: ' + (d.next_up.singer||'') + ' — ' + (d.next_up.title||'');
+    applyAudioMode(d.audio_mode || 'local');
+
+    const nextPill = document.getElementById('next-up-pill');
+    if (d.next_up && d.state === 'playing') {
+      nextPill.textContent = 'Next: ' + (d.next_up.singer||'') + ' — ' + (d.next_up.title||'');
+      nextPill.style.display = '';
     } else {
-      sub.textContent = 'Queue is empty';
+      nextPill.style.display = 'none';
+    }
+
+    if (d.state === 'up_next') {
+      // Show full-screen Up Next
+      if (playing) { onStreamDown(); } // stop the stream
+      waiting.style.display = 'flex';
+      document.getElementById('waiting-heading').textContent = 'Up Next';
+      const ns = document.getElementById('waiting-next-singer');
+      ns.textContent = d.next_up ? d.next_up.singer : '';
+      ns.style.display = d.next_up ? '' : 'none';
+      document.getElementById('waiting-next-song').textContent = d.next_up ? d.next_up.title : '';
+      const cd = document.getElementById('waiting-countdown');
+      cd.style.display = '';
+      document.getElementById('waiting-sub').style.display = 'none';
+      clearInterval(countdownTimer);
+      countdownTimer = setInterval(()=>{
+        const secs = Math.max(0, Math.ceil((d.up_next_until - Date.now()) / 1000));
+        cd.textContent = secs > 0 ? `Starting in ${secs}s — hand over the mic!` : '';
+        if (secs === 0) clearInterval(countdownTimer);
+      }, 500);
+    } else if (d.state === 'playing' && !playing) {
+      // Re-attach stream if we're in playing state but not connected
+      document.getElementById('waiting-heading').textContent = 'Singer View';
+      document.getElementById('waiting-next-singer').style.display = 'none';
+      document.getElementById('waiting-countdown').style.display = 'none';
+      document.getElementById('waiting-sub').style.display = '';
+      startStream();
+    } else if (d.state === 'idle') {
+      waiting.style.display = 'flex';
+      document.getElementById('waiting-heading').textContent = 'Singer View';
+      document.getElementById('waiting-next-singer').style.display = 'none';
+      document.getElementById('waiting-countdown').style.display = 'none';
+      document.getElementById('waiting-sub').style.display = '';
+      document.getElementById('waiting-sub').textContent = 'Queue is empty — add songs to get started';
     }
   }).catch(()=>{});
 }
 
-// ── QR Code ───────────────────────────────────────────────────────────────────
-function loadQR() {
-  // Point to main queue page
-  const url = location.protocol + '//' + location.hostname + (location.port?':'+location.port:'') + '/';
-  const qrImg = document.getElementById('qr-img');
-  // Use qrencode via a simple API if available, else omit
-  // We serve a /qr endpoint that generates the QR via the qrencode binary
-  qrImg.src = '/static/qr.png';
-  qrImg.onerror = ()=>{ document.getElementById('qr-wrap').style.display='none'; };
-}
-
+loadVolume();
 startStream();
 pollStatus();
-setInterval(pollStatus, 3000);
-loadQR();
+setInterval(pollStatus, 2000);
 </script>
 </body>
 </html>
