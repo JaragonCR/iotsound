@@ -32,6 +32,19 @@ until PULSE_SERVER="tcp:${GW}:4317" pactl info >/dev/null 2>&1; do
 done
 echo "[snapclient] PulseAudio ready (waited ${_pa_waited}s)"
 
+# AUTO role: container is pre-warmed at boot. Wait for master promotion before
+# fetching the master IP so we connect to the right server (our own snapserver,
+# which is also pre-warmed and will have pacat running by the time we start).
+# JOIN/HOST: proceed immediately — they always have a master to connect to.
+ROLE=$(curl -sf "$SOUND_SUPERVISOR/multiroom" 2>/dev/null | grep -o '"role":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+if [[ "$ROLE" == "auto" ]]; then
+  echo "[snapclient] AUTO role — waiting for master promotion..."
+  until curl -sf "$SOUND_SUPERVISOR/multiroom/active" 2>/dev/null | grep -q '"active":true'; do
+    sleep 0.5
+  done
+  echo "[snapclient] Promoted — connecting to snapserver"
+fi
+
 # Fetch master IP after election completes (supervisor election runs in parallel with audio init).
 SNAPSERVER=$(curl --silent "$SOUND_SUPERVISOR/multiroom/master" || true)
 echo "Starting multi-room client..."

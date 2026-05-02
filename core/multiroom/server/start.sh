@@ -102,6 +102,15 @@ SNAPEOF
   # pacat is restarting. Blocks here until snapserver opens the read end.
   exec 3>"$FIFO"
 
+  # Container pre-warms at AUTO boot — wait for sound-supervisor to promote us to master
+  # before starting pacat. Polls every 500ms so latency from play-detect to first audio
+  # is <500ms instead of the previous container cold-start (~3s).
+  echo "[multiroom-server] Waiting for master promotion..."
+  until curl -sf "$SOUND_SUPERVISOR/multiroom/active" 2>/dev/null | grep -q '"active":true'; do
+    sleep 0.5
+  done
+  echo "[multiroom-server] Active — starting pacat"
+
   start_pacat
 
   # Watchdog: if pacat exits for any reason, restart it.
