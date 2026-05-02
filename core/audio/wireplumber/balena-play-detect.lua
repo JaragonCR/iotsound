@@ -38,13 +38,18 @@ local links_om = ObjectManager {
 }
 
 links_om:connect("object-added", function(_, link)
-  local out_id = tonumber(link.properties["link.output.node"])
-  local in_id  = tonumber(link.properties["link.input.node"])
+  local out_id   = tonumber(link.properties["link.output.node"])
+  local in_id    = tonumber(link.properties["link.input.node"])
+  local in_node  = all_nodes[in_id]
+  local out_node = all_nodes[out_id]
+  local in_name  = in_node  and (in_node.properties["node.name"]  or "?") or "?"
+  local out_name = out_node and (out_node.properties["node.name"] or "?") or "?"
+  -- Debug: log every link to identify the real node names in this environment.
+  print(string.format("[play-detect] link-added: %s(%s) → %s(%s)",
+    out_name, tostring(out_id), in_name, tostring(in_id)))
   if not out_id or not in_id then return end
-
-  local in_node = all_nodes[in_id]
   if not in_node then return end
-  if (in_node.properties["node.name"] or "") ~= input_sink then return end
+  if in_name ~= input_sink then return end
 
   -- This link targets balena-sound.input — record it.
   active_links[link.id] = out_id
@@ -53,8 +58,6 @@ links_om:connect("object-added", function(_, link)
 
   -- Only fire on the first link from this source (avoids duplicate play events for L+R).
   if prev == 0 then
-    local out_node = all_nodes[out_id]
-    local out_name = (out_node and out_node.properties["node.name"]) or "unknown"
     print("[play-detect] play started: " .. out_name .. " → " .. input_sink)
     if supervisor_url ~= "" then
       os.execute(string.format(
