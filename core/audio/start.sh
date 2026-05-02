@@ -786,4 +786,37 @@ log "  - Output Latency: ${SOUND_OUTPUT_LATENCY}ms"
 log "  - Role: $ROLE"
 log ""
 
+# Background play-detector: watches for sink-inputs on balena-sound.input and
+# notifies the supervisor via /internal/play and /internal/stop.
+# Uses pactl subscribe (event-driven) + pactl list sink-inputs (state check) so
+# it fires correctly regardless of how PipeWire routes streams internally.
+if [ -n "$SOUND_SUPERVISOR_URL" ]; then
+  (
+    get_input_sink_idx() {
+      pactl list short sinks 2>/dev/null | awk '/balena-sound\.input[[:space:]]/{print $1; exit}'
+    }
+    has_plugin_playing() {
+      local idx; idx=$(get_input_sink_idx)
+      [ -n "$idx" ] && pactl list sink-inputs 2>/dev/null | grep -q "Sink: ${idx}$"
+    }
+    _last_state=""
+    pactl subscribe 2>/dev/null | while IFS= read -r _ev; do
+      case "$_ev" in *"on sink-input"*)
+        if has_plugin_playing; then _new="play"; else _new="stop"; fi
+        if [ "$_new" != "$_last_state" ]; then
+          _last_state="$_new"
+          if [ "$_new" = "play" ]; then
+            echo "[play-detect] play started → $SOUND_SUPERVISOR_URL/internal/play"
+            curl -sf -X POST "$SOUND_SUPERVISOR_URL/internal/play" >/dev/null 2>&1 || true
+          else
+            echo "[play-detect] play stopped → $SOUND_SUPERVISOR_URL/internal/stop"
+            curl -sf -X POST "$SOUND_SUPERVISOR_URL/internal/stop" >/dev/null 2>&1 || true
+          fi
+        fi
+      ;; esac
+    done
+  ) &
+  log "Play detector started (pactl subscribe → $SOUND_SUPERVISOR_URL)"
+fi
+
 wait $PW_PULSE_PID
