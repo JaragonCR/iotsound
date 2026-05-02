@@ -81,18 +81,22 @@
                     Multiroom
                     <span class="badge badge-pill badge-warning" style="font-size: 10px; vertical-align: middle">Restarts services</span>
                   </h5>
-                  <p class="card-text">
-                    Enable to sync audio across all devices in the fleet.<br/>
-                    Disable to play independently on this device only.
-                  </p>
-                  <div class="btn-group" role="group">
-                    <button id="btn-multiroom" type="button" class="btn btn-outline-primary" onclick="setMode('MULTI_ROOM')">
-                      Multiroom
-                    </button>
-                    <button id="btn-standalone" type="button" class="btn btn-outline-secondary" onclick="setMode('STANDALONE')">
-                      Standalone
-                    </button>
+                  <p class="card-text" style="margin-bottom: 0.4rem">Role:</p>
+                  <div class="btn-group btn-group-sm mb-3" id="role-btn-group">
+                    <button type="button" class="btn btn-outline-primary" data-role="auto" onclick="setRole('auto')">Auto</button>
+                    <button type="button" class="btn btn-outline-primary" data-role="host" onclick="setRole('host')">Host</button>
+                    <button type="button" class="btn btn-outline-primary" data-role="join" onclick="setRole('join')">Join</button>
+                    <button type="button" class="btn btn-outline-secondary" data-role="disabled" onclick="setRole('disabled')">Disabled</button>
                   </div>
+                  <p class="card-text" style="margin-bottom: 0.4rem">Group name:</p>
+                  <div class="input-group input-group-sm mb-2">
+                    <input id="group-name-input" type="text" class="form-control" placeholder="e.g. living-room" list="known-groups-list" />
+                    <datalist id="known-groups-list"></datalist>
+                    <div class="input-group-append">
+                      <button class="btn btn-outline-primary" type="button" onclick="applyGroupName()">Apply</button>
+                    </div>
+                  </div>
+                  <small class="text-muted">Master: <span id="master-ip-text">—</span></small>
                 </div>
               </div>
             </div>
@@ -333,23 +337,62 @@
           volumeSlider.value = volume;
         }
 
-        let mode = await getAPI("/mode");
-        updateModeButtons(mode);
-
+        await refreshMultiroom();
+        await loadKnownGroups();
         await refreshBuffer();
       }
 
-      function updateModeButtons(mode) {
-        var isMultiroom = (mode === "MULTI_ROOM" || mode === "MULTI_ROOM_CLIENT");
-        document.getElementById("btn-multiroom").className =
-          isMultiroom ? "btn btn-primary" : "btn btn-outline-primary";
-        document.getElementById("btn-standalone").className =
-          isMultiroom ? "btn btn-outline-secondary" : "btn btn-secondary";
+      setInterval(refreshMultiroom, 5000);
+
+      async function refreshMultiroom() {
+        var status = await getAPI("/multiroom");
+        if (!status || typeof status !== "object") return;
+
+        document.querySelectorAll("#role-btn-group button").forEach(function(btn) {
+          var active = btn.dataset.role === status.role;
+          var isDisabled = btn.dataset.role === "disabled";
+          btn.className = active
+            ? ("btn btn-sm " + (isDisabled ? "btn-secondary" : "btn-primary"))
+            : ("btn btn-sm " + (isDisabled ? "btn-outline-secondary" : "btn-outline-primary"));
+        });
+
+        var groupInput = document.getElementById("group-name-input");
+        if (document.activeElement !== groupInput) {
+          groupInput.value = status.groupName || "";
+        }
+
+        var masterIp = await getAPI("/multiroom/master");
+        document.getElementById("master-ip-text").innerHTML = masterIp || "—";
       }
 
-      async function setMode(mode) {
-        updateModeButtons(mode);
-        await postAPI("/mode", "mode", mode);
+      async function loadKnownGroups() {
+        var groups = await getAPI("/multiroom/groups");
+        var datalist = document.getElementById("known-groups-list");
+        datalist.innerHTML = "";
+        if (Array.isArray(groups)) {
+          groups.forEach(function(g) {
+            var opt = document.createElement("option");
+            opt.value = g.name;
+            datalist.appendChild(opt);
+          });
+        }
+      }
+
+      async function setRole(role) {
+        document.querySelectorAll("#role-btn-group button").forEach(function(btn) {
+          var active = btn.dataset.role === role;
+          var isDisabled = btn.dataset.role === "disabled";
+          btn.className = active
+            ? ("btn btn-sm " + (isDisabled ? "btn-secondary" : "btn-primary"))
+            : ("btn btn-sm " + (isDisabled ? "btn-outline-secondary" : "btn-outline-primary"));
+        });
+        await postAPI("/multiroom/role", "role", role);
+      }
+
+      async function applyGroupName() {
+        var name = document.getElementById("group-name-input").value.trim();
+        await postAPI("/multiroom/group", "groupName", name);
+        await loadKnownGroups();
       }
 
       function deviceAction(action, key, value) {
