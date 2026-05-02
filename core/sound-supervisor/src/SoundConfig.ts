@@ -33,9 +33,11 @@ export default class SoundConfig {
         this.safeService(startBalenaService, 'bluetooth')
         break
       case MultiroomRole.AUTO:
-        // Start plugins + client; server start is deferred to election result.
-        // applyElectionResult() will start/stop multiroom-server after election.
-        this.safeService(startBalenaService, 'multiroom-client')
+        // Multiroom services start only after play-detect promotes to master.
+        // Stopping them here prevents multiroom-client from entering exponential
+        // backoff against a non-existent snapserver at boot.
+        this.safeService(stopBalenaService, 'multiroom-server')
+        this.safeService(stopBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
         this.safeService(startBalenaService, 'librespot')
         this.safeService(startBalenaService, 'bluetooth')
@@ -65,16 +67,26 @@ export default class SoundConfig {
     this.applyRoleServices()
   }
 
-  // Called after election completes. Starts or stops multiroom-server accordingly.
+  // Called after promotion. Starts the full multiroom stack for the elected role.
   applyElectionResult(elected: ElectedRole): void {
     this.electedRole = elected
     if (elected === 'master') {
-      console.log('[election] Elected master — starting multiroom-server')
+      console.log('[election] Promoted to master — starting multiroom-server + multiroom-client')
       this.safeService(startBalenaService, 'multiroom-server')
+      this.safeService(startBalenaService, 'multiroom-client')
     } else {
-      console.log('[election] Elected client — ensuring multiroom-server is stopped')
+      console.log('[election] Elected client — starting multiroom-client, stopping multiroom-server')
       this.safeService(stopBalenaService, 'multiroom-server')
+      this.safeService(startBalenaService, 'multiroom-client')
     }
+  }
+
+  // Called when stop demotion timer fires. Tears down multiroom stack until next play.
+  demoteToIdle(): void {
+    this.electedRole = null
+    console.log('[election] Demoted to idle — stopping multiroom-server + multiroom-client')
+    this.safeService(stopBalenaService, 'multiroom-server')
+    this.safeService(stopBalenaService, 'multiroom-client')
   }
 
   isElectedMaster(): boolean {

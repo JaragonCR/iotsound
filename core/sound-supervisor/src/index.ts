@@ -67,7 +67,8 @@ audioBlock.on('play', async (sink: any) => {
 })
 
 // Called by SoundAPI when /internal/play fires.
-// Cancels any pending demotion timer, then promotes to master if not already.
+// Cancels any pending demotion timer, then optimistically promotes to master.
+// Collisions are rare; existing snapcast conflict resolution handles them.
 export async function handlePlayDetect(): Promise<void> {
   if (!monitor) return
   if (config.role !== MultiroomRole.AUTO) return
@@ -80,16 +81,13 @@ export async function handlePlayDetect(): Promise<void> {
 
   if (config.isElectedMaster()) return
 
-  console.log('[play-detect] AUTO device not yet master — re-running election')
-  const elected = await electMaster(config.role, config.groupName, deviceUuid)
-  if (elected === 'master') {
-    config.applyElectionResult('master')
-    monitor.setMaster(true)
-  }
+  console.log('[play-detect] AUTO device — optimistically promoting to master')
+  config.applyElectionResult('master')
+  monitor.setMaster(true)
 }
 
 // Called by SoundAPI when /internal/stop fires.
-// Starts a 30s timer; if no play arrives before it fires, demotes back to client.
+// Starts a 30s timer; if no play arrives before it fires, tears down multiroom stack.
 export function handleStopDetect(): void {
   if (!monitor) return
   if (config.role !== MultiroomRole.AUTO || !config.isElectedMaster()) return
@@ -98,8 +96,8 @@ export function handleStopDetect(): void {
   console.log(`[stop-detect] Stream stopped — demoting in ${STOP_DEMOTION_MS / 1000}s if no replay`)
   stopTimer = setTimeout(() => {
     stopTimer = null
-    console.log('[stop-detect] No replay — demoting to unelected client')
-    config.applyElectionResult('client')
+    console.log('[stop-detect] No replay — demoting to idle')
+    config.demoteToIdle()
     monitor.setMaster(false)
   }, STOP_DEMOTION_MS)
 }
