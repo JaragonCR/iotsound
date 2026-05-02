@@ -1,4 +1,4 @@
-# IoTSound (JaragonCR Fork) — v4.6.1
+# IoTSound (JaragonCR Fork) — v4.7.0
 
 > **Actively maintained community fork** of [iotsound/iotsound](https://github.com/iotsound/iotsound), originally developed by Balena as balenaSound.
 > In October 2025 Balena issued a [call for maintainers](https://github.com/iotsound/iotsound/issues/689) but did not transfer the project to volunteers. This fork picks up that work.
