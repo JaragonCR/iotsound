@@ -193,11 +193,11 @@ function pollStatus() {
     applyAudioMode(d.audio_mode || 'local');
 
     const nuBox = document.getElementById('next-up-box');
-    if (d.next_up && d.state === 'playing') {
+    if (d.next_up && (d.now_playing || d.state === 'up_next')) {
       document.getElementById('nu-singer').textContent = d.next_up.singer || '';
       document.getElementById('nu-title').textContent = d.next_up.title || '';
       nuBox.style.display = '';
-    } else if (d.state !== 'up_next') {
+    } else {
       nuBox.style.display = 'none';
     }
 
