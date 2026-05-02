@@ -1,4 +1,51 @@
 - commits:
+    - subject: "docs: add SECURITY.md with vulnerability reporting policy"
+      hash: 473c1806654ed4cf29e902e0b906d95d9b24d951
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "perf(multiroom): pre-warm containers for <500ms first-play latency"
+      hash: f0bc39d809c17f3f7046581129b8444458a6f8a0
+      body: >
+        Previously in AUTO mode, multiroom-server and multiroom-client were
+
+        stopped at boot and cold-started on play-detect, adding ~3s of container
+
+        startup time before any audio could flow.
+
+
+        Now both containers start on boot and enter a waiting state, polling
+
+        GET /multiroom/active every 500ms. When play-detect fires and the device
+
+        is promoted to master, the endpoint flips to true and both containers
+
+        start their main processes (pacat / snapclient) within 500ms.
+
+
+        On demotion (30s silence timer), restartBalenaService bounces both
+
+        containers so they re-enter the waiting state cleanly for the next play.
+
+
+        New endpoint: GET /multiroom/active → {"active": bool}
+
+        multiroom-client waits only when role=auto; JOIN/HOST proceed
+        immediately.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.7.0
+  title: ""
+  date: 2026-05-02T15:32:48.192Z
+- commits:
     - subject: "fix(audit): post-Multiroom-2.0 cleanup — docs, stale vars, master
         override"
       hash: d71ea1613b85d3d6b79fed98fdebbc5e95378381

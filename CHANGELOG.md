@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.7.0
+## (2026-05-02)
+
+* docs: add SECURITY.md with vulnerability reporting policy [JaragonCR]
+* perf(multiroom): pre-warm containers for <500ms first-play latency [JaragonCR]
+
 # v4.6.1
 ## (2026-05-02)
 
