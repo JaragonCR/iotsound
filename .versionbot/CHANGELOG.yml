@@ -1,4 +1,924 @@
 - commits:
+    - subject: "chore: trigger versionist for Multiroom 2.0 commits"
+      hash: 1ba91c9b0cc9e17e08c1b489322c9edefdb6fa1d
+      body: |
+        The feat/multiroom-2 work was merged directly to master, bypassing
+        Flowzone. This commit triggers the versionist run so v4.6.0 is cut.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "docs: update README and MULTIROOM.md for v4.6.0 Multiroom 2.0"
+      hash: 34ce1fdb1c47a91efff8587cef1eccf0ab17d2ba
+      body: |
+        - Bump version to v4.6.0
+        - Move Multiroom 2.0 from Pending to Completed in What's different
+        - Replace old SOUND_MODE/cote vars with new role/group system
+        - Add roles table explaining auto/host/join/disabled
+        - Add standalone mode explanation
+        - Add explicit "Forcing a specific output or input device" section
+        - Expand web UI description to list all panel features
+        - Rewrite MULTIROOM.md to describe new mDNS election, roles, groups,
+          and remove all references to cote, SOUND_MODE, SOUND_COTE_DELAY
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(ui): group selector with pinned default + known groups dropdown"
+      hash: 8e313dc5b8caaac4f71f5074d50b3eded840901d
+      body: |
+        Replaces free-text input with a select showing current group,
+        'default' pinned first, then known groups from last 7 days sorted by
+        recency. '＋ Enter new name…' at the bottom reveals a text input.
+        Active group shown as bold label above the dropdown.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore: rename default group from 'iotsound-default' to 'default'"
+      hash: 3eceb976e24fb0b963a1f8f44a1b654dce9efbec
+      body: >
+        Simpler name for the implicit group used when SOUND_GROUP_NAME is not
+        set.
+
+        Also fixes an inconsistency where the mDNS service name used
+        'iotsound-default'
+
+        while the TXT record group field already said 'default'.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(ui): replace mode buttons with role selector + group name input"
+      hash: acfdaee5e1a205bf80a6f36dac8481cda7f17eed
+      body: |
+        Multiroom card now shows role buttons (Auto/Host/Join/Disabled),
+        a group name text field with datalist autocomplete from known groups,
+        and the current master IP. Calls /multiroom/role and /multiroom/group
+        instead of the deprecated /mode endpoint.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore(deps): remove cote — replaced by Avahi mDNS in Multiroom 2.0"
+      hash: 8f0c2025b5d71e190a37a3c787eba9992dcbdbce
+      body: |
+        cote has been unused since the multiroom-2 rewrite replaced its pub/sub
+        with Avahi advertisement + bonjour-service discovery. Drop the package
+        and its types to clean up the dependency tree.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(multiroom): optimistic master promotion + fix client backoff"
+      hash: 080115009e187b395366952b19a27edd7975efe5
+      body: >
+        On play-detect, AUTO immediately promotes to master without mDNS browse.
+
+        Collisions are rare and handled by existing snapcast conflict logic.
+
+
+        Fixes multiroom-client exponential backoff: AUTO now stops both
+
+        multiroom-server and multiroom-client at boot; applyElectionResult
+        starts
+
+        them together once play-detect fires. demoteToIdle() tears down both on
+
+        the 30s demotion timer, so the next play always gets a clean start.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(audio): replace WirePlumber play-detect with pactl subscribe
+        watcher"
+      hash: 0314b3e307a56de2b50651f2ed890a43556d175d
+      body: >
+        WirePlumber Lua link events for module-null-sink nodes are not exposed
+
+        to the ObjectManager — pipewire-pulse manages those links internally.
+
+        Neither node.target nor link objects fire for the balena-sound.input
+        sink.
+
+
+        Replace with a background pactl subscribe watcher in start.sh that fires
+
+        after PulseAudio is fully ready. On each sink-input event, checks
+        whether
+
+        any sink-input is currently connected to balena-sound.input
+        (state-based,
+
+        not event-based) to avoid duplicate calls. Posts to /internal/play or
+
+        /internal/stop accordingly.
+
+
+        The WirePlumber Lua file is kept as a documented no-op stub so the conf
+
+        file and script loader remain intact.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "debug(audio): log all WirePlumber links to identify node names"
+      hash: 7083abd24e393739af2815b660ba68b8ece3e63b
+      body: |
+        Temporary: log every link-added event with both node names and IDs so
+        we can see the real node.name of balena-sound.input and librespot's
+        stream in this PipeWire environment.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(audio): switch play-detect to link-based WirePlumber events"
+      hash: 65024666b3331cf6e4fefb73efb217bc08157505
+      body: |
+        node.target / target.object are not set when a plugin routes via the
+        default PulseAudio sink (go-librespot, shairport-sync). Watching Stream
+        node appearance therefore never fired /internal/play.
+
+        Switch to monitoring Link objects: when a link forms between any output
+        stream and balena-sound.input, fire /internal/play; when the last link
+        from that source is removed, fire /internal/stop. Stereo streams create
+        two links (L+R) — source_link_count deduplicates so only one HTTP call
+        fires per stream.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(multiroom-2): lazy AUTO election + 30s stop demotion"
+      hash: d5739a6e1ce73eaa7a2c226530036deb2b1d23a3
+      body: >
+        AUTO devices no longer elect at boot — they start as unelected clients
+
+        and promote to master only when /internal/play fires. This prevents idle
+
+        devices from claiming master unnecessarily.
+
+
+        On /internal/stop (stream unlink), a 30s demotion timer starts. If no
+
+        play arrives before it fires, the master demotes back to unelected
+        client
+
+        (multiroom-server stops, advertisement withdrawn). A new play event on
+
+        any device then re-elects a master from scratch.
+
+
+        WirePlumber Lua now fires both /internal/play (stream-added) and
+
+        /internal/stop (stream-removed). Also drops the debug all_nodes_om
+
+        block that was logging every PipeWire node at startup.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(sound-supervisor): guard Object.entries against null config values"
+      hash: 30cdb98d0c032472ab323fb595eb883daa65db73
+      body: |
+        SoundConfig.electedRole is null at startup; typeof null === 'object'
+        so the route-generator loop called Object.entries(null) and crashed.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(multiroom-2): Spike-4 master election + role-gated snapserver"
+      hash: 10638ed7e26b68244f4a1edf6fe9eccf8ca21f71
+      body: >
+        - Add ElectionManager.ts: mDNS conflict detection with UUID-based jitter
+          tiebreaker for simultaneous-boot races (HOST→master, JOIN/DISABLED→client,
+          AUTO→browse then elect)
+        - SoundConfig: defer multiroom-server start to election result; add
+          applyElectionResult() and isElectedMaster()
+        - SnapserverMonitor: gate snapserver HTTP polling on isMaster; client
+          devices run mDNS discovery only; setMaster() handles runtime promotion
+        - SoundAPI: wire /internal/play to handlePlayDetect() via
+        setPlayHandler()
+
+        - AvahiBrowser: add groupName filter so election and discovery scope to
+        group
+
+        - multiroom-client/start.sh: fetch master IP after pactl wait so
+        election
+          has completed before snapclient connects
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(startup): add pulseaudio-utils and reduce PA wait noise in
+        multiroom-client"
+      hash: 0360b7da2468166d2c871485cb738a05e5878ac5
+      body: |
+        - Dockerfile: add pulseaudio-utils so pactl is available (was missing,
+          causing the pactl info check to loop forever with exit 127)
+        - start.sh: poll every 5s instead of 2s; log only on first wait and
+          every 30s after — quiet during normal startup, not silent on stuck
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(startup): replace /dev/tcp check with pactl info in
+        multiroom-client"
+      hash: 362639df8b8d4fa896f2dca39a48295d4126220d
+      body: |
+        /dev/tcp only confirms the port is open, which passes on stale sockets
+        from a dying previous pipewire-pulse session. pactl info speaks the PA
+        protocol so it only succeeds once pipewire-pulse is fully initialised.
+
+        Without this, snapclient crashes 5+ times on every restart cycle
+        (PulseAudio context failed, error: Connection terminated) before PA
+        finally settles, making latency appear erratic during startup.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(logs): remove noisy mdns-browse poll log"
+      hash: e8818348163eeeda489af12d3463f992fc2c0306
+      body: |
+        browseSnapcast() fired every 15s and always logged "Found N snapcast
+        service(s)" — that's ~240 lines/hour of noise. The meaningful event
+        (master IP change) is already logged in SnapserverMonitor.discover().
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(latency): reduce audio pipeline delay from ~3s to ~650ms"
+      hash: 49fa39a35813a3fc4f5ef904e210c1b6975ea72e
+      body: |
+        Hardware quantum confirmed 1024 samples (21ms), so we can safely tighten
+        latency targets throughout the chain.
+
+        - core/audio: default loopbacks 200ms → 100ms (saves 200ms total;
+          100ms is well above the 21ms quantum so no underruns)
+        - multiroom-client: set PULSE_LATENCY_MSEC=200 on snapclient invocation
+          so libpulse requests a bounded output buffer instead of the PA server
+          default (~1-2s); this is the main contributor to the 3s delay
+
+        Estimated pipeline: 100ms input + 50ms pacat + 400ms snapserver +
+        200ms snapclient PA + 100ms output ≈ 850ms total (vs ~3s before).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(resilience): add PA readiness wait and restart guards to librespot
+        and multiroom-server"
+      hash: f098b2f1ea74b288aeb823a978d939daffe2c4d1
+      body: |
+        - librespot/start.sh: shebang → bash (needed for /dev/tcp), add
+          /dev/tcp wait on localhost:4317 before starting the daemon, default
+          backend → pulseaudio so go-librespot routes through pipewire-pulse
+          instead of attempting exclusive raw-ALSA access.
+        - multiroom-server/start.sh: add 120s timeout to start_pacat() so the
+          container exits (triggering on-failure restart) if snapcast.monitor
+          never becomes available, rather than hanging indefinitely.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "revert(multiroom-client): remove PULSE_LATENCY_MSEC=50 from snapclient"
+      hash: 21c7d4e8cc1714602a92b67086ce6bafa0bc6d26
+      body: >
+        Without the PipeWire quantum cap, the hardware's native ALSA period
+
+        (likely 341ms+ for HDMI on this Pi) exceeds 50ms. PipeWire rejects the
+
+        PA stream when the requested latency is smaller than one quantum,
+        causing
+
+        snapclient to produce no audio.
+
+
+        The quantum cap + PULSE_LATENCY_MSEC combination worked but broke plugin
+
+        controls. Neither can be safely used alone. Reverting both to restore
+        the
+
+        known-good baseline (audio works, 3s delay).
+
+
+        Latency reduction requires reading the actual hardware quantum from
+        device
+
+        logs first to know the safe floor.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(audio): remove PipeWire quantum cap — breaks plugin controls"
+      hash: de0c296329abb1a6fe99cb969817017f28dc7263
+      body: |
+        The max-quantum=8192 cap conflicted with the ALSA hardware's preferred
+        period on this device, destabilizing PipeWire. With PipeWire unstable,
+        all plugin containers (librespot, airplay, bluetooth) lose their PA
+        connections, drop into crash-restart loops, and stop responding to
+        Spotify Connect / AirPlay / volume commands.
+
+        PULSE_LATENCY_MSEC=50 on snapclient (multiroom-client) is kept — it
+        reduces snapclient's libpulse output buffer without affecting PipeWire's
+        graph scheduling, and does not impact plugin control paths.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(audio): cap PipeWire quantum and snapclient output buffer at
+        runtime"
+      hash: e5f570af4dcfbf7bc20d17b3b34795444a3df00e
+      body: >
+        Two likely sources of the 3s pipeline delay:
+
+
+        1. PipeWire quantum: if the ALSA hardware driver negotiates a large
+        period
+           (e.g. 32768 samples = 680ms on some Pi HDMI configs), every node in the
+           graph — including the loopback and pacat — inherits that period as its
+           minimum chunk size. Write pipewire.conf.d/10-quantum.conf at startup to
+           cap max-quantum at 8192 samples (170ms). The 200ms loopbacks are safely
+           above this cap so no underruns. Written from start.sh, not baked into
+           the Dockerfile, so it's always fresh on restart.
+
+        2. snapclient output buffer: without PULSE_LATENCY_MSEC, libpulse asks
+           PipeWire for its default playback buffer which can be ~2s. Setting
+           PULSE_LATENCY_MSEC=50 cuts this to 50ms — the single biggest win if
+           snapclient's PA stream is the bottleneck.
+
+        Expected steady-state latency after this fix: ~550ms
+
+        (200ms in-loopback + 50ms pacat + 50ms snapserver + 50ms snapclient +
+        200ms out-loopback)
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "revert(audio): restore loopback latencies and remove quantum cap"
+      hash: d4211fc01d7edede5d03d75242c3e8c8d96a12af
+      body: |
+        The 50ms loopback latency caused silence: if PipeWire's actual hardware
+        quantum exceeds 50ms, the loopback ring buffer becomes smaller than one
+        quantum and the module produces no output.
+
+        The pipewire.conf.d drop-in approach also carries risk of crashing
+        PipeWire if Alpine's package doesn't support drop-in loading.
+
+        Restoring SOUND_INPUT_LATENCY and SOUND_OUTPUT_LATENCY to 200ms default.
+        The CACHE_BUST is bumped to force a clean audio container rebuild.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(audio): cap PipeWire quantum and reduce loopback latency"
+      hash: 4723306eb5f8994974ed9a9e42bd16fa0f185778
+      body: >
+        Add /etc/pipewire/pipewire.conf.d/10-quantum.conf to force PipeWire to
+
+        run the audio graph at a 1024-sample (21ms) quantum with a max of 8192
+
+        samples (170ms). Without this cap, PipeWire matches the ALSA hardware's
+
+        native period size which on some Pi 4 configurations can be 32768
+        samples
+
+        (683ms), cascading through two loopbacks and pacat to produce 3s+
+        pipeline
+
+        delay.
+
+
+        Reduce SOUND_INPUT_LATENCY and SOUND_OUTPUT_LATENCY defaults from 200ms
+
+        to 50ms. With the quantum now bounded at 21ms, the loopback ring buffers
+
+        only need 50ms to be stable. Total pipeline delay drops from 3s+ to
+
+        roughly 250ms (50ms in + 50ms pacat + 50ms snapserver + 50ms snapclient
+        +
+
+        50ms out).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom-client): use /dev/tcp PA readiness check (pactl not
+        installed)"
+      hash: 7535730ec7e23b4abd0e5ff759f702ac6b20a779
+      body: >
+        pactl is not available in the multiroom-client image — no
+        pulseaudio-utils.
+
+        Switch to bash's built-in /dev/tcp test which requires no extra
+        packages.
+
+        Same effect: blocks until pipewire-pulse is accepting TCP connections on
+        4317.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): wait for PulseAudio ready + pacat watchdog"
+      hash: 87b7013daac8073a1e66f971722cf9226e6d8dca
+      body: >
+        Two startup race conditions:
+
+        1. multiroom-server started pacat before audio container had loaded the
+           snapcast sink module — pacat exited, snapserver got FIFO EOF and ran
+           silently forever (no restart triggered). Fix: poll pactl until
+           snapcast.monitor appears before starting pacat.
+        2. multiroom-client launched snapclient before pipewire-pulse TCP was
+           ready — PulseAudio context failed loop. Fix: poll pactl stat first.
+
+        Also adds a pacat watchdog: holds the FIFO write-end open (exec 3>$FIFO)
+
+        so snapserver never sees EOF between pacat restarts, and loops to
+        restart
+
+        pacat if it exits without snapserver needing to restart.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): replace avahi CLI with bonjour-service pure-Node mDNS"
+      hash: 30ae0cee91351649592d516ef20384ef5bc7984f
+      body: |
+        avahi-daemon is not present on balenaOS hosts — avahi-publish-service
+        failed with "Daemon not running". Switch to bonjour-service (wraps
+        multicast-dns, no daemon required): advertisement and discovery now
+        run entirely in-process.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(multiroom): Avahi advertisement + mDNS discovery + group volume
+        sync (Spike-2+3)"
+      hash: f1c7021659fe411b000047c79c3208df1fceb698
+      body: >
+        Avahi advertisement (Spike-2):
+
+        - AvahiAdvertiser.ts spawns avahi-publish-service when snapserver first
+          comes up, unpublishes when it goes down. No D-Bus library — uses
+          system avahi-utils CLI (reliable on aarch64).
+        - Advertises _snapcast._tcp with TXT: group, group_latency, hw_latency,
+          role=host, version=2.0, master_uuid.
+        - io.balena.features.dbus: "1" added to sound-supervisor so it can reach
+          the host Avahi daemon. avahi-utils added to Dockerfile.
+
+        mDNS discovery (Spike-3):
+
+        - AvahiBrowser.ts runs avahi-browse -rpt --terminate every 15s and
+          parses resolved _snapcast._tcp entries.
+        - SnapserverMonitor caches the discovered master IP (filtered by
+          SOUND_GROUP_NAME). GET /multiroom/master returns discovered IP or
+          falls back to own IP — multiroom-client auto-connects to the right host.
+
+        Group volume sync (in scope with Spike-2):
+
+        - POST /audio/volume now also calls snapcast JSON-RPC Group.SetVolume
+          so all connected remote clients change volume together.
+        - Group ID cached from Server.GetStatus poll; volume call is
+        fire-and-forget.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): set pacat capture latency to 50ms"
+      hash: c6aa0114477bca3e4eca8e8c00e156f268a0b612
+      body: |
+        Without --latency-msec, PipeWire-pulse buffers 2-3 seconds of audio
+        before flushing to pacat. This dominates the perceived command delay
+        (pause, skip, volume) regardless of the snapserver bufferMs setting.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(multiroom): dynamic snapcast buffer based on connected clients"
+      hash: 202dcc1366deb42b4fc17c1dafda95d0447c020c
+      body: |
+        SnapserverMonitor polls snapserver's JSON-RPC every 5s and tracks how
+        many remote snapclients are connected (total minus the always-present
+        local client). On 0→1: restarts multiroom-server with the configured
+        multi-room buffer (default 400ms, set via SOUND_MULTIROOM_BUFFER_MS or
+        the UI slider). On last client leaving: restarts with 50ms standalone
+        buffer. A 20s cooldown after each restart prevents thrash while
+        clients reconnect.
+
+        The 1→many transition requires no restart — buffer is already correct.
+
+        start.sh now fetches the effective buffer from GET /multiroom/buffer
+        and writes a dynamic snapserver.conf at startup. snapserver.conf loses
+        its [stream] section (now runtime-generated). UI adds a buffer card
+        with a live status badge and a 100–1000ms slider that persists
+        SOUND_MULTIROOM_BUFFER_MS as a device env var.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): reduce snapcast latency to 400ms with PCM codec"
+      hash: f58a5d0c54e9df61a469b419738edf6c840e05d2
+      body: |
+        Switch from FLAC (85ms frame delay) to PCM codec and lower bufferMs
+        from the 1000ms default to 400ms. This reduces the delay between
+        Spotify commands (pause, skip, volume) and audible effect by ~700ms.
+        When adding real multi-room clients, SOUND_MULTIROOM_LATENCY can be
+        used to compensate for per-speaker differences.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom-client): use --player pulse to bypass ALSA entirely"
+      hash: 4aa5579993621a5a822ca67aefacb360d0dd4250
+      body: |
+        snapclient was built with libpulse-dev so it has a native PulseAudio
+        player. Use --player pulse with PULSE_SERVER=tcp:<gw>:4317 to connect
+        directly to pipewire-pulse, bypassing ALSA's 'default' PCM which doesn't
+        exist in the container. PULSE_SINK=balena-sound.output (Dockerfile ENV)
+        routes output to the correct PipeWire sink.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom-server): capture via pacat FIFO instead of ALSA-Pulse"
+      hash: efb02263acbf8350c8eb10294d6de26f2d5c4c3b
+      body: >
+        The ALSA-Pulse plugin for monitor source capture doesn't work with
+
+        pipewire-pulse. Replace with pacat piped to a local FIFO:
+
+        - pacat --record --device=snapcast.monitor captures raw s16le 48000
+        stereo
+
+        - snapserver reads from /tmp/snapserver-audio FIFO via pipe:// stream
+
+        - Add pulseaudio-utils to runtime for pacat binary
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): use explicit PCM definitions with server/device in
+        asound.conf"
+      hash: cc7c5accc9cd04951e666d7190a8ee0ba7d698e4
+      body: |
+        ALSA-Pulse plugin env vars (PULSE_SERVER/PULSE_SOURCE) were not being
+        honoured reliably. Write full PCM definitions in asound.conf at startup
+        with the dynamic gateway IP and explicit device names:
+        - snapmonitor PCM for snapserver capture from snapcast.monitor
+        - default/pulse PCMs for snapclient output to balena-sound.output
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): match snapserver sample rate to PipeWire default
+        (48000Hz)"
+      hash: 6fdc2704a1c7b37302207548df4755f298d589e6
+      body: >
+        PipeWire defaults to 48000 Hz; snapserver was requesting 44100 Hz
+        capture
+
+        from the ALSA-Pulse plugin, causing 'Invalid argument' when negotiating
+
+        with pipewire-pulse. Change snapserver sampleformat to 48000:16:2 to
+        match.
+
+        Also add pcm.pulse / ctl.pulse to asound.conf so device=pulse resolves.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): configure ALSA pulse PCM so snapcast uses PulseAudio"
+      hash: 41aa11531b385334f33bbdaa595e8e4085d39784
+      body: >
+        snapclient/snapserver use ALSA output/input. In a container without
+
+        hardware ALSA devices, 'default' PCM doesn't exist. Write
+        /etc/asound.conf
+
+        at startup to map default → pulse plugin, so ALSA routes through
+
+        PulseAudio (pipewire-pulse at tcp:<gw>:4317).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): override PULSE_SERVER to gateway IP at runtime"
+      hash: f3b05010350f9e70c1131e8a6d50d9d3122548e3
+      body: |
+        audio container uses network_mode:host so the 'audio' hostname baked
+        into the Dockerfile ENV is not resolvable from the bridge-networked
+        multiroom containers. Compute the gateway IP at startup (same pattern
+        used for SOUND_SUPERVISOR) and export PULSE_SERVER=tcp:<gw>:4317 so
+        snapserver/snapclient connect to PulseAudio correctly.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(sound-supervisor): restore GET /mode and GET /multiroom/master"
+      hash: e6289073538681c4a9514db0f9cc0adfb7d8b48f
+      body: |
+        multiroom-server and multiroom-client start.sh scripts call these
+        endpoints to decide whether to start (expecting MULTI_ROOM value) and
+        which snapserver to connect to. Both were removed when modernizing the
+        API, causing the snapcast pipeline to never start and audio to be
+        silenced on role=auto.
+
+        GET /mode: maps MultiroomRole back to legacy SoundModes string
+        GET /multiroom/master: returns device IP for snapclient to connect to
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "debug(audio): watch Stream/Output/Audio nodes for play detection"
+      hash: 6951b576b2608e4583519ba20bea355214052f54
+      body: |
+        Null sinks created via pipewire-pulse pactl are not in WirePlumber's
+        node registry. Pivot: watch Stream/Output/Audio nodes (client playback
+        streams) instead; they ARE managed by WirePlumber. Also log media.class
+        for all nodes to understand the full object landscape.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "debug(audio): log all WirePlumber node names to find balena-sound.input"
+      hash: 6679704f66e9ece09bf4f394111516ab0c10494d
+      body: |
+        Remove Constraint filter from nodes_om to catch every node and print
+        its node.name. Lets us verify the exact name PipeWire assigns to the
+        null-sink so we can match it correctly.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(audio): move play-detect script to WirePlumber data dir"
+      hash: 92a38032691feac5ce1e85495e19f3047e84f539
+      body: |
+        WirePlumber 0.5 searches for scripts via XDG data dirs
+        (/usr/share/wireplumber/scripts/), not the config dir
+        (/etc/wireplumber/scripts/). Move the Lua script accordingly;
+        conf drop-in stays in /etc/wireplumber/wireplumber.conf.d/.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(audio): port WirePlumber play-detect to 0.5 conf+script format"
+      hash: 15abd2c526bddbfcbab7c48ae3186ca3c602cb70
+      body: |
+        WirePlumber 0.5 dropped Lua config files in main.lua.d/.
+        Port to the new format:
+        - balena-play-detect.lua → /etc/wireplumber/scripts/ (script dir)
+        - 99-balena-play-detect.conf → /etc/wireplumber/wireplumber.conf.d/
+          declares the script as a script/lua component and enables it in
+          the main profile via wireplumber.profiles.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore(audio): use print() in play-detect lua and quiet wireplumber"
+      hash: b08ca3697e73b7d454d2204bdf71aa367040f7c9
+      body: |
+        Switch from Log.info() to print() so script output goes straight to
+        container stdout regardless of WIREPLUMBER_DEBUG level. Adds an
+        immediate 'script loaded' print so we can confirm the .lua.d path
+        is being picked up by WirePlumber. Sets WIREPLUMBER_DEBUG=W (warnings
+        only) to eliminate the trace spam that was burying startup lines.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore(audio): lower wireplumber debug level and log config dirs"
+      hash: 19977f461e539d47f1bed37023761dafd40fc33a
+      body: |
+        WIREPLUMBER_DEBUG=5 flooded the log buffer; drop to level 2 (W+I)
+        so script load errors and Log.info() calls are visible without trace
+        spam. Also log the WirePlumber version and config directory contents
+        so we can confirm which version and paths are active.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore(audio): log wireplumber version and enable debug output"
+      hash: 35a09bd8d2cb6761092c66935b5af83529919588
+      body: |
+        Adds wireplumber --version, config directory listing, and
+        WIREPLUMBER_DEBUG=5 / G_MESSAGES_DEBUG=all so spike-1 can verify
+        which WirePlumber version is installed and whether the Lua script
+        at /etc/wireplumber/main.lua.d/ is being picked up.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore(audio): pipe wireplumber logs to container stdout"
+      hash: c9b87a45497a68f0586be62d6ebc69160eaf3946
+      body: |
+        Allows balena device logs to show WirePlumber output (including
+        play-detect Lua script events) without needing SSH access to read
+        /var/log/wireplumber.log inside the container.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore(audio): bust docker cache to force start.sh rebuild"
+      hash: 6fd98aaf8fdc086ec7e6731eddf5faaffff56349
+      body: |
+        CACHE_BUST updated so balena build server picks up the start.sh
+        changes (mode→role, SOUND_SUPERVISOR_URL export, WirePlumber script).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(librespot): add missing flac runtime library"
+      hash: 30dfea69a34c2c263a85b20686edefa83f4a0afa
+      body: |
+        go-librespot is dynamically linked against libFLAC but flac was not
+        included in the Alpine 3.21 runtime stage, causing symbol-not-found
+        errors on startup.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(multiroom-2): role system + WirePlumber play-detect spike"
+      hash: dd599f32162ac5ae710d797464185803d8d9545b
+      body: >
+        Replaces SOUND_MODE / SoundModes with SOUND_MULTIROOM_ROLE /
+        MultiroomRole
+
+        (auto | host | join | disabled). Zero-downtime migration: if SOUND_MODE
+        is
+
+        set and SOUND_MULTIROOM_ROLE is not, the old value is mapped and a
+        deprecation
+
+        warning is logged.
+
+
+        Role-based service management:
+
+        - auto/host: start all plugins + both multiroom containers
+
+        - join: stop plugins (airplay/librespot/bluetooth), snapclient only
+
+        - disabled: stop multiroom containers, start all plugins (standalone)
+
+
+        New API surface:
+
+        - GET  /multiroom        — role, group, device IP, latency config
+
+        - POST /multiroom/role   — change role, persists SOUND_MULTIROOM_ROLE to
+        device
+
+        - POST /multiroom/group  — change group name, persists SOUND_GROUP_NAME
+
+        - GET  /multiroom/groups — fleet SOUND_KNOWN_GROUPS list
+
+        - DELETE /multiroom/groups — clear fleet known groups
+
+        - POST /internal/play    — WirePlumber → supervisor play event hook
+
+        - POST /mode             — kept as deprecated shim (maps to
+        /multiroom/role)
+
+
+        cote removed from index.ts (fleet-sync / fleet-update / fleet
+        publisher).
+
+
+        Spike-1 (WirePlumber play detection):
+
+        - core/audio/wireplumber/99-balena-play-detect.lua: watches Link objects
+        via
+          WirePlumber ObjectManager; fires when a stream links to balena-sound.input;
+          calls POST /internal/play via os.execute curl
+        - Dockerfile: copies script to /etc/wireplumber/main.lua.d/
+
+        - start.sh: exports SOUND_SUPERVISOR_URL before wireplumber starts;
+          updates mode → role API call (GET /role); updates route_input_sink() to
+          accept role values (disabled → output, auto/host/join → snapcast)
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore: ignore CLAUDE.md and .claude/ session files"
+      hash: 327e6165d6d3665beb1a756661961fe92bc8a428
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(librespot): add missing runtime libs and drop ALSA bridge"
+      hash: 550828aa533c0ac17a6548cb2ee8fc8d9f2bed2e
+      body: |
+        Add bash, ca-certificates, libvorbis, libogg to the runtime stage —
+        the Go binary links these at runtime and they were absent. Remove the
+        vendored ALSA bridge (alpine-setup.sh): go-librespot connects directly
+        to PipeWire-Pulse via PULSE_SERVER=tcp:localhost:4317.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.6.0
+  title: ""
+  date: 2026-05-02T03:52:33.923Z
+- commits:
     - subject: "fix(audio): add eudev and start udevd for WirePlumber ALSA discovery"
       hash: c22b63db3b7351e34464770ff2ae79cdd8b55f15
       body: |
