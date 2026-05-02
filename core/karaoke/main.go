@@ -267,21 +267,24 @@ func handleAPIData(w http.ResponseWriter, r *http.Request) {
 	audioModeMu.RUnlock()
 
 	now := queryByStatus("playing", 1)
-	ready := queryByStatus("ready", 1)
+
+	// Next Up = first queued job in any active state (not just ready).
+	// This ensures a downloading song shows as Next Up immediately.
+	nextUpList := queryMultiStatusLimited([]string{"ready", "downloading", "pending"}, 1)
 
 	var nowPlaying, nextUp *Job
 	if len(now) > 0 {
 		nowPlaying = now[0]
 	}
-	if len(ready) > 0 {
-		nextUp = ready[0]
+	if len(nextUpList) > 0 {
+		nextUp = nextUpList[0]
 	}
-	// During up_next transition the job may not be ready yet — synthesize it
+	// During up_next transition synthesize from state if DB hasn't caught up yet
 	if state == "up_next" && nextUp == nil && uSinger != "" {
 		nextUp = &Job{Singer: uSinger, Title: uTitle}
 	}
 
-	// Full queue view: pending + downloading + ready (minus the nextUp entry)
+	// Full queue view: everything after Next Up
 	all := queryMultiStatus([]string{"pending", "downloading", "ready"})
 	queue := make([]*Job, 0, len(all))
 	for _, j := range all {
@@ -894,7 +897,7 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool) []string {
 		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
 		"-b:v", "1500k", "-maxrate", "1500k", "-bufsize", "3000k",
 		"-f", "hls",
-		"-hls_time", "1", "-hls_list_size", "3",
+		"-hls_time", "2", "-hls_list_size", "5",
 		"-hls_flags", "delete_segments+append_list",
 		"-hls_segment_filename", "/tmp/hls/seg%d.ts",
 		"/tmp/hls/playlist.m3u8",

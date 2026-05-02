@@ -126,26 +126,64 @@ function applyAudioMode(mode) {
 const video   = document.getElementById('player');
 const waiting = document.getElementById('waiting');
 let hls, playing = false;
+let waitingShowTimer, stallTimer, retryTimer;
 
 function startStream() {
+  // Guard: don't create a second instance while one is loading or playing
+  if (hls || playing) return;
+  clearTimeout(retryTimer);
   const src = '/stream/playlist.m3u8';
   if (Hls.isSupported()) {
-    hls = new Hls({ lowLatencyMode: true, backBufferLength: 4 });
+    hls = new Hls({
+      lowLatencyMode: false,       // disabled — too aggressive for Pi, causes stalls
+      maxBufferLength: 20,         // buffer up to 20s ahead
+      liveSyncDuration: 4,         // target 4s behind live edge
+      liveMaxLatencyDuration: 12,  // reconnect if >12s behind
+      manifestLoadingTimeOut: 4000,
+      manifestLoadingMaxRetry: 2,
+    });
     hls.loadSource(src);
     hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, ()=>video.play());
+    hls.on(Hls.Events.MANIFEST_PARSED, ()=>video.play().catch(()=>{}));
     hls.on(Hls.Events.ERROR, (_,d)=>{ if(d.fatal) onStreamDown(); });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = src;
-    video.play();
+    video.play().catch(()=>{});
   }
-  video.onplaying = ()=>{ playing=true; waiting.style.display='none'; };
+
+  video.onplaying = ()=>{
+    playing = true;
+    clearTimeout(waitingShowTimer);
+    clearTimeout(stallTimer);
+    waiting.style.display = 'none';
+    resetStallDetector();
+  };
+
+  // Detect stalled playback and recover
+  video.onstalled = resetStallDetector;
+  video.onwaiting = resetStallDetector;
+}
+
+function resetStallDetector() {
+  clearTimeout(stallTimer);
+  if (!playing) return;
+  stallTimer = setTimeout(()=>{
+    // Video stalled for 6s while supposedly playing — reconnect
+    playing = false;
+    if (hls) { hls.destroy(); hls = null; }
+    startStream();
+  }, 6000);
 }
 
 function onStreamDown() {
   playing = false;
-  if (hls) { hls.destroy(); hls=null; }
-  setTimeout(startStream, 3000);
+  clearTimeout(stallTimer);
+  if (hls) { hls.destroy(); hls = null; }
+  // Don't flash the waiting screen immediately — give it 4s grace
+  // so same-singer 1s gaps just show a frozen frame, not a waiting flash.
+  clearTimeout(waitingShowTimer);
+  waitingShowTimer = setTimeout(()=>{ waiting.style.display = 'flex'; }, 4000);
+  retryTimer = setTimeout(startStream, 1500);
 }
 
 // ── Status polling ────────────────────────────────────────────────────────────
@@ -164,8 +202,8 @@ function pollStatus() {
     }
 
     if (d.state === 'up_next') {
-      // Show full-screen Up Next
-      if (playing) { onStreamDown(); } // stop the stream
+      // Explicit singer-change gap — show Up Next screen
+      clearTimeout(waitingShowTimer);
       waiting.style.display = 'flex';
       document.getElementById('waiting-heading').textContent = 'Up Next';
       const ns = document.getElementById('waiting-next-singer');
@@ -181,14 +219,15 @@ function pollStatus() {
         cd.textContent = secs > 0 ? `Starting in ${secs}s — hand over the mic!` : '';
         if (secs === 0) clearInterval(countdownTimer);
       }, 500);
-    } else if (d.state === 'playing' && !playing) {
-      // Re-attach stream if we're in playing state but not connected
+    } else if (d.state === 'playing') {
+      // Song is playing — make sure stream is connected
       document.getElementById('waiting-heading').textContent = 'Singer View';
       document.getElementById('waiting-next-singer').style.display = 'none';
       document.getElementById('waiting-countdown').style.display = 'none';
       document.getElementById('waiting-sub').style.display = '';
-      startStream();
+      startStream(); // no-op if hls or playing already
     } else if (d.state === 'idle') {
+      clearTimeout(waitingShowTimer);
       waiting.style.display = 'flex';
       document.getElementById('waiting-heading').textContent = 'Singer View';
       document.getElementById('waiting-next-singer').style.display = 'none';
