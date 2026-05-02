@@ -785,6 +785,7 @@ func playerWorker() {
 		db.QueryRow(`SELECT singer, title FROM jobs WHERE status='ready' AND id!=? ORDER BY id LIMIT 1`, id).Scan(&ns, &nt)
 		writeNextUp(ns, nt)
 
+		cleanHLS()
 		log.Printf("[player] %s — %s (key %+d)", singer, title, keyOffset)
 		play(filename, keyOffset)
 
@@ -815,7 +816,7 @@ func play(filename string, semitones int) {
 		audioModeMu.RUnlock()
 
 		playerMu.Lock()
-		hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, mode == "stream")...)
+		hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, mode == "stream", pitch)...)
 		hlsCmd.Start()
 		if mode == "local" {
 			playerCmd = exec.Command("ffmpeg",
@@ -868,7 +869,7 @@ func play(filename string, semitones int) {
 	}
 }
 
-func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool) []string {
+func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool, pitch float64) []string {
 	vf := `drawtext=textfile=/tmp/hls/nextup.txt:reload=1:` +
 		`fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:` +
 		`fontsize=28:fontcolor=white:` +
@@ -882,10 +883,10 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool) []string {
 	args := []string{"-nostdin", "-i", filename, "-vf", vf}
 
 	if withAudio {
-		af := "anull"
+		af := fmt.Sprintf("rubberband=pitch=%f", pitch)
 		if syncOffsetMs < 0 {
 			d := -syncOffsetMs
-			af = fmt.Sprintf("adelay=%d|%d", d, d)
+			af = fmt.Sprintf("adelay=%d|%d,", d, d) + af
 		}
 		args = append(args, "-af", af,
 			"-c:a", "aac", "-b:a", "128k", "-ar", "48000")
@@ -897,14 +898,25 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool) []string {
 		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
 		"-b:v", "1500k", "-maxrate", "1500k", "-bufsize", "3000k",
 		"-f", "hls",
-		"-hls_time", "2", "-hls_list_size", "5",
-		"-hls_flags", "delete_segments+append_list",
+		"-hls_time", "2", "-hls_list_size", "6",
+		"-hls_flags", "delete_segments",
 		"-hls_segment_filename", "/tmp/hls/seg%d.ts",
 		"/tmp/hls/playlist.m3u8",
 	)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// cleanHLS removes all segments and the playlist so the next song starts
+// with a fresh stream. Without this, append_list mixes old (deleted) segments
+// with new ones, producing out-of-order frames in the browser.
+func cleanHLS() {
+	files, _ := filepath.Glob(filepath.Join(hlsPath, "*.ts"))
+	for _, f := range files {
+		os.Remove(f)
+	}
+	os.Remove(filepath.Join(hlsPath, "playlist.m3u8"))
+}
 
 func writeNextUp(singer, title string) {
 	content := ""
