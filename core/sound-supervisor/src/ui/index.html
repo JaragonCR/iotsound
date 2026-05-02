@@ -88,13 +88,20 @@
                     <button type="button" class="btn btn-outline-primary" data-role="join" onclick="setRole('join')">Join</button>
                     <button type="button" class="btn btn-outline-secondary" data-role="disabled" onclick="setRole('disabled')">Disabled</button>
                   </div>
-                  <p class="card-text" style="margin-bottom: 0.4rem">Group name:</p>
-                  <div class="input-group input-group-sm mb-2">
-                    <input id="group-name-input" type="text" class="form-control" placeholder="e.g. living-room" list="known-groups-list" />
-                    <datalist id="known-groups-list"></datalist>
+                  <p class="card-text" style="margin-bottom: 0.4rem">
+                    Group: <strong><span id="group-current-text">—</span></strong>
+                  </p>
+                  <div class="input-group input-group-sm mb-1">
+                    <select id="group-select" class="form-control" onchange="onGroupSelectChange()">
+                      <option value="default">default</option>
+                      <option value="__new__">＋ Enter new name…</option>
+                    </select>
                     <div class="input-group-append">
                       <button class="btn btn-outline-primary" type="button" onclick="applyGroupName()">Apply</button>
                     </div>
+                  </div>
+                  <div id="group-new-row" class="input-group input-group-sm mb-1" style="display:none">
+                    <input id="group-name-input" type="text" class="form-control" placeholder="e.g. kitchen" />
                   </div>
                   <small class="text-muted">Master: <span id="master-ip-text">—</span></small>
                 </div>
@@ -356,26 +363,67 @@
             : ("btn btn-sm " + (isDisabled ? "btn-outline-secondary" : "btn-outline-primary"));
         });
 
-        var groupInput = document.getElementById("group-name-input");
-        if (document.activeElement !== groupInput) {
-          groupInput.value = status.groupName || "";
+        var currentGroup = status.groupName || "default";
+        document.getElementById("group-current-text").textContent = currentGroup;
+
+        var select = document.getElementById("group-select");
+        if (document.activeElement !== select) {
+          for (var i = 0; i < select.options.length; i++) {
+            if (select.options[i].value === currentGroup) {
+              select.selectedIndex = i;
+              break;
+            }
+          }
+          onGroupSelectChange();
         }
 
         var masterIp = await getAPI("/multiroom/master");
-        document.getElementById("master-ip-text").innerHTML = masterIp || "—";
+        document.getElementById("master-ip-text").textContent = masterIp || "—";
       }
 
       async function loadKnownGroups() {
-        var groups = await getAPI("/multiroom/groups");
-        var datalist = document.getElementById("known-groups-list");
-        datalist.innerHTML = "";
+        var results = await Promise.all([getAPI("/multiroom/groups"), getAPI("/multiroom")]);
+        var groups = results[0];
+        var status = results[1];
+        var currentGroup = (status && status.groupName) || "default";
+
+        var select = document.getElementById("group-select");
+        select.innerHTML = "";
+
+        addGroupOption(select, "default");
+
         if (Array.isArray(groups)) {
-          groups.forEach(function(g) {
-            var opt = document.createElement("option");
-            opt.value = g.name;
-            datalist.appendChild(opt);
-          });
+          groups
+            .filter(function(g) { return g.name !== "default"; })
+            .sort(function(a, b) { return b.last_seen_epoch - a.last_seen_epoch; })
+            .forEach(function(g) { addGroupOption(select, g.name); });
         }
+
+        if (currentGroup !== "default") {
+          var listed = Array.from(select.options).some(function(o) { return o.value === currentGroup; });
+          if (!listed) addGroupOption(select, currentGroup);
+        }
+
+        var newOpt = document.createElement("option");
+        newOpt.value = "__new__";
+        newOpt.text = "＋ Enter new name…";
+        select.appendChild(newOpt);
+
+        select.value = currentGroup;
+        onGroupSelectChange();
+      }
+
+      function addGroupOption(select, name) {
+        var opt = document.createElement("option");
+        opt.value = name;
+        opt.text = name;
+        select.appendChild(opt);
+      }
+
+      function onGroupSelectChange() {
+        var select = document.getElementById("group-select");
+        document.getElementById("group-new-row").style.display =
+          select.value === "__new__" ? "" : "none";
       }
 
       async function setRole(role) {
@@ -390,9 +438,17 @@
       }
 
       async function applyGroupName() {
-        var name = document.getElementById("group-name-input").value.trim();
+        var select = document.getElementById("group-select");
+        var name;
+        if (select.value === "__new__") {
+          name = document.getElementById("group-name-input").value.trim();
+          if (!name) return;
+        } else {
+          name = select.value === "default" ? "" : select.value;
+        }
         await postAPI("/multiroom/group", "groupName", name);
         await loadKnownGroups();
+        await refreshMultiroom();
       }
 
       function deviceAction(action, key, value) {
