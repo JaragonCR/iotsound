@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v4.6.1
+## (2026-05-02)
+
+* fix(audit): post-Multiroom-2.0 cleanup — docs, stale vars, master override [JaragonCR]
+* chore: delete root package-lock.json — no dependencies, pure noise [JaragonCR]
+* chore: delete package-lock.json — npm install doesn't require it [JaragonCR]
+* docs: remove airplay from pending — already on shairport-sync 5.0.4 [JaragonCR]
+
 # v4.6.0
 ## (2026-05-02)
 

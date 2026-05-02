@@ -1,4 +1,68 @@
 - commits:
+    - subject: "fix(audit): post-Multiroom-2.0 cleanup — docs, stale vars, master
+        override"
+      hash: d71ea1613b85d3d6b79fed98fdebbc5e95378381
+      body: >
+        Docs:
+
+        - ARCHITECTURE.md: replace cote/UDP description with mDNS election
+
+        - 02-usage.md: replace old three-mode section with role-based docs
+
+        - 03-customization.md: add SOUND_MULTIROOM_ROLE + SOUND_GROUP_NAME rows,
+          mark SOUND_MODE deprecated, remove SOUND_MULTIROOM_POLL_INTERVAL and
+          SOUND_MULTIROOM_DISALLOW_UPDATES (no longer exist)
+        - 06-device-support.md: update table headers and defaults to new role
+        names
+
+
+        Code:
+
+        - multiroom/server/start.sh: fix Pi1/Pi2 error message to use role names
+
+        - Wire up SOUND_MULTIROOM_MASTER env var: constants.ts reads it,
+          SnapserverMonitor stores it, getMasterIp() returns it as first priority
+          over mDNS discovery (env override → mDNS → local IP fallback)
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore: delete root package-lock.json — no dependencies, pure noise"
+      hash: e5f604482617b672a8dda3354935f3f66d574442
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore: delete package-lock.json — npm install doesn't require it"
+      hash: 5982d43c484149febd61fd6e3b49aad51823123b
+      body: |
+        Versionist only updates package.json, leaving the lock file with a
+        stale version field after every bump. Since the Dockerfile uses
+        npm install (not npm ci), the lock file is not needed.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "docs: remove airplay from pending — already on shairport-sync 5.0.4"
+      hash: 29fb731fcce8a03c9cf35e3a192322abfdb69bbe
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+        co-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 4.6.1
+  title: ""
+  date: 2026-05-02T14:54:32.290Z
+- commits:
     - subject: "chore: trigger versionist for Multiroom 2.0 commits"
       hash: 1ba91c9b0cc9e17e08c1b489322c9edefdb6fa1d
       body: |
