@@ -1,7 +1,7 @@
 import { getIPAddress } from './utils'
 import { MultiroomRole, SoundModes } from './types'
 import { constants } from './constants'
-import { startBalenaService, stopBalenaService } from './utils'
+import { startBalenaService, stopBalenaService, restartBalenaService } from './utils'
 import type { ElectedRole } from './ElectionManager'
 
 interface DeviceConfig {
@@ -33,11 +33,11 @@ export default class SoundConfig {
         this.safeService(startBalenaService, 'bluetooth')
         break
       case MultiroomRole.AUTO:
-        // Multiroom services start only after play-detect promotes to master.
-        // Stopping them here prevents multiroom-client from entering exponential
-        // backoff against a non-existent snapserver at boot.
-        this.safeService(stopBalenaService, 'multiroom-server')
-        this.safeService(stopBalenaService, 'multiroom-client')
+        // Pre-warm both multiroom containers so they're ready when play fires.
+        // Each polls GET /multiroom/active and only starts its main process
+        // (pacat / snapclient) once that endpoint returns true.
+        this.safeService(startBalenaService, 'multiroom-server')
+        this.safeService(startBalenaService, 'multiroom-client')
         this.safeService(startBalenaService, 'airplay')
         this.safeService(startBalenaService, 'librespot')
         this.safeService(startBalenaService, 'bluetooth')
@@ -81,12 +81,13 @@ export default class SoundConfig {
     }
   }
 
-  // Called when stop demotion timer fires. Tears down multiroom stack until next play.
+  // Called when stop demotion timer fires. Bounces both containers so they
+  // re-enter the waiting-for-active state cleanly for the next play event.
   demoteToIdle(): void {
     this.electedRole = null
-    console.log('[election] Demoted to idle — stopping multiroom-server + multiroom-client')
-    this.safeService(stopBalenaService, 'multiroom-server')
-    this.safeService(stopBalenaService, 'multiroom-client')
+    console.log('[election] Demoted to idle — bouncing multiroom containers to standby')
+    this.safeService(restartBalenaService, 'multiroom-server')
+    this.safeService(restartBalenaService, 'multiroom-client')
   }
 
   isElectedMaster(): boolean {

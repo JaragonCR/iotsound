@@ -70,6 +70,13 @@ export default class SoundAPI {
       res.json(this.config.getMultiroomStatus())
     })
 
+    // GET /multiroom/active — polled by pre-warmed multiroom containers to know when to start.
+    // Returns true when this device is the elected master (or is configured as HOST).
+    // multiroom-server starts pacat; multiroom-client (AUTO only) fetches master IP + starts snapclient.
+    this.api.get('/multiroom/active', (_req, res) => {
+      res.json({ active: this.config.isElectedMaster() })
+    })
+
     // GET /multiroom/master — returns the snapcast server IP for multiroom-client to connect to.
     // Returns mDNS-discovered master IP when available, falls back to this device's own IP.
     this.api.get('/multiroom/master', (_req, res) => {
