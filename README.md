@@ -37,7 +37,6 @@
 | Item | Notes |
 |---|---|
 | **Karaoke support** | Integrating [pitube-karaoke](https://github.com/JaragonCR/pitube-karaoke) — Go-based karaoke with HDMI video output and 3.5mm audio input |
-| **Airplay plugin update** | shairport-sync version bump and base image update |
 | **UPnP plugin update** | gmrender-resurrect base image update |
 
 ---
