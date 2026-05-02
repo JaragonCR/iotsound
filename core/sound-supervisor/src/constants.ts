@@ -34,5 +34,6 @@ export const constants = {
   balenaDeviceType: deviceType,
   volume: checkInt(process.env.SOUND_VOLUME) ?? 75,
   inputSink: process.env.SOUND_INPUT_SINK ?? 'balena-sound.input',
-  multiroomBufferMs: Math.max(50, Math.min(checkInt(process.env.SOUND_MULTIROOM_BUFFER_MS) ?? 400, 2000))
+  multiroomBufferMs: Math.max(50, Math.min(checkInt(process.env.SOUND_MULTIROOM_BUFFER_MS) ?? 400, 2000)),
+  multiroomMaster: process.env.SOUND_MULTIROOM_MASTER
 }

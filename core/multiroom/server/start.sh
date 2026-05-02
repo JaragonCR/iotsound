@@ -24,7 +24,7 @@ if [[ -n "${blacklisted[$BALENA_DEVICE_TYPE]}" ]]; then
 
   if [[ "$MODE" == "MULTI_ROOM" ]]; then
     echo "Multi-room has been disabled on this device type due to performance constraints."
-    echo "You should use this device in 'MULTI_ROOM_CLIENT' mode if you have other devices running balenaSound, or 'STANDALONE' mode if this is your only device."
+    echo "You should use this device with role='join' if you have other devices in the fleet, or role='disabled' if this is your only device."
   fi
   exit 0
 fi

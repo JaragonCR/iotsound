@@ -49,6 +49,7 @@ async function init() {
     hwLatency: constants.hwLatency,
     localIp: config.device.ip,
     isMaster: config.isElectedMaster(),
+    multiroomMaster: constants.multiroomMaster,
   })
   soundAPI.setMonitor(monitor)
   monitor.start()
