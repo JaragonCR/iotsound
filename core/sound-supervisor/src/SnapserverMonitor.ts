@@ -23,6 +23,7 @@ export interface MonitorConfig {
   hwLatency: number
   localIp: string
   isMaster: boolean
+  multiroomMaster?: string
 }
 
 export default class SnapserverMonitor {
@@ -44,6 +45,7 @@ export default class SnapserverMonitor {
   private readonly groupLatency: number
   private readonly hwLatency: number
   private readonly localIp: string
+  private readonly multiroomMaster: string | undefined
   private isMaster: boolean
 
   constructor(cfg: MonitorConfig) {
@@ -53,6 +55,7 @@ export default class SnapserverMonitor {
     this.groupLatency = cfg.groupLatency
     this.hwLatency = cfg.hwLatency
     this.localIp = cfg.localIp
+    this.multiroomMaster = cfg.multiroomMaster
     this.isMaster = cfg.isMaster
   }
 
@@ -74,9 +77,9 @@ export default class SnapserverMonitor {
     }
   }
 
-  // Returns the discovered snapcast server IP, or this device's own IP as fallback.
+  // Returns master IP: env override → mDNS discovered → own IP fallback.
   getMasterIp(): string {
-    return this.discoveredMasterIp ?? this.localIp
+    return this.multiroomMaster ?? this.discoveredMasterIp ?? this.localIp
   }
 
   // Propagate volume to all snapcast clients in the group via JSON-RPC.

@@ -14,43 +14,32 @@ The `iotsound` name is used by default. Set `SOUND_DEVICE_NAME` to customize the
 
 Let the music play!
 
-## Modes of operation
+## Roles
 
-IoTSound supports multiple modes of operation described below:
+IoTSound uses a role system to control how each device participates in multi-room audio. Set `SOUND_MULTIROOM_ROLE`, or change it live from the web UI at `http://<device-ip>/`.
 
-- Multi-room mode
-- Multi-room client mode
-- Standalone
+| Role | Streaming plugins | Joins multi-room | Becomes master |
+|---|---|---|---|
+| `auto` (default) | ✅ Bluetooth, AirPlay, Spotify | ✅ | ✅ On first play |
+| `host` | ✅ | ✅ | ✅ Always |
+| `join` | ❌ Stopped | ✅ | ❌ Never |
+| `disabled` | ✅ | ❌ | ❌ Never |
 
-By default, most devices will start in multi-room mode. You can change that by setting an environment variable, check out the [customization](customization#general) section to learn how.
+### auto (default)
 
-**Note:** Multi-room mode is the default mode for most (but not all!) device types. You can read more about default modes [here](device-support#recommended).
+The device starts idle at boot. The moment you stream to it (via Bluetooth, AirPlay, or Spotify), it promotes itself to multi-room master, starts Snapcast server, and advertises via mDNS. All other devices in the same group discover it automatically and sync up within seconds. When you stop playing for 30 seconds it releases the master role and returns to idle.
 
-### Multi-room mode
+### host
 
-Multi-room mode allows you to play perfectly synchronized audio on multiple devices, it turns IoTSound into a "Sonos-like" multi-room solution. It doesn't matter whether you have 2 or 100 devices, you only need them to be part of the same local network.
+Always runs as the Snapcast server, regardless of whether audio is playing. Use for a dedicated device with a reliable wired connection that you always want as the group audio source.
 
-When in multi-room mode devices can take one of two roles:
+### join
 
-- `master`: the device acting as the audio source
-- `client`: any number of devices playing back the audio being sent over by the `master`
+Passive receiver only. No Bluetooth, AirPlay, or Spotify — the device is invisible to streaming apps. It only plays audio received from the current group master. Best for secondary speakers in a room that should only ever receive synchronized audio.
 
-Designing a `master` device is easy and requires no configuration. Whenever you start streaming to any device in multi-room mode, it will auto-configure itself to be the `master` device and will broadcast a message to all other devices within your local network to get them in sync. Note that it can take a few seconds for the system to auto-configure the first time you stream.
-You can always change the `master` by streaming to a different device.
+### disabled (standalone)
 
-It's a good idea to use the most powerful device on your fleet as the designated `master` as it does take up more resources. For example, if your setup consists of a Raspberry Pi 4 and a couple of Raspberry Pi 2, then using the Pi 4 as the `master` is the superior option.
-
-### Multi-room client mode
-
-When a device is in multi-room client mode it can only be used as a multi-room `client`. The only audio the device will play is audio coming from a `master` device, so you'll need at least another device in your fleet.
-
-This mode is great for performance constrained devices as plugin services (Spotify, AirPlay2, etc) won't be running and consuming CPU cycles. It's also a great choice if you usually stream to the same `master` device and don't want to have every device show up when pairing bluetooth for example.
-
-### Standalone
-
-Standalone is the original IoTSound mode (pre version 2.0). In this mode your device won't run any of the multi-room services, it will run independently and won't be aware of other devices in your network.
-
-Use this mode when you have only one device in your fleet, or if you want to have multiple independent devices.
+The device plays completely independently. All streaming plugins remain active, but Snapcast is not started — the device does not participate in multi-room synchronization. Use when a room should always play independently, or when you only have one device.
 
 ## Plugin system
 
