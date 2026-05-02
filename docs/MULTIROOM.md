@@ -1,191 +1,169 @@
-# Multi-Room Audio
+# Multi-Room Audio (v4.6.0+)
 
-IoTSound turns multiple Raspberry Pis into a perfectly-synchronized whole-home audio system — similar to Sonos, but open source and self-hosted.
+IoTSound turns multiple Raspberry Pis into a perfectly-synchronized whole-home audio system using Snapcast for audio delivery and mDNS (Bonjour) for automatic device discovery.
 
-> **Multiroom is a whole-house broadcast, not a zone selector.** When any device starts playing, *every* device in your fleet plays the same audio simultaneously. There is no built-in way to play different audio in different rooms — all devices are always in sync. If you want an independent device, set it to `STANDALONE` mode.
+> **Multiroom is a group broadcast, not a zone selector.** All devices in the same group play the same audio simultaneously. For independent playback, set `SOUND_MULTIROOM_ROLE=disabled`.
 
 ---
 
 ## How it works
 
-Every device runs two Snapcast services:
-- **snapserver** — receives audio from the audio block and broadcasts it over the local network
-- **snapclient** — receives the audio stream from the active master and plays it through the local speaker
-
-The key property of Snapcast is **sample-accurate synchronisation**: all clients play the exact same audio frame at the exact same moment, regardless of how many devices are on the network. It achieves this by timestamping every audio chunk and buffering at the client side to compensate for network jitter.
-
-### The master election
-
-IoTSound uses **play-triggered auto-election**. There is no permanent master device. The device that has audio playing right now is the master:
-
-1. You start streaming to any device (via Bluetooth, AirPlay, Spotify, etc.)
-2. That device's audio block detects audio on the `balena-sound.input` sink
-3. sound-supervisor broadcasts `fleet-update: master = <this device's IP>` to all devices on the local network via UDP (using the `cote` pub/sub library)
-4. Every other device receives the update and restarts its snapclient pointing to the new master
-5. All devices sync up within a few seconds and play the same audio
-
-To switch which device is playing, just start streaming to a different device. It announces itself as the new master and all snapclients follow automatically.
+### Audio pipeline
 
 ```
-You → Spotify → Device A (master)
-                    │
-                    │  fleet-update broadcast (UDP)
-                    ▼
-              Device B (client)   ─┐
-              Device C (client)   ─┤── all play in sync via Snapcast TCP stream
-              Device D (client)   ─┘
+Bluetooth / AirPlay / Spotify / UPnP
+            │
+            ▼
+    PipeWire (audio block, TCP :4317)
+     sink: balena-sound.input
+            │
+            │  pacat (capture, 50ms latency)
+            ▼
+    snapserver (port 1704)
+            │
+            │  TCP :1704 (Snapcast binary protocol, timestamped chunks)
+            ▼
+    snapclient (on every device in the group)
+            │
+            ▼
+    balena-sound.output → speakers
 ```
+
+Snapcast delivers **sample-accurate synchronisation** by timestamping every audio chunk and buffering at the client side to absorb network jitter.
+
+### Play-triggered master election
+
+There is no permanent master device. IoTSound uses **optimistic instant promotion**:
+
+1. You stream to any device (Bluetooth, AirPlay, Spotify, etc.)
+2. The audio block detects audio on `balena-sound.input` via `pactl subscribe`
+3. That device **immediately** promotes itself to master — starts snapserver, advertises via mDNS (`_snapcast._tcp`)
+4. All other devices in the same group discover the master and connect their snapclient
+5. All devices sync within a few seconds and play the same audio
+
+When you stop playing for 30 seconds, the master releases its role — snapserver and snapclient both stop, and the device returns to idle. The next play event promotes it instantly again.
+
+Collision (two devices promoted simultaneously) is handled by Snapcast conflict resolution and is rare in practice.
+
+### Groups
+
+Devices with the same `SOUND_GROUP_NAME` form a group and sync together. Devices with different group names are independent and can play different audio on the same network. Group names are discovered via mDNS and shown in the web UI dropdown.
 
 ---
 
-## Setup (current)
+## Roles
+
+Set `SOUND_MULTIROOM_ROLE` on each device (or change it live from the web UI):
+
+| Role | Streaming plugins | Joins multiroom | Becomes master |
+|---|---|---|---|
+| `auto` (default) | ✅ Bluetooth, AirPlay, Spotify | ✅ | ✅ On first play |
+| `host` | ✅ | ✅ | ✅ Always |
+| `join` | ❌ Stopped | ✅ | ❌ Never |
+| `disabled` | ✅ | ❌ | ❌ Never |
+
+- **auto** — best for most devices. Idles at boot; promotes to master the moment you start streaming to it.
+- **host** — dedicated server device. Always runs snapserver. Use for a Pi with a reliable wired connection that you always want as the source.
+- **join** — passive receiver. No Bluetooth/AirPlay/Spotify — invisible to streaming apps. Use for speakers in secondary rooms that should only receive audio from the group master.
+- **disabled** — fully standalone. All streaming plugins active, no Snapcast at all. Use when a room should never participate in whole-home audio.
+
+You can change role and group name live from the web UI at `http://<device-ip>/`. Changes are persisted to `SOUND_MULTIROOM_ROLE` and `SOUND_GROUP_NAME` device variables.
+
+---
+
+## Setup
 
 ### 1. Hardware
 
-Connect all devices to your network. They need to be on the **same subnet** — UDP broadcast does not cross router boundaries.
+All devices must be on the same subnet — mDNS is link-local and does not cross router boundaries. For VLAN setups, configure an mDNS reflector (e.g. Avahi daemon or UniFi's mDNS service).
 
-### 2. Fleet mode
+### 2. Configure
 
-By default, devices capable of running snapserver will start in `MULTI_ROOM` mode. You can verify or override this with the `SOUND_MODE` fleet variable:
+For a basic fleet with automatic behaviour: leave `SOUND_MULTIROOM_ROLE` unset (defaults to `auto`) and `SOUND_GROUP_NAME` unset (defaults to `default`). No further configuration needed.
 
-| Value | Meaning |
-|-------|---------|
-| `MULTI_ROOM` | Runs both snapserver and snapclient. Can be master or client. |
-| `MULTI_ROOM_CLIENT` | Runs only snapclient. Never becomes master. Saves resources on weak devices. |
-| `STANDALONE` | Disables multiroom entirely. Device plays independently. |
+For separate groups (e.g. upstairs / downstairs):
 
-Leave `SOUND_MODE` unset on all devices for fully automatic behaviour.
+```
+# On all upstairs devices:
+SOUND_GROUP_NAME = upstairs
+
+# On all downstairs devices:
+SOUND_GROUP_NAME = downstairs
+```
 
 ### 3. Stream
 
-Start playing audio to any device. After a few seconds all other devices in `MULTI_ROOM` or `MULTI_ROOM_CLIENT` mode will sync and play the same audio.
-
-That's it — no additional setup required.
+Start playing audio to any device. After a few seconds all other devices in the same group will sync and play the same audio.
 
 ---
 
 ## Advanced configuration
 
-### Force a fixed master
+### Force a dedicated master (host role)
 
-If you always want a specific device to be the master (e.g. your most powerful Pi), set on that device:
-
-```
-SOUND_MULTIROOM_MASTER = <IP address of the master device>
-```
-
-This pins all snapclients to that IP and prevents automatic master switching.
-
-### Lock master switching
-
-To prevent a device from switching masters when a different device starts playing:
+If you want a specific device to always serve audio — for example, the Pi directly connected to your amp:
 
 ```
-SOUND_MULTIROOM_DISALLOW_UPDATES = 1
+SOUND_MULTIROOM_ROLE = host
 ```
 
-Useful when you want a dedicated server device that never repoints to another master.
+The host device runs snapserver at all times regardless of whether audio is playing.
+
+### Standalone (disabled role)
+
+For a device that should always play independently:
+
+```
+SOUND_MULTIROOM_ROLE = disabled
+```
+
+All streaming plugins remain active. Only Snapcast is not started.
+
+### Override master IP
+
+If mDNS discovery doesn't work on your network (strict managed switches, VLANs without a reflector):
+
+```
+SOUND_MULTIROOM_MASTER = 192.168.1.100
+```
+
+This pins all snapclients to the specified IP and bypasses mDNS entirely.
 
 ### Latency tuning
 
-If speakers across devices are noticeably out of sync, tune per-device with:
+If speakers are noticeably out of sync, increase the group buffer:
 
 ```
-SOUND_MULTIROOM_LATENCY = 100   # milliseconds
+SOUND_GROUP_LATENCY = 600   # milliseconds (default: 400)
 ```
 
-Increase this value on a device whose audio arrives early (you hear it before the others).
+For per-device fine-tuning (e.g. a device with a slow DAC):
 
-### Blacklisted device types
-
-Raspberry Pi 1 and 2 cannot run snapserver due to CPU constraints. These devices automatically start in `MULTI_ROOM_CLIENT` mode even if `SOUND_MODE` is unset.
+```
+SOUND_MULTIROOM_LATENCY = 100   # milliseconds, added on top of group latency
+```
 
 ---
 
 ## Troubleshooting
 
 **Devices don't sync after streaming starts**
-- Wait 10–15 seconds the first time — cote needs a few seconds to establish UDP connections
-- Reboot the master device to force it to re-announce itself
+- Wait up to 10 seconds — mDNS discovery can take a moment on first connection
+- Confirm `SOUND_GROUP_NAME` is the same on all devices you expect to sync
+- Ensure all devices are on the same subnet (no VLAN separation without a reflector)
 
 **Only some devices sync**
-- Ensure all devices are on the same subnet (same router, no VLAN separation)
-- Check that UDP broadcast is not blocked by a firewall or managed switch
+- Check that `SOUND_MULTIROOM_ROLE` is not `disabled` or `join` on devices that should auto-promote
+- mDNS is link-local — it will not cross routed subnet boundaries
 
 **Audio drops or stutters on clients**
-- Increase `SOUND_MULTIROOM_LATENCY` on the affected device
-- Use a wired network connection for the master device if possible
+- Increase `SOUND_GROUP_LATENCY` (try 600–800ms)
+- Use wired Ethernet on the master device if possible
 
----
+**A device stopped syncing after a reboot**
+- With `auto` role, a device rejoins automatically the next time audio plays — no action needed
+- If it stays disconnected, check sound-supervisor logs for mDNS or election errors
 
-## Under the hood: what actually happens technically
-
-```
-Audio source (Bluetooth/AirPlay/Spotify/etc.)
-        │
-        ▼
-PipeWire (audio block, TCP :4317)
-  sink: balena-sound.input
-        │
-        │  ALSA bridge (libpulse0 + libasound2-plugins)
-        ▼
-snapserver reads stream = alsa://?device=pulse
-        │
-        │  TCP :1704  (Snapcast binary protocol, timestamped chunks)
-        ▼
-snapclient (on every device)
-        │
-        │  ALSA bridge → libpulse0 → PipeWire
-        ▼
-  sink: balena-sound.output → hardware
-```
-
-The cote pub/sub layer runs parallel to this on UDP, purely for the master election. It does not carry audio.
-
----
-
-## Future: Simplified multiroom (planned)
-
-> This section describes the direction we are heading, not what is shipped today.
-
-The current mode system (STANDALONE / MULTI\_ROOM / MULTI\_ROOM\_CLIENT) and cote-based election are a workaround for the fact that Snapcast has had built-in mDNS/Avahi discovery since v0.24. The planned simplification removes the workaround entirely.
-
-### What changes
-
-| Today | Future |
-|-------|--------|
-| Three modes (STANDALONE, MULTI\_ROOM, MULTI\_ROOM\_CLIENT) | No modes — every device always runs both server and client |
-| cote pub/sub UDP election | Snapcast mDNS (Avahi) — snapserver advertises itself, snapclient discovers it automatically |
-| sound-supervisor restarts snapclient with new `--host` flag | snapclient auto-switches via mDNS when a new server is active |
-| ALSA bridge (libpulse0 + libasound2-plugins) | PipeWire native pipe: `stream = pipe:///tmp/snapfifo` |
-| Snapcast 0.26.0 | Snapcast latest (built from source at pinned tag) |
-
-### How you'd use it (future)
-
-1. Flash your devices — no mode configuration needed
-2. Start streaming to any device
-3. All other devices automatically discover and sync
-
-Switching masters works the same way: start streaming to a different device. The previous server goes idle, the new one advertises via mDNS, clients switch automatically.
-
-The `SOUND_MODE`, `SOUND_MULTIROOM_MASTER`, and `SOUND_MULTIROOM_DISALLOW_UPDATES` variables would be removed. The only remaining variable is `SOUND_MULTIROOM_LATENCY` for per-device latency tuning.
-
-### Why PipeWire pipe instead of ALSA bridge
-
-The audio block already runs PipeWire natively. The ALSA bridge (libpulse0 + libasound2-plugins) is a translation layer that makes snapserver think it's talking to PulseAudio over ALSA — when it's actually going through three layers to reach PipeWire. The pipe approach is direct:
-
-```
-PipeWire pipe-sink → /tmp/snapfifo → snapserver reads pipe source
-```
-
-Zero ALSA, zero libpulse. The multiroom containers become thin wrappers around the snapcast binaries.
-
-### Zone control (not yet implemented)
-
-Snapcast natively supports **client groups** — you can assign clients to named groups and each group receives an independent audio stream. This would allow true zone control (kitchen and living room play jazz, bedroom plays silence). IoTSound does not currently expose this feature; it would require a management UI. This is a candidate for a future feature.
-
-### References
-
-- Original PR exploring this simplification: [iotsound#541](https://github.com/iotsound/iotsound/pull/541)
-- Original developer's vision for PipeWire + mode simplification: [iotsound#689](https://github.com/iotsound/iotsound/issues/689)
-- Snapcast mDNS documentation: [badaix/snapcast](https://github.com/badaix/snapcast)
+**Group name not showing in the web UI dropdown**
+- The dropdown populates from groups discovered via mDNS in the last 7 days
+- If the group is new, it appears after the first device in that group starts playing

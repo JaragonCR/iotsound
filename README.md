@@ -1,4 +1,4 @@
-# IoTSound (JaragonCR Fork) — v4.5.0
+# IoTSound (JaragonCR Fork) — v4.6.0
 
 > **Actively maintained community fork** of [iotsound/iotsound](https://github.com/iotsound/iotsound), originally developed by Balena as balenaSound.
 > In October 2025 Balena issued a [call for maintainers](https://github.com/iotsound/iotsound/issues/689) but did not transfer the project to volunteers. This fork picks up that work.
@@ -26,13 +26,18 @@
 | **Hardware audio detection** | Auto-detect output devices (DAC > USB > HDMI > Built-in) and input devices (USB > Built-in) with manual override support. |
 | **Microphone filtering** | Configurable PipeWire biquad filters (highpass/lowpass) for voice quality optimization. Perfect for karaoke. |
 
+### ✅ Completed modernization (v4.5.0 → v4.6.0)
+
+| Change | Details |
+|---|---|
+| **Multiroom 2.0** | Replaced cote UDP pub/sub election with mDNS auto-discovery. Play-triggered master promotion — the device you stream to becomes master instantly. Role system (`auto` / `host` / `join` / `disabled`) replaces the old three-mode system. No manual IP pinning needed. Group names let multiple independent groups coexist on the same network. |
+
 ### 🔧 Pending / In Progress
 
 | Item | Notes |
 |---|---|
 | **Karaoke support** | Integrating [pitube-karaoke](https://github.com/JaragonCR/pitube-karaoke) — Go-based karaoke with HDMI video output and 3.5mm audio input |
 | **Airplay plugin update** | shairport-sync version bump and base image update |
-| **Multiroom modernization** | Snapcast upgrade + PipeWire-native pipe source, mDNS auto-discovery, mode simplification — see [MULTIROOM.md](docs/MULTIROOM.md) |
 | **UPnP plugin update** | gmrender-resurrect base image update |
 
 ---
@@ -100,16 +105,30 @@ Set these in your balenaCloud fleet or device variables:
 
 #### Multiroom (Snapcast)
 
-See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of how auto-election works, setup instructions, and the planned PipeWire-native simplification.
+See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of roles, group names, and election behaviour.
 
 | Variable | Description | Default |
 |---|---|---|
-| `SOUND_MODE` | Force mode: `STANDALONE`, `MULTI_ROOM` (server), or `MULTI_ROOM_CLIENT` | auto-detected |
-| `SOUND_MULTIROOM_MASTER` | IP of the multiroom server — forces this device into client mode | auto-detected |
-| `SOUND_MULTIROOM_LATENCY` | Client latency compensation in ms for speaker sync | unset |
-| `SOUND_MULTIROOM_POLL_INTERVAL` | Fleet sync interval in seconds | `60` |
-| `SOUND_MULTIROOM_DISALLOW_UPDATES` | Prevent automatic master switching (set to any value to lock) | unset |
-| `SOUND_COTE_DELAY` | Delay before fleet pub/sub starts in ms | `5000` |
+| `SOUND_MULTIROOM_ROLE` | `auto` (play-triggered master), `host` (always master), `join` (always client), `disabled` (standalone) | `auto` |
+| `SOUND_GROUP_NAME` | Multiroom group — devices with the same name sync together | `default` |
+| `SOUND_GROUP_LATENCY` | Group-wide Snapcast buffer in ms — increase if clients stutter | `400` |
+| `SOUND_MULTIROOM_LATENCY` | Per-device latency fine-tuning in ms | unset |
+| `SOUND_MULTIROOM_MASTER` | Override master IP — skips mDNS discovery (for networks where mDNS is blocked) | unset |
+
+#### Multiroom roles
+
+| Role | Streaming plugins | Joins multiroom | Becomes master |
+|---|---|---|---|
+| `auto` | ✅ Bluetooth, AirPlay, Spotify | ✅ | ✅ On first play |
+| `host` | ✅ | ✅ | ✅ Always |
+| `join` | ❌ Stopped (device invisible to streaming apps) | ✅ | ❌ Never |
+| `disabled` | ✅ | ❌ Standalone only | ❌ Never |
+
+**Standalone mode** — set `SOUND_MULTIROOM_ROLE=disabled` for devices that should play independently. All streaming plugins (Bluetooth, AirPlay, Spotify) remain active; Snapcast is simply not started.
+
+**Groups** — devices with the same `SOUND_GROUP_NAME` sync together. Different group names form independent groups that can play different audio simultaneously on the same network.
+
+You can change role and group name live from the web UI at `http://<device-ip>/` without restarting services.
 
 #### Spotify Connect (librespot)
 
@@ -157,7 +176,12 @@ See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of how auto-el
 
 ### Web UI
 
-Once deployed, access the control panel at `http://<device-ip>/` for volume control and device management.
+Once deployed, access the control panel at `http://<device-ip>/` for:
+- **Volume control** — device output volume slider
+- **Multiroom** — role selector (auto/host/join/disabled), group name dropdown with discovered groups, live master IP
+- **Multi-room buffer** — Snapcast latency slider
+- **DAC overlay** — set a custom device tree overlay for DAC boards
+- **Device management** — restart services, reboot, shutdown
 
 ## Audio Devices
 
@@ -193,6 +217,30 @@ By default, microphone devices are selected in this order:
 2. Built-in microphone
 
 Use `AUDIO_INPUT` to override: `AUDIO_INPUT=1` to force device #1, or `AUDIO_INPUT=USB` to force USB.
+
+### Forcing a specific output or input device
+
+Check the startup logs (or the Support logs page at `http://<device-ip>/support`) to see the numbered device list:
+
+```
+[STEP] Available Hardware Output Sinks:
+  1        alsa_output.usb-0d8c_C-Media_USB_Audio_Device-00.analog-stereo
+  2        alsa_output.platform-soc_sound.stereo-fallback
+  (Set AUDIO_OUTPUT=<n> to force a specific device)
+```
+
+Then set the fleet or device variable:
+
+| Goal | Variable |
+|---|---|
+| Force output device #1 | `AUDIO_OUTPUT=1` |
+| Force USB audio output | `AUDIO_OUTPUT=USB` |
+| Force HiFiBerry DAC | `AUDIO_OUTPUT=HiFiBerry` |
+| Force output device by full name | `AUDIO_OUTPUT=C-Media` (substring match) |
+| Force input device #1 | `AUDIO_INPUT=1` |
+| Force USB microphone | `AUDIO_INPUT=USB` |
+
+The match is case-insensitive substring — you don't need the full device name. `AUTO` (the default) uses the priority order above.
 
 ## Microphone Input & Filtering
 
