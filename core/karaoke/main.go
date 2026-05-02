@@ -880,7 +880,7 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool, pitch float
 		vf = fmt.Sprintf("setpts=PTS+%f/TB,", delay) + vf
 	}
 
-	args := []string{"-nostdin", "-i", filename, "-vf", vf}
+	args := []string{"-re", "-nostdin", "-i", filename, "-vf", vf}
 
 	if withAudio {
 		af := fmt.Sprintf("rubberband=pitch=%f", pitch)
@@ -1045,11 +1045,11 @@ func queryHistory(singer, filter string, limit int) []*Job {
 			singer, limit)
 	case "most":
 		rows, err = db.Query(
-			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history ORDER BY play_count DESC LIMIT ?`,
+			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history GROUP BY yt_id ORDER BY SUM(play_count) DESC LIMIT ?`,
 			limit)
 	default:
 		rows, err = db.Query(
-			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history ORDER BY played_at DESC LIMIT ?`,
+			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history GROUP BY yt_id ORDER BY MAX(played_at) DESC LIMIT ?`,
 			limit)
 	}
 	if err != nil {
