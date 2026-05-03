@@ -821,6 +821,13 @@ func play(filename string, semitones int) {
 	pitch := math.Pow(2, float64(semitones)/12)
 	syncMs, _ := strconv.Atoi(configGet("sync_offset_ms", "0"))
 
+	// Drain any stale mode-change signal left over from a previous song so we
+	// don't immediately restart the new song's ffmpeg on the first loop iteration.
+	select {
+	case <-modeChangeCh:
+	default:
+	}
+
 	for {
 		audioModeMu.RLock()
 		mode := audioMode
@@ -830,23 +837,27 @@ func play(filename string, semitones int) {
 		hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, mode == "stream", pitch)...)
 		hlsCmd.Start()
 		if mode == "local" {
-			playerCmd = exec.Command("ffmpeg",
-				"-nostdin", "-i", filename, "-vn",
-				"-af", fmt.Sprintf("rubberband=pitch=%f", pitch),
-				"-f", "pulse", "karaoke",
-			)
+			args := []string{"-nostdin", "-i", filename, "-vn"}
+			if semitones != 0 {
+				args = append(args, "-af", fmt.Sprintf("rubberband=pitch=%f", pitch))
+			}
+			args = append(args, "-f", "pulse", "karaoke")
+			playerCmd = exec.Command("ffmpeg", args...)
 			playerCmd.Env = os.Environ()
 			playerCmd.Start()
 		}
+		// Capture cmds as locals so the goroutine below never races on a nil global.
+		localHls := hlsCmd
+		localPlayer := playerCmd
 		playerMu.Unlock()
 
 		// Wait for natural song end in a goroutine so we can also select on modeChangeCh.
 		done := make(chan struct{})
 		go func(localMode bool) {
-			if localMode && playerCmd != nil {
-				playerCmd.Wait()
-			} else {
-				hlsCmd.Wait()
+			if localMode && localPlayer != nil {
+				localPlayer.Wait()
+			} else if localHls != nil {
+				localHls.Wait()
 			}
 			close(done)
 		}(mode == "local")
@@ -870,7 +881,7 @@ func play(filename string, semitones int) {
 			playerCmd = nil
 			hlsCmd = nil
 			playerMu.Unlock()
-			// Drain done so the goroutine doesn't block.
+			// Drain done — goroutine will exit once Wait() returns after kill.
 			select {
 			case <-done:
 			default:
@@ -893,17 +904,19 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool, pitch float
 
 	args := []string{"-re", "-nostdin", "-i", filename, "-vf", vf}
 
-	// Force a keyframe every 2 seconds so segment boundaries are always clean IDR frames.
-	args = append(args, "-force_key_frames", "expr:gte(t,n_forced*2)")
-
 	if withAudio {
-		af := fmt.Sprintf("rubberband=pitch=%f", pitch)
+		var af string
+		if pitch != 1.0 {
+			af = fmt.Sprintf("rubberband=pitch=%f", pitch)
+		}
 		if syncOffsetMs < 0 {
 			d := -syncOffsetMs
 			af = fmt.Sprintf("adelay=%d|%d,", d, d) + af
 		}
-		args = append(args, "-af", af,
-			"-c:a", "aac", "-b:a", "128k", "-ar", "48000")
+		if af != "" {
+			args = append(args, "-af", af)
+		}
+		args = append(args, "-c:a", "aac", "-b:a", "128k", "-ar", "48000")
 	} else {
 		args = append(args, "-an")
 	}
