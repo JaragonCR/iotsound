@@ -926,6 +926,10 @@ func buildHLSArgs(filename string, syncOffsetMs int, pitch float64) []string {
 
 	return append(args,
 		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+		// Force a keyframe every 48 frames (2s at 24fps, ~1.6s at 30fps).
+		// Without this the encoder uses the source GOP (~8s), making hls_time 2
+		// produce 8-second segments and causing 8-second stalls between loads.
+		"-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
 		"-b:v", "1000k", "-maxrate", "1000k", "-bufsize", "2000k",
 		"-f", "hls",
 		"-hls_time", "2",
