@@ -48,6 +48,10 @@
   #qr-float img{width:72px;height:72px;border-radius:8px;opacity:.7;transition:opacity .2s;display:block}
   #qr-float:hover img{opacity:1}
   #qr-float span{display:block;font-size:.65rem;color:#666;margin-top:3px}
+  .history-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+  .history-actions button{padding:6px 12px;font-size:.85rem}
+  .local-only{display:none}
+  .local-mode .local-only{display:flex}
 </style>
 </head>
 <body>
@@ -121,6 +125,12 @@
     <span style="font-weight:700;min-width:70px">Audio</span>
     <button id="mode-local" class="mode-btn active" onclick="setAudioMode('local')">Local speakers</button>
     <button id="mode-stream" class="mode-btn" onclick="setAudioMode('stream')">Stream (browser)</button>
+    <button id="sync-btn" class="mode-btn local-only" onclick="window.location='/sync'">Sync timing</button>
+  </div>
+  <div class="row local-only" id="mic-row" style="margin-top:12px">
+    <span style="font-weight:700;min-width:70px">Mic Gain</span>
+    <input type="range" id="mic-slider" min="0" max="100" style="flex:1" oninput="setMicGain(this.value)">
+    <span id="mic-label" style="width:36px;text-align:right">—</span>
   </div>
 </div>
 
@@ -177,6 +187,7 @@ function loadVolume() {
   }).catch(()=>{});
 }
 let volTimer;
+let micTimer;
 function setVolume(v) {
   document.getElementById('volume-label').textContent = v + '%';
   clearTimeout(volTimer);
@@ -185,13 +196,30 @@ function setVolume(v) {
   }, 200);
 }
 
+function loadMicGain() {
+  fetch('/api/mic-gain').then(r=>r.json()).then(d=>{
+    const v = d.gain ?? 35;
+    document.getElementById('mic-slider').value = v;
+    document.getElementById('mic-label').textContent = v + '%';
+    document.getElementById('mic-row').style.opacity = d.available ? '1' : '.45';
+  }).catch(()=>{});
+}
+
+function setMicGain(v) {
+  document.getElementById('mic-label').textContent = v + '%';
+  clearTimeout(micTimer);
+  micTimer = setTimeout(()=>{
+    fetch('/api/mic-gain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gain:parseInt(v)})});
+  }, 200);
+}
+
 // ── Audio mode ────────────────────────────────────────────────────────────────
 function setAudioMode(mode) {
   fetch('/api/audio-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
-  document.getElementById('mode-local').classList.toggle('active', mode === 'local');
-  document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
+  applyAudioMode(mode);
 }
 function applyAudioMode(mode) {
+  document.body.classList.toggle('local-mode', mode === 'local');
   document.getElementById('mode-local').classList.toggle('active', mode === 'local');
   document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
 }
@@ -205,11 +233,22 @@ function fetchData() {
 
 function renderAll(d) {
   applyAudioMode(d.audio_mode || 'local');
+  applyMicState(d);
   renderNowPlaying(d.now_playing);
   renderNextUp(d.next_up);
   renderQueue(d.queue);
   renderHistory(d.history);
   handleUpNextOverlay(d);
+}
+
+function applyMicState(d) {
+  if (d.mic_gain !== undefined) {
+    document.getElementById('mic-slider').value = d.mic_gain;
+    document.getElementById('mic-label').textContent = d.mic_gain + '%';
+  }
+  if (d.mic_available !== undefined) {
+    document.getElementById('mic-row').style.opacity = d.mic_available ? '1' : '.45';
+  }
 }
 
 function handleUpNextOverlay(d) {
@@ -273,16 +312,26 @@ function renderQueue(queue) {
 
 function renderHistory(history) {
   const el = document.getElementById('history-list');
-  if (!history || !history.length) { el.innerHTML='<div class="sub">No history yet</div>'; return; }
+  if (!history || !history.length) {
+    if (!changed('history', {filter:historyFilter, items:[]})) return;
+    el.innerHTML='<div class="sub">No history yet</div>';
+    return;
+  }
   // Dedup by yt_id (backend GROUP BY handles this, but guard on the client too)
   const seen = new Set();
   history = history.filter(h => { if (seen.has(h.yt_id)) return false; seen.add(h.yt_id); return true; });
-  if (!changed('history', history.map(h=>h.yt_id))) return;
+  if (!changed('history', {
+    filter: historyFilter,
+    items: history.map(h=>({id:h.yt_id,title:h.title,thumb:h.thumbnail,key:h.key_offset}))
+  })) return;
   el.innerHTML = history.map(j=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
       ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
       <div class="grow truncate">${esc(j.title)}</div>
-      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="addSong('${esc(j.yt_id)}','${esc(j.title)}','${esc(j.thumbnail)}')">Sing Again</button>
+      <div class="history-actions">
+        <button class="secondary" onclick="addSong('${esc(j.yt_id)}','${esc(j.title)}','${esc(j.thumbnail)}')">Sing Again</button>
+        <button class="danger" onclick="deleteHistory('${esc(j.yt_id)}','${esc(j.title)}')">Delete</button>
+      </div>
     </div>`).join('');
 }
 
@@ -326,7 +375,10 @@ function skipSong() {
 }
 
 function deleteJob(id) {
-  fetch('/delete',{method:'POST',body:new URLSearchParams({id})}).then(()=>fetchData());
+  fetch('/delete',{method:'POST',body:new URLSearchParams({id})})
+    .then(r=>{ if(!r.ok) return r.text().then(t=>Promise.reject(t)); })
+    .then(()=>fetchData())
+    .catch(msg=>alert(msg || 'Could not delete song'));
 }
 
 function updateKey(id, key) {
@@ -335,8 +387,23 @@ function updateKey(id, key) {
     .then(r=>{ if(!r.ok) alert('Key is locked — cannot change within 10s of playing'); else fetchData(); });
 }
 
+function deleteHistory(ytID, title) {
+  if (!confirm(`Remove "${title}" from Sing Again?`)) return;
+  fetch('/api/history/delete',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({yt_id:ytID,singer:singerName,scope:historyFilter === 'me' ? 'singer' : 'all'})
+  }).then(r=>{
+    if(!r.ok) return r.text().then(t=>Promise.reject(t));
+  }).then(()=>{
+    delete lastKey.history;
+    fetchData();
+  }).catch(msg=>alert(msg || 'Could not delete history item'));
+}
+
 function setHistoryTab(filter, btn) {
   historyFilter = filter;
+  delete lastKey.history;
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
   fetchData();
@@ -348,6 +415,7 @@ function fmtKey(k){return k>0?'+'+k:String(k||0)}
 
 loadSinger();
 loadVolume();
+loadMicGain();
 fetchData();
 setInterval(fetchData, 1500);
 </script>

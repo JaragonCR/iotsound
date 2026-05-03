@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -27,15 +28,15 @@ import (
 const (
 	downloadPath = "/data/media"
 	dataPath     = "/data/app"
-	hlsPath      = "/tmp/hls"
-	nextUpFile   = "/tmp/hls/nextup.txt"
 	fetcherBase  = "http://karaoke-fetcher:8081"
+
+	karaokeMicLoopbackName = "karaoke-mic-loopback"
 )
 
 var (
-	listenPort  = envOr("KARAOKE_PORT", ":8080")
-	soundSuper  = envOr("SOUND_SUPERVISOR_URL", "http://172.17.0.1:80")
-	quality     = envOr("KARAOKE_QUALITY", "720")
+	listenPort   = envOr("KARAOKE_PORT", ":8080")
+	soundSuper   = envOr("SOUND_SUPERVISOR_URL", "http://172.17.0.1:80")
+	quality      = envOr("KARAOKE_QUALITY", "720")
 	maxPerSinger = envIntOr("KARAOKE_MAX_QUEUE_PER_SINGER", 3)
 )
 
@@ -72,14 +73,17 @@ type SearchResult struct {
 }
 
 type APIData struct {
-	NowPlaying    *Job  `json:"now_playing"`
-	NextUp        *Job  `json:"next_up"`
-	Queue         []*Job `json:"queue"`
-	History       []*Job `json:"history"`
-	State         string `json:"state"`
-	UpNextUntil   int64  `json:"up_next_until"`   // unix ms; non-zero only in up_next state
-	PlayPositionMs int64 `json:"play_position_ms"` // ms elapsed since current song started
-	AudioMode     string `json:"audio_mode"`
+	NowPlaying     *Job   `json:"now_playing"`
+	NextUp         *Job   `json:"next_up"`
+	Queue          []*Job `json:"queue"`
+	History        []*Job `json:"history"`
+	State          string `json:"state"`
+	UpNextUntil    int64  `json:"up_next_until"`    // unix ms; non-zero only in up_next state
+	PlayPositionMs int64  `json:"play_position_ms"` // ms elapsed since current song started
+	AudioMode      string `json:"audio_mode"`
+	SyncOffsetMs   int    `json:"sync_offset_ms"`
+	MicGain        int    `json:"mic_gain"`
+	MicAvailable   bool   `json:"mic_available"`
 }
 
 // ── Globals ──────────────────────────────────────────────────────────────────
@@ -87,9 +91,15 @@ type APIData struct {
 var (
 	db               *sql.DB
 	downloadProgress sync.Map  // int64 id → string progress
-	playerCmd        *exec.Cmd // process A: audio → PipeWire
-	hlsCmd           *exec.Cmd // process B: video → HLS
+	playerCmd        *exec.Cmd // PipeWire audio process
 	playerMu         sync.Mutex
+	micLoopbackMu    sync.Mutex
+)
+
+// current song file served at /stream/current
+var (
+	currentFile   string
+	currentFileMu sync.RWMutex
 )
 
 // between-songs transition state
@@ -108,20 +118,26 @@ var (
 	audioModeMu sync.RWMutex
 )
 
-// modeChangeCh is signalled when audioMode changes during playback
+// modeChangeCh is signalled when audioMode changes during playback.
 var modeChangeCh = make(chan struct{}, 1)
+
+// syncChangeCh is signalled when A/V sync changes during playback.
+var syncChangeCh = make(chan struct{}, 1)
+
+// skipCh is signalled when the current song should end immediately.
+var skipCh = make(chan struct{}, 1)
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	for _, p := range []string{downloadPath, dataPath, hlsPath} {
+	for _, p := range []string{downloadPath, dataPath} {
 		if err := os.MkdirAll(p, 0755); err != nil {
 			log.Fatalf("mkdir %s: %v", p, err)
 		}
 	}
-	writeNextUp("", "")
 	initDB()
 	resetStaleJobs()
+	go cleanupIdleMicLoopback()
 
 	go downloadWorker()
 	go playerWorker()
@@ -131,6 +147,13 @@ func main() {
 
 	log.Printf("[karaoke] Listening on %s", listenPort)
 	log.Fatal(http.ListenAndServe(listenPort, mux))
+}
+
+func cleanupIdleMicLoopback() {
+	time.Sleep(5 * time.Second)
+	if err := disableMicLoopback(); err != nil {
+		log.Printf("[mic] idle loopback cleanup skipped: %v", err)
+	}
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
@@ -146,10 +169,13 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /singer-stream", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/stream.html")
 	})
+	mux.HandleFunc("GET /sync", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/sync.html")
+	})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	// HLS stream segments
-	mux.Handle("GET /stream/", http.StripPrefix("/stream/", http.FileServer(http.Dir(hlsPath))))
+	// Current song stream (direct MP4 — no ffmpeg encoding on Pi)
+	mux.HandleFunc("GET /stream/current", handleCurrentStream)
 
 	// Queue API
 	mux.HandleFunc("GET /api/data", handleAPIData)
@@ -157,6 +183,7 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /skip", handleSkip)
 	mux.HandleFunc("POST /delete", handleDelete)
 	mux.HandleFunc("POST /api/queue/{id}/key", handleQueueKey)
+	mux.HandleFunc("POST /api/history/delete", handleDeleteHistory)
 
 	// Search
 	mux.HandleFunc("GET /api/search", handleSearch)
@@ -169,6 +196,8 @@ func registerRoutes(mux *http.ServeMux) {
 	// Volume (proxied to sound-supervisor)
 	mux.HandleFunc("GET /api/volume", handleGetVolume)
 	mux.HandleFunc("POST /api/volume", handleSetVolume)
+	mux.HandleFunc("GET /api/mic-gain", handleGetMicGain)
+	mux.HandleFunc("POST /api/mic-gain", handleSetMicGain)
 
 	// Sync offset (Phase 2 — endpoints wired, implementation in player)
 	mux.HandleFunc("GET /api/sync", handleGetSync)
@@ -267,6 +296,12 @@ func handleAPIData(w http.ResponseWriter, r *http.Request) {
 	audioModeMu.RLock()
 	mode := audioMode
 	audioModeMu.RUnlock()
+	syncOffsetMs := syncOffset()
+	micGain := micGain()
+	micAvailable := false
+	if _, err := micSource(); err == nil {
+		micAvailable = true
+	}
 
 	now := queryByStatus("playing", 1)
 
@@ -277,6 +312,9 @@ func handleAPIData(w http.ResponseWriter, r *http.Request) {
 	var nowPlaying, nextUp *Job
 	if len(now) > 0 {
 		nowPlaying = now[0]
+	}
+	if nowPlaying == nil && state == "playing" {
+		state = "idle"
 	}
 	if len(nextUpList) > 0 {
 		nextUp = nextUpList[0]
@@ -321,17 +359,20 @@ func handleAPIData(w http.ResponseWriter, r *http.Request) {
 		UpNextUntil:    upNextMs,
 		PlayPositionMs: posMs,
 		AudioMode:      mode,
+		SyncOffsetMs:   syncOffsetMs,
+		MicGain:        micGain,
+		MicAvailable:   micAvailable,
 	})
 }
 
 func handleAdd(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	singer    := strings.TrimSpace(r.FormValue("singer"))
-	url       := strings.TrimSpace(r.FormValue("url"))
-	title     := strings.TrimSpace(r.FormValue("title"))
+	singer := strings.TrimSpace(r.FormValue("singer"))
+	url := strings.TrimSpace(r.FormValue("url"))
+	title := strings.TrimSpace(r.FormValue("title"))
 	thumbnail := strings.TrimSpace(r.FormValue("thumbnail"))
-	ytID      := strings.TrimSpace(r.FormValue("yt_id"))
-	duration  := strings.TrimSpace(r.FormValue("duration"))
+	ytID := strings.TrimSpace(r.FormValue("yt_id"))
+	duration := strings.TrimSpace(r.FormValue("duration"))
 
 	if singer == "" || url == "" {
 		http.Error(w, "singer and url required", http.StatusBadRequest)
@@ -385,15 +426,70 @@ func handleSkip(w http.ResponseWriter, r *http.Request) {
 	playerMu.Lock()
 	defer playerMu.Unlock()
 	killCmd(playerCmd)
-	killCmd(hlsCmd)
+	select {
+	case skipCh <- struct{}{}:
+	default:
+	}
 	writeJSON(w, map[string]string{"status": "skipped"})
 }
 
 func handleDelete(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	id := r.FormValue("id")
-	db.Exec(`UPDATE jobs SET status='played' WHERE id=? AND status NOT IN ('playing')`, id)
-	writeJSON(w, map[string]string{"status": "deleted"})
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	id := strings.TrimSpace(r.FormValue("id"))
+	if id == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+	result, err := db.Exec(`UPDATE jobs SET status='played' WHERE id=? AND status NOT IN ('playing')`, id)
+	if err != nil {
+		http.Error(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		http.Error(w, "not found or currently playing", http.StatusConflict)
+		return
+	}
+	writeJSON(w, map[string]any{"status": "deleted", "id": id})
+}
+
+func handleDeleteHistory(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		YtID   string `json:"yt_id"`
+		Singer string `json:"singer"`
+		Scope  string `json:"scope"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	body.YtID = strings.TrimSpace(body.YtID)
+	body.Singer = strings.TrimSpace(body.Singer)
+	if body.YtID == "" {
+		http.Error(w, "yt_id required", http.StatusBadRequest)
+		return
+	}
+
+	var (
+		result sql.Result
+		err    error
+	)
+	if body.Scope == "singer" && body.Singer != "" {
+		result, err = db.Exec(`DELETE FROM singer_history WHERE yt_id=? AND singer=?`, body.YtID, body.Singer)
+		db.Exec(`DELETE FROM singer_favorites WHERE yt_id=? AND singer=?`, body.YtID, body.Singer)
+	} else {
+		result, err = db.Exec(`DELETE FROM singer_history WHERE yt_id=?`, body.YtID)
+		db.Exec(`DELETE FROM singer_favorites WHERE yt_id=?`, body.YtID)
+	}
+	if err != nil {
+		http.Error(w, "history delete failed", http.StatusInternalServerError)
+		return
+	}
+	affected, _ := result.RowsAffected()
+	writeJSON(w, map[string]any{"status": "deleted", "yt_id": body.YtID, "deleted": affected})
 }
 
 func handleQueueKey(w http.ResponseWriter, r *http.Request) {
@@ -541,23 +637,33 @@ func handleGetSinger(w http.ResponseWriter, r *http.Request) {
 		Thumbnail string `json:"thumbnail"`
 	}
 
-	var history []HistItem
-	rows, _ := db.Query(`SELECT yt_id,title,thumbnail,key_offset,play_count,played_at FROM singer_history WHERE singer=? ORDER BY played_at DESC LIMIT 100`, name)
-	for rows.Next() {
-		var h HistItem
-		rows.Scan(&h.YtID, &h.Title, &h.Thumbnail, &h.KeyOffset, &h.PlayCount, &h.PlayedAt)
-		history = append(history, h)
+	history := []HistItem{}
+	rows, err := db.Query(`SELECT yt_id,title,thumbnail,key_offset,play_count,played_at FROM singer_history WHERE singer=? ORDER BY played_at DESC LIMIT 100`, name)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var h HistItem
+			if err := rows.Scan(&h.YtID, &h.Title, &h.Thumbnail, &h.KeyOffset, &h.PlayCount, &h.PlayedAt); err == nil {
+				history = append(history, h)
+			}
+		}
+	} else {
+		log.Printf("[singer] history query failed for %q: %v", name, err)
 	}
-	rows.Close()
 
-	var favorites []FavItem
-	frows, _ := db.Query(`SELECT yt_id,title,thumbnail FROM singer_favorites WHERE singer=? ORDER BY added_at DESC`, name)
-	for frows.Next() {
-		var f FavItem
-		frows.Scan(&f.YtID, &f.Title, &f.Thumbnail)
-		favorites = append(favorites, f)
+	favorites := []FavItem{}
+	frows, err := db.Query(`SELECT yt_id,title,thumbnail FROM singer_favorites WHERE singer=? ORDER BY added_at DESC`, name)
+	if err == nil {
+		defer frows.Close()
+		for frows.Next() {
+			var f FavItem
+			if err := frows.Scan(&f.YtID, &f.Title, &f.Thumbnail); err == nil {
+				favorites = append(favorites, f)
+			}
+		}
+	} else {
+		log.Printf("[singer] favorites query failed for %q: %v", name, err)
 	}
-	frows.Close()
 
 	writeJSON(w, map[string]any{"singer": s, "history": history, "favorites": favorites})
 }
@@ -624,25 +730,55 @@ func handleGetVolume(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSetVolume(w http.ResponseWriter, r *http.Request) {
-	var body struct{ Volume int `json:"volume"` }
+	var body struct {
+		Volume int `json:"volume"`
+	}
 	json.NewDecoder(r.Body).Decode(&body)
 	proxyVolume(body.Volume)
 	writeJSON(w, map[string]string{"status": "ok"})
 }
 
+func handleGetMicGain(w http.ResponseWriter, r *http.Request) {
+	_, err := micSource()
+	writeJSON(w, map[string]any{"gain": micGain(), "available": err == nil})
+}
+
+func handleSetMicGain(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Gain int `json:"gain"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+	if body.Gain < 0 || body.Gain > 100 {
+		http.Error(w, "gain must be 0-100", http.StatusBadRequest)
+		return
+	}
+	configSet("mic_gain", strconv.Itoa(body.Gain))
+	if err := applyMicGain(body.Gain); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, map[string]any{"status": "ok", "gain": body.Gain})
+}
+
 func handleGetSync(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]string{"sync_offset_ms": configGet("sync_offset_ms", "0")})
+	writeJSON(w, map[string]int{"sync_offset_ms": syncOffset()})
 }
 
 func handleSetSync(w http.ResponseWriter, r *http.Request) {
-	var body struct{ OffsetMs int `json:"offset_ms"` }
+	var body struct {
+		OffsetMs int `json:"offset_ms"`
+	}
 	json.NewDecoder(r.Body).Decode(&body)
-	if body.OffsetMs < -3000 || body.OffsetMs > 3000 {
-		http.Error(w, "offset_ms must be -3000 to +3000", http.StatusBadRequest)
+	if body.OffsetMs < -2000 || body.OffsetMs > 2000 {
+		http.Error(w, "offset_ms must be -2000 to +2000", http.StatusBadRequest)
 		return
 	}
-	rounded := (body.OffsetMs / 50) * 50
+	rounded := (body.OffsetMs / 200) * 200
 	configSet("sync_offset_ms", strconv.Itoa(rounded))
+	select {
+	case syncChangeCh <- struct{}{}:
+	default:
+	}
 	writeJSON(w, map[string]any{"status": "ok", "sync_offset_ms": rounded})
 }
 
@@ -660,7 +796,9 @@ func handleStorageStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSetQuota(w http.ResponseWriter, r *http.Request) {
-	var body struct{ QuotaBytes int64 `json:"quota_bytes"` }
+	var body struct {
+		QuotaBytes int64 `json:"quota_bytes"`
+	}
 	json.NewDecoder(r.Body).Decode(&body)
 	if body.QuotaBytes < 1<<30 {
 		http.Error(w, "minimum quota is 1 GB", http.StatusBadRequest)
@@ -791,14 +929,16 @@ func playerWorker() {
 		songStartTime = time.Now()
 		stateMu.Unlock()
 
-		// Write next-up overlay for whoever comes after
-		var ns, nt string
-		db.QueryRow(`SELECT singer, title FROM jobs WHERE status='ready' AND id!=? ORDER BY id LIMIT 1`, id).Scan(&ns, &nt)
-		writeNextUp(ns, nt)
+		currentFileMu.Lock()
+		currentFile = filename
+		currentFileMu.Unlock()
 
-		cleanHLS()
 		log.Printf("[player] %s — %s (key %+d)", singer, title, keyOffset)
 		play(filename, keyOffset)
+
+		currentFileMu.Lock()
+		currentFile = ""
+		currentFileMu.Unlock()
 
 		// Record history
 		db.Exec(`
@@ -808,164 +948,333 @@ func playerWorker() {
 			singer, ytID, title, thumbnail, keyOffset)
 
 		db.Exec(`UPDATE jobs SET status='played' WHERE id=?`, id)
-		writeNextUp("", "")
 		lastSinger = singer
 	}
 }
 
-// play runs ffmpeg for the song. HLS (always with audio) runs for the full
-// duration and is the single stream clients join. PipeWire speakers are started
-// or stopped independently when the audio mode changes — the HLS stream is
-// never restarted mid-song.
 func play(filename string, semitones int) {
 	pitch := math.Pow(2, float64(semitones)/12)
-	syncMs, _ := strconv.Atoi(configGet("sync_offset_ms", "0"))
+
+	duration := probeDuration(filename)
+	if duration <= 0 {
+		duration = 4 * time.Minute
+	}
+	end := time.NewTimer(duration)
+	defer end.Stop()
 
 	// Drain stale mode-change signal from a previous song.
 	select {
 	case <-modeChangeCh:
 	default:
 	}
+	select {
+	case <-skipCh:
+	default:
+	}
+	select {
+	case <-syncChangeCh:
+	default:
+	}
 
-	// HLS always runs with audio — it's the one persistent stream.
-	playerMu.Lock()
-	hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, pitch)...)
-	hlsCmd.Start()
-	localHls := hlsCmd
+	startSpeakers := func() {
+		playerMu.Lock()
+		defer playerMu.Unlock()
+		if playerCmd != nil {
+			return
+		}
+		stateMu.Lock()
+		startMs := time.Since(songStartTime).Milliseconds()
+		stateMu.Unlock()
+		cmd := makePipeWireCmd(filename, semitones, pitch, startMs, int64(syncOffset()))
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Start(); err != nil {
+			log.Printf("[player] speakers start failed: %v", err)
+			return
+		}
+		playerCmd = cmd
+		log.Printf("[player] speakers on")
+		go func() {
+			err := cmd.Wait()
+			msg := strings.TrimSpace(stderr.String())
+			if err != nil {
+				log.Printf("[player] speakers exited: %v stderr=%q", err, msg)
+				return
+			}
+			if msg != "" {
+				log.Printf("[player] speakers stopped: %s", msg)
+			}
+		}()
+	}
 
-	// Start PipeWire speakers if we're in local mode.
+	stopSpeakers := func() {
+		playerMu.Lock()
+		defer playerMu.Unlock()
+		if playerCmd == nil {
+			return
+		}
+		killCmd(playerCmd)
+		playerCmd = nil
+		log.Printf("[player] speakers off")
+	}
+
+	stopLocalAudio := func() {
+		stopSpeakers()
+		if err := disableMicLoopback(); err != nil {
+			log.Printf("[mic] loopback disable failed: %v", err)
+		}
+	}
+
+	startLocalAudio := func() {
+		if err := ensureMicLoopback(); err != nil {
+			log.Printf("[mic] loopback unavailable: %v", err)
+		}
+		startSpeakers()
+	}
+
 	audioModeMu.RLock()
 	if audioMode == "local" {
-		playerCmd = makePipeWireCmd(filename, semitones, pitch)
-		playerCmd.Start()
+		startLocalAudio()
 	}
-	playerMu.Unlock()
 	audioModeMu.RUnlock()
-
-	done := make(chan struct{})
-	go func() {
-		if localHls != nil {
-			localHls.Wait()
-		}
-		close(done)
-	}()
+	defer stopLocalAudio()
 
 	for {
 		select {
-		case <-done:
-			playerMu.Lock()
-			killCmd(playerCmd)
-			killCmd(hlsCmd)
-			playerCmd = nil
-			hlsCmd = nil
-			playerMu.Unlock()
+		case <-end.C:
 			return
-
+		case <-skipCh:
+			return
 		case <-modeChangeCh:
-			// Only toggle PipeWire — HLS keeps running untouched.
 			audioModeMu.RLock()
 			mode := audioMode
 			audioModeMu.RUnlock()
-			playerMu.Lock()
-			if mode == "local" && playerCmd == nil {
-				playerCmd = makePipeWireCmd(filename, semitones, pitch)
-				playerCmd.Start()
-				log.Printf("[player] speakers on")
-			} else if mode != "local" && playerCmd != nil {
-				killCmd(playerCmd)
-				playerCmd = nil
-				log.Printf("[player] speakers off")
+			if mode == "local" {
+				startLocalAudio()
+			} else {
+				stopLocalAudio()
 			}
-			playerMu.Unlock()
+		case <-syncChangeCh:
+			audioModeMu.RLock()
+			mode := audioMode
+			audioModeMu.RUnlock()
+			if mode == "local" {
+				stopLocalAudio()
+				startLocalAudio()
+			}
 		}
 	}
 }
 
-func makePipeWireCmd(filename string, semitones int, pitch float64) *exec.Cmd {
-	args := []string{"-nostdin", "-i", filename, "-vn"}
-	if semitones != 0 {
-		args = append(args, "-af", fmt.Sprintf("rubberband=pitch=%f", pitch))
+func makePipeWireCmd(filename string, semitones int, pitch float64, startMs, syncMs int64) *exec.Cmd {
+	audioDelayMs := int64(0)
+	if syncMs < 0 {
+		audioDelayMs = -syncMs
 	}
-	args = append(args, "-f", "pulse", "karaoke")
+	seekMs := startMs - audioDelayMs
+	if seekMs < 0 {
+		seekMs = 0
+	}
+	initialDelayMs := audioDelayMs - startMs
+	if initialDelayMs < 0 {
+		initialDelayMs = 0
+	}
+
+	args := []string{"-hide_banner", "-loglevel", "warning", "-nostdin"}
+	if seekMs > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", float64(seekMs)/1000))
+	}
+	args = append(args, "-i", filename, "-vn")
+	filters := []string{}
+	if semitones != 0 {
+		filters = append(filters, fmt.Sprintf("rubberband=pitch=%f", pitch))
+	}
+	if initialDelayMs > 0 {
+		filters = append(filters, fmt.Sprintf("adelay=%d:all=1", initialDelayMs))
+	}
+	if len(filters) > 0 {
+		args = append(args, "-af", strings.Join(filters, ","))
+	}
+	args = append(args,
+		"-f", "pulse",
+		"-device", "balena-sound.input",
+		"-name", "karaoke",
+		"-stream_name", "karaoke",
+		"karaoke",
+	)
 	cmd := exec.Command("ffmpeg", args...)
 	cmd.Env = os.Environ()
 	return cmd
 }
 
-func buildHLSArgs(filename string, syncOffsetMs int, pitch float64) []string {
-	vf := `drawtext=textfile=/tmp/hls/nextup.txt:reload=1:` +
-		`fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:` +
-		`fontsize=28:fontcolor=white:` +
-		`box=1:boxcolor=black@0.55:boxborderw=10:` +
-		`x=w-tw-24:y=24`
-	if syncOffsetMs > 0 {
-		delay := float64(syncOffsetMs) / 1000.0
-		vf = fmt.Sprintf("setpts=PTS+%f/TB,", delay) + vf
+func syncOffset() int {
+	offset, _ := strconv.Atoi(configGet("sync_offset_ms", envOr("KARAOKE_SYNC_OFFSET_MS", "0")))
+	if offset < -2000 {
+		offset = -2000
 	}
-
-	args := []string{"-re", "-nostdin", "-i", filename, "-vf", vf}
-
-	// Audio — always included so the stream is self-contained
-	var af string
-	if pitch != 1.0 {
-		af = fmt.Sprintf("rubberband=pitch=%f", pitch)
+	if offset > 2000 {
+		offset = 2000
 	}
-	if syncOffsetMs < 0 {
-		d := -syncOffsetMs
-		prefix := fmt.Sprintf("adelay=%d|%d", d, d)
-		if af != "" {
-			af = prefix + "," + af
-		} else {
-			af = prefix
+	return (offset / 200) * 200
+}
+
+func micGain() int {
+	gain, _ := strconv.Atoi(configGet("mic_gain", envOr("KARAOKE_MIC_GAIN", envOr("AUDIO_MIC_INPUT_VOLUME", "35"))))
+	if gain < 0 {
+		return 0
+	}
+	if gain > 100 {
+		return 100
+	}
+	return gain
+}
+
+func pactl(args ...string) ([]byte, error) {
+	cmd := exec.Command("pactl", args...)
+	cmd.Env = os.Environ()
+	return cmd.CombinedOutput()
+}
+
+func micSource() (string, error) {
+	out, err := pactl("list", "short", "sources")
+	if err != nil {
+		return "", fmt.Errorf("pactl sources failed: %s", strings.TrimSpace(string(out)))
+	}
+	var fallback string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		name := fields[1]
+		if strings.Contains(name, ".monitor") || strings.Contains(name, "balena-sound") || strings.Contains(name, "snapcast") {
+			continue
+		}
+		if name == "mic_filtered" {
+			return name, nil
+		}
+		if fallback == "" {
+			fallback = name
 		}
 	}
-	if af != "" {
-		args = append(args, "-af", af)
+	if fallback == "" {
+		return "", fmt.Errorf("no microphone source found")
 	}
-	args = append(args, "-c:a", "aac", "-b:a", "128k", "-ar", "48000")
+	return fallback, nil
+}
 
-	return append(args,
-		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-		// Force a keyframe every 48 frames (2s at 24fps, ~1.6s at 30fps).
-		// Without this the encoder uses the source GOP (~8s), making hls_time 2
-		// produce 8-second segments and causing 8-second stalls between loads.
-		"-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
-		"-b:v", "1000k", "-maxrate", "1000k", "-bufsize", "2000k",
-		"-f", "hls",
-		"-hls_time", "2",
-		"-hls_list_size", "0",
-		"-hls_playlist_type", "event",
-		"-hls_flags", "independent_segments",
-		"-hls_segment_filename", "/tmp/hls/seg%d.ts",
-		"/tmp/hls/playlist.m3u8",
+func applyMicGain(gain int) error {
+	source, err := micSource()
+	if err != nil {
+		return err
+	}
+	out, err := pactl("set-source-volume", source, fmt.Sprintf("%d%%", gain))
+	if err != nil {
+		return fmt.Errorf("set mic gain failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func ensureMicLoopback() error {
+	micLoopbackMu.Lock()
+	defer micLoopbackMu.Unlock()
+
+	if err := unloadKaraokeMicLoopbacksLocked(); err != nil {
+		log.Printf("[mic] stale loopback cleanup failed: %v", err)
+	}
+	source, err := micSource()
+	if err != nil {
+		return err
+	}
+	gain := micGain()
+	if err := applyMicGain(gain); err != nil {
+		return err
+	}
+	out, err := pactl(
+		"load-module", "module-loopback",
+		"source="+source,
+		"sink=balena-sound.input",
+		"latency_msec=50",
+		"remix=true",
+		"sink_input_properties=media.name="+karaokeMicLoopbackName,
+		"source_output_properties=media.name="+karaokeMicLoopbackName,
 	)
+	if err != nil {
+		return fmt.Errorf("load mic loopback failed: %s", strings.TrimSpace(string(out)))
+	}
+	log.Printf("[mic] loopback on (%s @ %d%%)", source, gain)
+	return nil
+}
+
+func disableMicLoopback() error {
+	micLoopbackMu.Lock()
+	defer micLoopbackMu.Unlock()
+	return unloadKaraokeMicLoopbacksLocked()
+}
+
+func unloadKaraokeMicLoopbacksLocked() error {
+	out, err := pactl("list", "modules", "short")
+	if err != nil {
+		return fmt.Errorf("pactl modules failed: %s", strings.TrimSpace(string(out)))
+	}
+	var firstErr error
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 3 || fields[1] != "module-loopback" {
+			continue
+		}
+		args := strings.Join(fields[2:], " ")
+		if !strings.Contains(args, "sink=balena-sound.input") || strings.Contains(args, ".monitor") {
+			continue
+		}
+		isKaraokeLoopback := strings.Contains(args, karaokeMicLoopbackName)
+		isLegacyKaraokeLoopback := strings.Contains(args, "latency_msec=50") && strings.Contains(args, "remix=true")
+		if !isKaraokeLoopback && !isLegacyKaraokeLoopback {
+			continue
+		}
+		unloadOut, unloadErr := pactl("unload-module", fields[0])
+		if unloadErr != nil && firstErr == nil {
+			firstErr = fmt.Errorf("unload mic loopback %s failed: %s", fields[0], strings.TrimSpace(string(unloadOut)))
+		}
+	}
+	return firstErr
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// cleanHLS removes all segments and the playlist so the next song starts
-// with a fresh stream. Without this, append_list mixes old (deleted) segments
-// with new ones, producing out-of-order frames in the browser.
-func cleanHLS() {
-	files, _ := filepath.Glob(filepath.Join(hlsPath, "*.ts"))
-	for _, f := range files {
-		os.Remove(f)
+func handleCurrentStream(w http.ResponseWriter, r *http.Request) {
+	currentFileMu.RLock()
+	f := currentFile
+	currentFileMu.RUnlock()
+	if f == "" {
+		http.NotFound(w, r)
+		return
 	}
-	os.Remove(filepath.Join(hlsPath, "playlist.m3u8"))
+	http.ServeFile(w, r, f)
 }
 
-func writeNextUp(singer, title string) {
-	content := ""
-	if singer != "" && title != "" {
-		content = fmt.Sprintf("Next Up: %s — %s", singer, title)
+func probeDuration(filename string) time.Duration {
+	out, err := exec.Command(
+		"ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		filename,
+	).Output()
+	if err != nil {
+		log.Printf("[player] ffprobe duration failed: %v", err)
+		return 0
 	}
-	os.WriteFile(nextUpFile, []byte(content), 0644)
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds * float64(time.Second))
 }
 
 func killCmd(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
 		cmd.Process.Kill()
-		cmd.Wait()
 	}
 }
 
@@ -988,7 +1297,12 @@ func handleSetAudioMode(w http.ResponseWriter, r *http.Request) {
 	audioModeMu.Lock()
 	audioMode = body.Mode
 	audioModeMu.Unlock()
-	// Signal play() to restart with new audio routing (non-blocking send)
+	if body.Mode == "stream" {
+		if err := disableMicLoopback(); err != nil {
+			log.Printf("[mic] loopback disable failed: %v", err)
+		}
+	}
+	// Signal play() to toggle speaker routing (non-blocking send).
 	select {
 	case modeChangeCh <- struct{}{}:
 	default:
@@ -1081,18 +1395,38 @@ func queryHistory(singer, filter string, limit int) []*Job {
 			singer, limit)
 	case "most":
 		rows, err = db.Query(
-			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history GROUP BY yt_id ORDER BY SUM(play_count) DESC LIMIT ?`,
+			`WITH ranked AS (
+				SELECT yt_id,title,thumbnail,key_offset,played_at,
+				       SUM(play_count) OVER (PARTITION BY yt_id) AS total_plays,
+				       ROW_NUMBER() OVER (PARTITION BY yt_id ORDER BY played_at DESC) AS rn
+				  FROM singer_history
+			)
+			SELECT yt_id,title,thumbnail,key_offset
+			  FROM ranked
+			 WHERE rn=1
+			 ORDER BY total_plays DESC, played_at DESC
+			 LIMIT ?`,
 			limit)
 	default:
 		rows, err = db.Query(
-			`SELECT yt_id,title,thumbnail,key_offset FROM singer_history GROUP BY yt_id ORDER BY MAX(played_at) DESC LIMIT ?`,
+			`WITH ranked AS (
+				SELECT yt_id,title,thumbnail,key_offset,played_at,
+				       ROW_NUMBER() OVER (PARTITION BY yt_id ORDER BY played_at DESC) AS rn
+				  FROM singer_history
+			)
+			SELECT yt_id,title,thumbnail,key_offset
+			  FROM ranked
+			 WHERE rn=1
+			 ORDER BY played_at DESC
+			 LIMIT ?`,
 			limit)
 	}
+	jobs := []*Job{}
 	if err != nil {
-		return nil
+		log.Printf("[history] query failed for filter=%q singer=%q: %v", filter, singer, err)
+		return jobs
 	}
 	defer rows.Close()
-	var jobs []*Job
 	for rows.Next() {
 		j := &Job{Status: "played"}
 		rows.Scan(&j.YtID, &j.Title, &j.Thumbnail, &j.KeyOffset)

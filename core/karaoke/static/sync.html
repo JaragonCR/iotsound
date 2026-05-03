@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Karaoke Sync</title>
+<style>
+  :root{--bg:#111;--surface:#1d1d1d;--card:#292929;--primary:#bb86fc;--accent:#03dac6;--warn:#cf6679;--text:#eee;--sub:#aaa}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;padding:18px;max-width:620px;margin:auto}
+  a{color:var(--primary);text-decoration:none}
+  h1{color:var(--primary);font-size:1.6rem;margin:18px 0 6px}
+  p{color:var(--sub);line-height:1.4;margin-bottom:16px}
+  .card{background:var(--card);border-radius:10px;padding:18px;margin:16px 0}
+  .value{font-size:3.2rem;font-weight:800;letter-spacing:0;text-align:center;margin:8px 0;color:#fff}
+  .meaning{text-align:center;color:var(--accent);font-weight:700;min-height:24px;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  button{border:0;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:800;padding:14px 12px}
+  button.primary{background:var(--primary);color:#000}
+  button.accent{background:var(--accent);color:#000}
+  button.secondary{background:var(--surface);border:1px solid #555;color:var(--text)}
+  button.danger{background:var(--warn);color:#fff}
+  button:disabled{opacity:.45;cursor:default}
+  .presets{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}
+  .presets button{font-size:.85rem;padding:10px 6px}
+  .status{color:var(--sub);font-size:.9rem;min-height:22px;margin-top:14px;text-align:center}
+  .top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .pill{background:var(--surface);border:1px solid #444;border-radius:999px;color:var(--sub);font-size:.8rem;padding:6px 10px}
+  @media(max-width:520px){
+    .grid{grid-template-columns:1fr}
+    .presets{grid-template-columns:repeat(3,1fr)}
+    .value{font-size:2.7rem}
+  }
+</style>
+</head>
+<body>
+<div class="top">
+  <a href="/singer-stream">← Singer View</a>
+  <span class="pill">200 ms steps</span>
+</div>
+
+<h1>Audio Sync</h1>
+<p>Use this only when the room speakers do not line up with the singer video. Changes apply live while a song is playing.</p>
+
+<div class="card">
+  <div class="value" id="value">0 ms</div>
+  <div class="meaning" id="meaning">Audio and video aligned</div>
+  <div class="grid">
+    <button class="primary" onclick="step(200)">Audio Faster<br><span style="font-size:.78rem;font-weight:600">delay video</span></button>
+    <button class="accent" onclick="step(-200)">Audio Slower<br><span style="font-size:.78rem;font-weight:600">delay audio</span></button>
+  </div>
+  <div class="presets">
+    <button class="secondary" onclick="setOffset(-2000)">-2.0s</button>
+    <button class="secondary" onclick="setOffset(-1000)">-1.0s</button>
+    <button class="danger" onclick="setOffset(0)">Reset</button>
+    <button class="secondary" onclick="setOffset(1000)">+1.0s</button>
+    <button class="secondary" onclick="setOffset(2000)">+2.0s</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+let offset = 0;
+const value = document.getElementById('value');
+const meaning = document.getElementById('meaning');
+const statusEl = document.getElementById('status');
+
+function clamp(v) {
+  return Math.max(-2000, Math.min(2000, Math.round(v / 200) * 200));
+}
+
+function render() {
+  value.textContent = `${offset > 0 ? '+' : ''}${offset} ms`;
+  if (offset > 0) meaning.textContent = `Video delayed by ${offset} ms`;
+  else if (offset < 0) meaning.textContent = `Speaker audio delayed by ${Math.abs(offset)} ms`;
+  else meaning.textContent = 'Audio and video aligned';
+}
+
+function setOffset(v) {
+  offset = clamp(v);
+  render();
+  statusEl.textContent = 'Saving...';
+  fetch('/api/sync', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({offset_ms: offset})
+  }).then(r => {
+    if (!r.ok) return r.text().then(t => Promise.reject(t));
+    return r.json();
+  }).then(d => {
+    offset = d.sync_offset_ms || 0;
+    render();
+    statusEl.textContent = 'Applied';
+    setTimeout(() => { if (statusEl.textContent === 'Applied') statusEl.textContent = ''; }, 1200);
+  }).catch(msg => {
+    statusEl.textContent = msg || 'Could not save sync';
+  });
+}
+
+function step(delta) {
+  setOffset(offset + delta);
+}
+
+fetch('/api/sync').then(r => r.json()).then(d => {
+  offset = clamp(d.sync_offset_ms || 0);
+  render();
+}).catch(() => {
+  statusEl.textContent = 'Could not load current sync';
+});
+</script>
+</body>
+</html>

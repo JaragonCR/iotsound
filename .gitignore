@@ -13,3 +13,6 @@ docs/BASELINE_ISSUES.md
 MEMORY.md
 CLAUDE.md
 .claude/
+
+# Inspirational/reference clones kept outside this repo.
+pitube-karaoke/

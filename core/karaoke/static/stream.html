@@ -83,9 +83,9 @@
     <button id="mode-local" class="mode-btn active" onclick="setAudioMode('local')">Speakers</button>
     <button id="mode-stream" class="mode-btn" onclick="setAudioMode('stream')">Stream</button>
   </div>
+  <button class="mode-btn" onclick="window.location='/sync'">Sync</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <script>
 const singerName = localStorage.getItem('karaoke_singer') || 'Guest';
 document.getElementById('pill-name').textContent = singerName;
@@ -119,6 +119,7 @@ function setVolume(v) {
   clearTimeout(volTimer);
   if (currentMode === 'stream') {
     video.volume = parseInt(v) / 100;
+    video.muted = false;
   } else {
     volTimer = setTimeout(()=>{
       fetch('/api/volume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume:parseInt(v)})});
@@ -132,81 +133,78 @@ function setAudioMode(mode) {
   applyAudioMode(mode);
 }
 function applyAudioMode(mode) {
-  if (mode === currentMode) return;
+  const changed = mode !== currentMode;
   currentMode = mode;
   document.getElementById('mode-local').classList.toggle('active', mode === 'local');
   document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
-  loadVolume(); // refresh slider to reflect new mode's volume source
+  video.muted = mode !== 'stream';
+  if (mode === 'stream') {
+    video.volume = parseInt(document.getElementById('vol-slider').value || '80') / 100;
+  }
+  if (changed) loadVolume(); // refresh slider to reflect new mode's volume source
 }
 
-// ── HLS Player ────────────────────────────────────────────────────────────────
+// ── Direct MP4 Player ─────────────────────────────────────────────────────────
 const video   = document.getElementById('player');
 const waiting = document.getElementById('waiting');
-let hls, playing = false;
-let waitingShowTimer, stallTimer, retryTimer;
+let playing = false;
+let waitingShowTimer, retryTimer;
 let lastPlayPositionMs = 0; // updated by pollStatus; used to seek on connect
+let currentJobId = null;
+let loadingJobId = null;
+let syncOffsetMs = 0;
 
-function startStream() {
-  // Guard: don't create a second instance while one is loading or playing
-  if (hls || playing) return;
+function targetVideoSeconds(positionMs) {
+  const videoDelayMs = currentMode === 'local' ? Math.max(0, syncOffsetMs) : 0;
+  return Math.max(0, (positionMs - videoDelayMs) / 1000);
+}
+
+function applyVideoSync() {
+  if (!playing || !Number.isFinite(video.duration)) return;
+  const target = Math.min(targetVideoSeconds(lastPlayPositionMs), Math.max(0, video.duration - 0.5));
+  if (Math.abs(video.currentTime - target) > 0.45) video.currentTime = target;
+}
+
+function startStream(jobId) {
+  if (!jobId) return;
+  if ((playing && currentJobId === jobId) || loadingJobId === jobId) return;
+  loadingJobId = jobId;
   clearTimeout(retryTimer);
-  const src = '/stream/playlist.m3u8';
-  if (Hls.isSupported()) {
-    hls = new Hls({
-      lowLatencyMode: false,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
-      startPosition: -1,          // let us seek manually after MANIFEST_PARSED
-      manifestLoadingTimeOut: 5000,
-      manifestLoadingMaxRetry: 3,
-      levelLoadingTimeOut: 5000,
-      fragLoadingTimeOut: 10000,
-    });
-    hls.loadSource(src);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, ()=>{
-      // Seek to current song position so singer is in sync
-      if (lastPlayPositionMs > 3000) {
-        video.currentTime = lastPlayPositionMs / 1000;
-      }
-      video.play().catch(()=>{});
-    });
-    hls.on(Hls.Events.ERROR, (_,d)=>{ if(d.fatal) onStreamDown(); });
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = src;
-    video.play().catch(()=>{});
-  }
 
-  video.onplaying = ()=>{
-    playing = true;
-    clearTimeout(waitingShowTimer);
-    clearTimeout(stallTimer);
-    waiting.style.display = 'none';
-    resetStallDetector();
+  playing = false;
+  currentJobId = jobId;
+  video.muted = currentMode !== 'stream';
+  video.src = `/stream/current?job=${encodeURIComponent(jobId)}`;
+  video.load();
+
+  video.onloadedmetadata = ()=>{
+    if (lastPlayPositionMs > 3000 && Number.isFinite(video.duration)) {
+      video.currentTime = Math.min(targetVideoSeconds(lastPlayPositionMs), Math.max(0, video.duration - 1));
+    }
+    video.play().catch(()=>{});
   };
 
-  video.onstalled = resetStallDetector;
-  video.onwaiting = resetStallDetector;
-}
+  video.onplaying = ()=>{
+    loadingJobId = null;
+    playing = true;
+    clearTimeout(waitingShowTimer);
+    waiting.style.display = 'none';
+  };
 
-function resetStallDetector() {
-  clearTimeout(stallTimer);
-  if (!playing) return;
-  stallTimer = setTimeout(()=>{
+  video.onerror = onStreamError;
+  video.onended = ()=>{
     playing = false;
-    if (hls) { hls.destroy(); hls = null; }
-    startStream();
-  }, 8000);
+    loadingJobId = null;
+  };
 }
 
-function onStreamDown() {
+function onStreamError() {
   playing = false;
-  clearTimeout(stallTimer);
-  if (hls) { hls.destroy(); hls = null; }
+  loadingJobId = null;
   // 4s grace before showing waiting screen — avoids flash during same-singer 1s gaps
   clearTimeout(waitingShowTimer);
   waitingShowTimer = setTimeout(()=>{ waiting.style.display = 'flex'; }, 4000);
-  retryTimer = setTimeout(startStream, 1500);
+  if (currentJobId) retryTimer = setTimeout(()=>startStream(currentJobId), 1500);
 }
 
 // ── Status polling ────────────────────────────────────────────────────────────
@@ -214,7 +212,9 @@ let countdownTimer;
 function pollStatus() {
   fetch('/api/data').then(r=>r.json()).then(d=>{
     lastPlayPositionMs = d.play_position_ms || 0;
+    syncOffsetMs = d.sync_offset_ms || 0;
     applyAudioMode(d.audio_mode || 'local');
+    applyVideoSync();
 
     const nuBox = document.getElementById('next-up-box');
     if (d.next_up && (d.now_playing || d.state === 'up_next')) {
@@ -249,8 +249,13 @@ function pollStatus() {
       document.getElementById('waiting-next-singer').style.display = 'none';
       document.getElementById('waiting-countdown').style.display = 'none';
       document.getElementById('waiting-sub').style.display = '';
-      startStream(); // no-op if hls or playing already
+      startStream(d.now_playing && d.now_playing.id); // no-op if already playing this job
     } else if (d.state === 'idle') {
+      currentJobId = null;
+      loadingJobId = null;
+      playing = false;
+      video.removeAttribute('src');
+      video.load();
       clearTimeout(waitingShowTimer);
       waiting.style.display = 'flex';
       document.getElementById('waiting-heading').textContent = 'Singer View';
@@ -263,7 +268,6 @@ function pollStatus() {
 }
 
 loadVolume();
-startStream();
 pollStatus();
 setInterval(pollStatus, 2000);
 </script>
