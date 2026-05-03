@@ -72,13 +72,14 @@ type SearchResult struct {
 }
 
 type APIData struct {
-	NowPlaying  *Job   `json:"now_playing"`
-	NextUp      *Job   `json:"next_up"`
-	Queue       []*Job `json:"queue"`
-	History     []*Job `json:"history"`
-	State       string `json:"state"`
-	UpNextUntil int64  `json:"up_next_until"` // unix ms; non-zero only in up_next state
-	AudioMode   string `json:"audio_mode"`
+	NowPlaying    *Job  `json:"now_playing"`
+	NextUp        *Job  `json:"next_up"`
+	Queue         []*Job `json:"queue"`
+	History       []*Job `json:"history"`
+	State         string `json:"state"`
+	UpNextUntil   int64  `json:"up_next_until"`   // unix ms; non-zero only in up_next state
+	PlayPositionMs int64 `json:"play_position_ms"` // ms elapsed since current song started
+	AudioMode     string `json:"audio_mode"`
 }
 
 // ── Globals ──────────────────────────────────────────────────────────────────
@@ -93,11 +94,12 @@ var (
 
 // between-songs transition state
 var (
-	playerState  = "idle" // "idle", "playing", "up_next"
-	upNextUntil  time.Time
-	upNextSinger string
-	upNextTitle  string
-	stateMu      sync.Mutex
+	playerState   = "idle" // "idle", "playing", "up_next"
+	upNextUntil   time.Time
+	upNextSinger  string
+	upNextTitle   string
+	songStartTime time.Time
+	stateMu       sync.Mutex
 )
 
 // audio routing mode (not persisted; resets to "local" on restart)
@@ -303,14 +305,22 @@ func handleAPIData(w http.ResponseWriter, r *http.Request) {
 		upNextMs = until.UnixMilli()
 	}
 
+	stateMu.Lock()
+	posMs := int64(0)
+	if state == "playing" {
+		posMs = time.Since(songStartTime).Milliseconds()
+	}
+	stateMu.Unlock()
+
 	writeJSON(w, APIData{
-		NowPlaying:  nowPlaying,
-		NextUp:      nextUp,
-		Queue:       queue,
-		History:     history,
-		State:       state,
-		UpNextUntil: upNextMs,
-		AudioMode:   mode,
+		NowPlaying:     nowPlaying,
+		NextUp:         nextUp,
+		Queue:          queue,
+		History:        history,
+		State:          state,
+		UpNextUntil:    upNextMs,
+		PlayPositionMs: posMs,
+		AudioMode:      mode,
 	})
 }
 
@@ -778,6 +788,7 @@ func playerWorker() {
 
 		stateMu.Lock()
 		playerState = "playing"
+		songStartTime = time.Now()
 		stateMu.Unlock()
 
 		// Write next-up overlay for whoever comes after
@@ -882,6 +893,9 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool, pitch float
 
 	args := []string{"-re", "-nostdin", "-i", filename, "-vf", vf}
 
+	// Force a keyframe every 2 seconds so segment boundaries are always clean IDR frames.
+	args = append(args, "-force_key_frames", "expr:gte(t,n_forced*2)")
+
 	if withAudio {
 		af := fmt.Sprintf("rubberband=pitch=%f", pitch)
 		if syncOffsetMs < 0 {
@@ -898,8 +912,10 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool, pitch float
 		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
 		"-b:v", "1500k", "-maxrate", "1500k", "-bufsize", "3000k",
 		"-f", "hls",
-		"-hls_time", "2", "-hls_list_size", "6",
-		"-hls_flags", "delete_segments",
+		"-hls_time", "2",
+		"-hls_list_size", "0",               // keep every segment — no rolling delete
+		"-hls_playlist_type", "event",        // grows from seg0; ENDLIST added on song finish
+		"-hls_flags", "independent_segments", // each segment starts on an IDR frame
 		"-hls_segment_filename", "/tmp/hls/seg%d.ts",
 		"/tmp/hls/playlist.m3u8",
 	)

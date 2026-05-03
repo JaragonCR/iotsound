@@ -127,6 +127,7 @@ const video   = document.getElementById('player');
 const waiting = document.getElementById('waiting');
 let hls, playing = false;
 let waitingShowTimer, stallTimer, retryTimer;
+let lastPlayPositionMs = 0; // updated by pollStatus; used to seek on connect
 
 function startStream() {
   // Guard: don't create a second instance while one is loading or playing
@@ -135,16 +136,23 @@ function startStream() {
   const src = '/stream/playlist.m3u8';
   if (Hls.isSupported()) {
     hls = new Hls({
-      lowLatencyMode: false,       // disabled — too aggressive for Pi, causes stalls
-      maxBufferLength: 20,         // buffer up to 20s ahead
-      liveSyncDuration: 4,         // target 4s behind live edge
-      liveMaxLatencyDuration: 12,  // reconnect if >12s behind
-      manifestLoadingTimeOut: 4000,
-      manifestLoadingMaxRetry: 2,
+      lowLatencyMode: false,
+      maxBufferLength: 60,
+      // No live-edge chasing — we seek to the right position via play_position_ms
+      liveSyncDuration: 999,
+      liveMaxLatencyDuration: 9999,
+      manifestLoadingTimeOut: 5000,
+      manifestLoadingMaxRetry: 3,
     });
     hls.loadSource(src);
     hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, ()=>video.play().catch(()=>{}));
+    hls.on(Hls.Events.MANIFEST_PARSED, ()=>{
+      // Seek to current song position so we're in sync with the singer
+      if (lastPlayPositionMs > 3000) {
+        video.currentTime = lastPlayPositionMs / 1000;
+      }
+      video.play().catch(()=>{});
+    });
     hls.on(Hls.Events.ERROR, (_,d)=>{ if(d.fatal) onStreamDown(); });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = src;
@@ -159,7 +167,6 @@ function startStream() {
     resetStallDetector();
   };
 
-  // Detect stalled playback and recover
   video.onstalled = resetStallDetector;
   video.onwaiting = resetStallDetector;
 }
@@ -168,19 +175,17 @@ function resetStallDetector() {
   clearTimeout(stallTimer);
   if (!playing) return;
   stallTimer = setTimeout(()=>{
-    // Video stalled for 6s while supposedly playing — reconnect
     playing = false;
     if (hls) { hls.destroy(); hls = null; }
     startStream();
-  }, 6000);
+  }, 8000);
 }
 
 function onStreamDown() {
   playing = false;
   clearTimeout(stallTimer);
   if (hls) { hls.destroy(); hls = null; }
-  // Don't flash the waiting screen immediately — give it 4s grace
-  // so same-singer 1s gaps just show a frozen frame, not a waiting flash.
+  // 4s grace before showing waiting screen — avoids flash during same-singer 1s gaps
   clearTimeout(waitingShowTimer);
   waitingShowTimer = setTimeout(()=>{ waiting.style.display = 'flex'; }, 4000);
   retryTimer = setTimeout(startStream, 1500);
@@ -190,6 +195,7 @@ function onStreamDown() {
 let countdownTimer;
 function pollStatus() {
   fetch('/api/data').then(r=>r.json()).then(d=>{
+    lastPlayPositionMs = d.play_position_ms || 0;
     applyAudioMode(d.audio_mode || 'local');
 
     const nuBox = document.getElementById('next-up-box');
