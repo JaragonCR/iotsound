@@ -813,58 +813,46 @@ func playerWorker() {
 	}
 }
 
-// play runs ffmpeg processes for the current audioMode. If the mode changes
-// mid-song (via modeChangeCh) it kills and restarts from the beginning.
-// "local": PipeWire audio + video-only HLS. Returns when audio finishes.
-// "stream": video+audio HLS only. Returns when HLS finishes.
+// play runs ffmpeg for the song. HLS (always with audio) runs for the full
+// duration and is the single stream clients join. PipeWire speakers are started
+// or stopped independently when the audio mode changes — the HLS stream is
+// never restarted mid-song.
 func play(filename string, semitones int) {
 	pitch := math.Pow(2, float64(semitones)/12)
 	syncMs, _ := strconv.Atoi(configGet("sync_offset_ms", "0"))
 
-	// Drain any stale mode-change signal left over from a previous song so we
-	// don't immediately restart the new song's ffmpeg on the first loop iteration.
+	// Drain stale mode-change signal from a previous song.
 	select {
 	case <-modeChangeCh:
 	default:
 	}
 
-	for {
-		audioModeMu.RLock()
-		mode := audioMode
-		audioModeMu.RUnlock()
+	// HLS always runs with audio — it's the one persistent stream.
+	playerMu.Lock()
+	hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, pitch)...)
+	hlsCmd.Start()
+	localHls := hlsCmd
 
-		playerMu.Lock()
-		hlsCmd = exec.Command("ffmpeg", buildHLSArgs(filename, syncMs, mode == "stream", pitch)...)
-		hlsCmd.Start()
-		if mode == "local" {
-			args := []string{"-nostdin", "-i", filename, "-vn"}
-			if semitones != 0 {
-				args = append(args, "-af", fmt.Sprintf("rubberband=pitch=%f", pitch))
-			}
-			args = append(args, "-f", "pulse", "karaoke")
-			playerCmd = exec.Command("ffmpeg", args...)
-			playerCmd.Env = os.Environ()
-			playerCmd.Start()
+	// Start PipeWire speakers if we're in local mode.
+	audioModeMu.RLock()
+	if audioMode == "local" {
+		playerCmd = makePipeWireCmd(filename, semitones, pitch)
+		playerCmd.Start()
+	}
+	playerMu.Unlock()
+	audioModeMu.RUnlock()
+
+	done := make(chan struct{})
+	go func() {
+		if localHls != nil {
+			localHls.Wait()
 		}
-		// Capture cmds as locals so the goroutine below never races on a nil global.
-		localHls := hlsCmd
-		localPlayer := playerCmd
-		playerMu.Unlock()
+		close(done)
+	}()
 
-		// Wait for natural song end in a goroutine so we can also select on modeChangeCh.
-		done := make(chan struct{})
-		go func(localMode bool) {
-			if localMode && localPlayer != nil {
-				localPlayer.Wait()
-			} else if localHls != nil {
-				localHls.Wait()
-			}
-			close(done)
-		}(mode == "local")
-
+	for {
 		select {
 		case <-done:
-			// Song finished normally.
 			playerMu.Lock()
 			killCmd(playerCmd)
 			killCmd(hlsCmd)
@@ -874,24 +862,37 @@ func play(filename string, semitones int) {
 			return
 
 		case <-modeChangeCh:
-			// Audio mode changed — kill current processes and restart with new mode.
+			// Only toggle PipeWire — HLS keeps running untouched.
+			audioModeMu.RLock()
+			mode := audioMode
+			audioModeMu.RUnlock()
 			playerMu.Lock()
-			killCmd(playerCmd)
-			killCmd(hlsCmd)
-			playerCmd = nil
-			hlsCmd = nil
-			playerMu.Unlock()
-			// Drain done — goroutine will exit once Wait() returns after kill.
-			select {
-			case <-done:
-			default:
+			if mode == "local" && playerCmd == nil {
+				playerCmd = makePipeWireCmd(filename, semitones, pitch)
+				playerCmd.Start()
+				log.Printf("[player] speakers on")
+			} else if mode != "local" && playerCmd != nil {
+				killCmd(playerCmd)
+				playerCmd = nil
+				log.Printf("[player] speakers off")
 			}
-			log.Printf("[player] audio mode changed, restarting")
+			playerMu.Unlock()
 		}
 	}
 }
 
-func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool, pitch float64) []string {
+func makePipeWireCmd(filename string, semitones int, pitch float64) *exec.Cmd {
+	args := []string{"-nostdin", "-i", filename, "-vn"}
+	if semitones != 0 {
+		args = append(args, "-af", fmt.Sprintf("rubberband=pitch=%f", pitch))
+	}
+	args = append(args, "-f", "pulse", "karaoke")
+	cmd := exec.Command("ffmpeg", args...)
+	cmd.Env = os.Environ()
+	return cmd
+}
+
+func buildHLSArgs(filename string, syncOffsetMs int, pitch float64) []string {
 	vf := `drawtext=textfile=/tmp/hls/nextup.txt:reload=1:` +
 		`fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:` +
 		`fontsize=28:fontcolor=white:` +
@@ -904,31 +905,33 @@ func buildHLSArgs(filename string, syncOffsetMs int, withAudio bool, pitch float
 
 	args := []string{"-re", "-nostdin", "-i", filename, "-vf", vf}
 
-	if withAudio {
-		var af string
-		if pitch != 1.0 {
-			af = fmt.Sprintf("rubberband=pitch=%f", pitch)
-		}
-		if syncOffsetMs < 0 {
-			d := -syncOffsetMs
-			af = fmt.Sprintf("adelay=%d|%d,", d, d) + af
-		}
-		if af != "" {
-			args = append(args, "-af", af)
-		}
-		args = append(args, "-c:a", "aac", "-b:a", "128k", "-ar", "48000")
-	} else {
-		args = append(args, "-an")
+	// Audio — always included so the stream is self-contained
+	var af string
+	if pitch != 1.0 {
+		af = fmt.Sprintf("rubberband=pitch=%f", pitch)
 	}
+	if syncOffsetMs < 0 {
+		d := -syncOffsetMs
+		prefix := fmt.Sprintf("adelay=%d|%d", d, d)
+		if af != "" {
+			af = prefix + "," + af
+		} else {
+			af = prefix
+		}
+	}
+	if af != "" {
+		args = append(args, "-af", af)
+	}
+	args = append(args, "-c:a", "aac", "-b:a", "128k", "-ar", "48000")
 
 	return append(args,
 		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-		"-b:v", "1500k", "-maxrate", "1500k", "-bufsize", "3000k",
+		"-b:v", "1000k", "-maxrate", "1000k", "-bufsize", "2000k",
 		"-f", "hls",
 		"-hls_time", "2",
-		"-hls_list_size", "0",               // keep every segment — no rolling delete
-		"-hls_playlist_type", "event",        // grows from seg0; ENDLIST added on song finish
-		"-hls_flags", "independent_segments", // each segment starts on an IDR frame
+		"-hls_list_size", "0",
+		"-hls_playlist_type", "event",
+		"-hls_flags", "independent_segments",
 		"-hls_segment_filename", "/tmp/hls/seg%d.ts",
 		"/tmp/hls/playlist.m3u8",
 	)

@@ -154,17 +154,18 @@ function startStream() {
   if (Hls.isSupported()) {
     hls = new Hls({
       lowLatencyMode: false,
-      maxBufferLength: 60,
-      // No live-edge chasing — we seek to the right position via play_position_ms
-      liveSyncDuration: 999,
-      liveMaxLatencyDuration: 9999,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+      startPosition: -1,          // let us seek manually after MANIFEST_PARSED
       manifestLoadingTimeOut: 5000,
       manifestLoadingMaxRetry: 3,
+      levelLoadingTimeOut: 5000,
+      fragLoadingTimeOut: 10000,
     });
     hls.loadSource(src);
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, ()=>{
-      // Seek to current song position so we're in sync with the singer
+      // Seek to current song position so singer is in sync
       if (lastPlayPositionMs > 3000) {
         video.currentTime = lastPlayPositionMs / 1000;
       }
