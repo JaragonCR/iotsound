@@ -96,20 +96,34 @@ function goProfile(e) {
 }
 
 // ── Volume ────────────────────────────────────────────────────────────────────
+let currentMode = 'local';
 let volTimer;
+
 function loadVolume() {
-  fetch('/api/volume').then(r=>r.json()).then(d=>{
-    const v = d.volume ?? d.percent ?? 80;
+  if (currentMode === 'stream') {
+    // Browser audio — slider reflects video.volume
+    const v = Math.round(video.volume * 100);
     document.getElementById('vol-slider').value = v;
     document.getElementById('vol-label').textContent = v + '%';
-  }).catch(()=>{});
+  } else {
+    fetch('/api/volume').then(r=>r.json()).then(d=>{
+      const v = d.volume ?? d.percent ?? 80;
+      document.getElementById('vol-slider').value = v;
+      document.getElementById('vol-label').textContent = v + '%';
+    }).catch(()=>{});
+  }
 }
+
 function setVolume(v) {
   document.getElementById('vol-label').textContent = v + '%';
   clearTimeout(volTimer);
-  volTimer = setTimeout(()=>{
-    fetch('/api/volume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume:parseInt(v)})});
-  }, 200);
+  if (currentMode === 'stream') {
+    video.volume = parseInt(v) / 100;
+  } else {
+    volTimer = setTimeout(()=>{
+      fetch('/api/volume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume:parseInt(v)})});
+    }, 200);
+  }
 }
 
 // ── Audio mode ────────────────────────────────────────────────────────────────
@@ -118,8 +132,11 @@ function setAudioMode(mode) {
   applyAudioMode(mode);
 }
 function applyAudioMode(mode) {
+  if (mode === currentMode) return;
+  currentMode = mode;
   document.getElementById('mode-local').classList.toggle('active', mode === 'local');
   document.getElementById('mode-stream').classList.toggle('active', mode === 'stream');
+  loadVolume(); // refresh slider to reflect new mode's volume source
 }
 
 // ── HLS Player ────────────────────────────────────────────────────────────────
