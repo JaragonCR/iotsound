@@ -274,7 +274,10 @@ function renderQueue(queue) {
 function renderHistory(history) {
   const el = document.getElementById('history-list');
   if (!history || !history.length) { el.innerHTML='<div class="sub">No history yet</div>'; return; }
-  if (!changed('history', history.map(h=>({i:h.yt_id,c:h.play_count})))) return;
+  // Dedup by yt_id (backend GROUP BY handles this, but guard on the client too)
+  const seen = new Set();
+  history = history.filter(h => { if (seen.has(h.yt_id)) return false; seen.add(h.yt_id); return true; });
+  if (!changed('history', history.map(h=>h.yt_id))) return;
   el.innerHTML = history.map(j=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
       ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
