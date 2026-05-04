@@ -87,6 +87,13 @@ export default class SnapserverMonitor {
     return this.multiroomMaster ?? this.discoveredMasterIp ?? this.localIp
   }
 
+  // Returns only a usable remote/explicit master for client join decisions.
+  // AUTO clients must not fall back to their own IP while idle, otherwise they
+  // never join an already-advertised room.
+  getDiscoveredMasterIp(): string | null {
+    return this.multiroomMaster ?? this.discoveredMasterIp
+  }
+
   // Propagate volume to all snapcast clients in the group via JSON-RPC.
   async setGroupVolume(percent: number): Promise<void> {
     if (!this.cachedGroupId) return
@@ -157,13 +164,15 @@ export default class SnapserverMonitor {
       const remoteCount = Math.max(0, connectedCount - 1)
 
       if (this.previousRemoteCount === 0 && remoteCount > 0) {
-        console.log(`[snapserver-monitor] Remote client joined (connected=${connectedCount}). Buffer: standalone → ${this.configuredBufferMs}ms`)
-        this.effectiveBufferMs = this.configuredBufferMs
-        this.triggerRestart('multiroom')
+        if (this.effectiveBufferMs !== this.configuredBufferMs) {
+          console.log(`[snapserver-monitor] Remote client joined (connected=${connectedCount}). Buffer: standalone → ${this.configuredBufferMs}ms`)
+          this.effectiveBufferMs = this.configuredBufferMs
+          this.triggerRestart('multiroom')
+        } else {
+          console.log(`[snapserver-monitor] Remote client joined (connected=${connectedCount}). Buffer already ${this.effectiveBufferMs}ms`)
+        }
       } else if (this.previousRemoteCount > 0 && remoteCount === 0) {
-        console.log(`[snapserver-monitor] Last remote client left. Buffer: ${this.effectiveBufferMs}ms → standalone (${this.standaloneBufferMs}ms)`)
-        this.effectiveBufferMs = this.standaloneBufferMs
-        this.triggerRestart('standalone')
+        console.log(`[snapserver-monitor] Last remote client left. Keeping ${this.effectiveBufferMs}ms buffer until idle demotion`)
       }
 
       this.previousRemoteCount = remoteCount

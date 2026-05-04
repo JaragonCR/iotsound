@@ -77,10 +77,20 @@ export default class SoundAPI {
       res.json({ active: this.config.isElectedMaster() })
     })
 
+    // GET /multiroom/client-ready — true when snapclient has a real target.
+    // Masters target their local snapserver; idle AUTO/JOIN devices wait for
+    // an advertised master in their group.
+    this.api.get('/multiroom/client-ready', (_req, res) => {
+      const hasTarget = this.config.isElectedMaster() || Boolean(this.monitor?.getDiscoveredMasterIp())
+      res.json({ active: hasTarget })
+    })
+
     // GET /multiroom/master — returns the snapcast server IP for multiroom-client to connect to.
-    // Returns mDNS-discovered master IP when available, falls back to this device's own IP.
+    // Masters return themselves. Idle clients only return a discovered/explicit master.
     this.api.get('/multiroom/master', (_req, res) => {
-      const masterIp = this.monitor?.getMasterIp() ?? this.config.getMultiroomStatus().deviceIp
+      const masterIp = this.config.isElectedMaster()
+        ? (this.monitor?.getMasterIp() ?? this.config.getMultiroomStatus().deviceIp)
+        : (this.monitor?.getDiscoveredMasterIp() ?? '')
       res.send(masterIp)
     })
 
