@@ -157,6 +157,12 @@ You can change role and group name live from the web UI at `http://<device-ip>/`
 |---|---|---|
 | `SOUND_DISABLE_AIRPLAY` | Disable AirPlay entirely (set to any value) | unset |
 
+#### Karaoke
+
+| Variable | Description | Default |
+|---|---|---|
+| `SOUND_DISABLE_KARAOKE` | Disable Karaoke entirely, including the player and fetcher containers (set to any value) | unset |
+
 #### WiFi watchdog
 
 | Variable | Description | Default |

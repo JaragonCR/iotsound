@@ -23,4 +23,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=builder /build/karaoke .
 COPY static/ ./static/
-CMD ["./karaoke"]
+COPY start.sh .
+CMD ["./start.sh"]

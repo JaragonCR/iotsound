@@ -5,6 +5,8 @@ landr-dist
 *.traineddata
 node_modules
 build
+__pycache__/
+*.pyc
 core/multiroom/server/snapweb
 labs-docs-builder
 

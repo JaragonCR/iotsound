@@ -92,9 +92,9 @@ services:
    labels:
      io.balena.features.supervisor-api: "1"
 
-  # Karaoke
+  # Karaoke plugin
   karaoke-fetcher:
-    build: ./core/karaoke-fetcher
+    build: ./plugins/karaoke/fetcher
     restart: on-failure
     environment:
       - MEDIA_PATH=/data/media
@@ -103,7 +103,7 @@ services:
       - karaoke-media:/data/media
 
   karaoke:
-    build: ./core/karaoke
+    build: ./plugins/karaoke/app
     restart: on-failure
     ports:
       - 8080:8080

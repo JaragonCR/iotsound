@@ -32,11 +32,11 @@ Start every session with:
      - `feedback-save-on-commit.md`
 
 3. Cross-check docs/memory against live code before acting. Current notes can lag behind local experiments. In particular, verify the karaoke streaming path in:
-   - `core/karaoke/main.go`
-   - `core/karaoke/static/stream.html`
+   - `plugins/karaoke/app/main.go`
+   - `plugins/karaoke/app/static/stream.html`
    - `docker-compose.yml`
-   - `core/karaoke/Dockerfile.template`
-   - `core/karaoke-fetcher/fetcher.py`
+   - `plugins/karaoke/app/Dockerfile.template`
+   - `plugins/karaoke/fetcher/fetcher.py`
 
 Project identity:
 
@@ -52,7 +52,7 @@ Architecture summary:
 - Core services: `audio`, `sound-supervisor`, `wifi-watchdog`, `hostname`.
 - Multiroom services: `multiroom-server`, `multiroom-client`.
 - Plugins: `bluetooth`, `airplay`, `librespot`.
-- Karaoke branch adds `karaoke` and `karaoke-fetcher`, plus volumes `karaoke-media` and `karaoke-data`.
+- Karaoke branch adds the `plugins/karaoke` plugin with `karaoke` and `karaoke-fetcher` services, plus volumes `karaoke-media` and `karaoke-data`.
 - Audio stack is PipeWire + WirePlumber + `pipewire-pulse` exposing PulseAudio TCP on port `4317`.
 - `audio` creates virtual routing layers:
   - `balena-sound.input`: default plugin/input mix.
@@ -75,8 +75,9 @@ Multiroom model:
 
 Karaoke branch architecture:
 
-- `core/karaoke/main.go`: Go HTTP server on port 8080. Owns SQLite state, queue, singer profiles/history/favorites, playback, volume proxy, QR, audio mode.
-- `core/karaoke-fetcher/fetcher.py`: Python Flask sidecar on port 8081. Runs `yt-dlp` downloads so the Go server does not block. Uses `/data/media`.
+- `plugins/karaoke/app/main.go`: Go HTTP server on port 8080. Owns SQLite state, queue, singer profiles/history/favorites, playback, volume proxy, QR, audio mode.
+- `plugins/karaoke/fetcher/fetcher.py`: Python Flask sidecar on port 8081. Runs `yt-dlp` downloads so the Go server does not block. Uses `/data/media`.
+- `SOUND_DISABLE_KARAOKE`: disables both karaoke containers by making their plugin entrypoints exit cleanly.
 - Volumes:
   - `karaoke-media`: downloaded songs shared by karaoke and fetcher.
   - `karaoke-data`: SQLite app DB.
@@ -118,12 +119,12 @@ Important files:
 - `core/sound-supervisor/src/SoundConfig.ts`
 - `core/sound-supervisor/src/constants.ts`
 - `core/sound-supervisor/src/PulseAudioWrapper.ts`
-- `core/karaoke/main.go`
-- `core/karaoke/static/index.html`
-- `core/karaoke/static/stream.html`
-- `core/karaoke/static/singer.html`
-- `core/karaoke/Dockerfile.template`
-- `core/karaoke-fetcher/fetcher.py`
+- `plugins/karaoke/app/main.go`
+- `plugins/karaoke/app/static/index.html`
+- `plugins/karaoke/app/static/stream.html`
+- `plugins/karaoke/app/static/singer.html`
+- `plugins/karaoke/app/Dockerfile.template`
+- `plugins/karaoke/fetcher/fetcher.py`
 
 Standing engineering rules:
 
@@ -134,7 +135,7 @@ Standing engineering rules:
 - Do not change restart policies casually.
 - If adding or renaming compose services managed by sound-supervisor, update `SoundConfig.ts` service orchestration too.
 - If changing TypeScript under `core/sound-supervisor`, run `cd core/sound-supervisor && node_modules/.bin/tsc --noEmit` if dependencies are present.
-- If changing Go karaoke code, run `go test ./...` in `core/karaoke` if practical; at minimum run `go test` or `go build` for the touched module.
+- If changing Go karaoke code, run `go test ./...` in `plugins/karaoke/app` if practical; at minimum run `go test` or `go build` for the touched module.
 - If changing fetcher, run Python syntax/compile checks if practical.
 - For deploy/hardware validation, use `/home/jaragon/balena/balena/bin/balena`, not the system `balena`.
 
