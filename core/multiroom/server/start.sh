@@ -33,8 +33,8 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
   echo "Starting multi-room server..."
 
   # Fetch the effective buffer from sound-supervisor.
-  # Returns JSON: {"configured":400,"effective":50,"mode":"standalone"}
-  # On first start there are no remote clients yet, so effective will be the standalone value (50ms).
+  # Returns JSON: {"configured":400,"standalone":150,"effective":150,"mode":"standalone"}
+  # On first start there are no remote clients yet, so effective will be the standalone value.
   # The monitor will restart this service with the right buffer once a remote client joins.
   BUFFER_RESPONSE=$(curl --silent "$SOUND_SUPERVISOR/multiroom/buffer" || echo '{"effective":400}')
   BUFFER_MS=$(echo "$BUFFER_RESPONSE" | sed -n 's/.*"effective":\([0-9]*\).*/\1/p')

@@ -147,7 +147,7 @@ export default class SoundAPI {
     this.api.get('/multiroom/buffer', (_req, res) => {
       const status = this.monitor
         ? this.monitor.getStatus()
-        : { configured: constants.multiroomBufferMs, effective: 50, mode: 'standalone' as const }
+        : { configured: constants.multiroomBufferMs, standalone: constants.standaloneBufferMs, effective: constants.standaloneBufferMs, mode: 'standalone' as const }
       res.json(status)
     })
 
@@ -166,7 +166,7 @@ export default class SoundAPI {
       } catch (err) {
         console.log(`Failed to persist SOUND_MULTIROOM_BUFFER_MS: ${(err as Error).message}`)
       }
-      const status = this.monitor?.getStatus() ?? { configured: bufferMs, effective: 50, mode: 'standalone' as const }
+      const status = this.monitor?.getStatus() ?? { configured: bufferMs, standalone: constants.standaloneBufferMs, effective: constants.standaloneBufferMs, mode: 'standalone' as const }
       res.json(status)
     })
 

@@ -111,6 +111,8 @@ See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of roles, grou
 | `SOUND_MULTIROOM_ROLE` | `auto` (play-triggered master), `host` (always master), `join` (always client), `disabled` (standalone) | `auto` |
 | `SOUND_GROUP_NAME` | Multiroom group — devices with the same name sync together | `default` |
 | `SOUND_GROUP_LATENCY` | Group-wide Snapcast buffer in ms — increase if clients stutter | `400` |
+| `SOUND_STANDALONE_BUFFER_MS` | Local Snapcast buffer used by `auto`/`host` devices before remote clients join | `150` |
+| `SOUND_MULTIROOM_BUFFER_MS` | Snapcast buffer used when remote clients are connected | `400` |
 | `SOUND_MULTIROOM_LATENCY` | Per-device latency fine-tuning in ms | unset |
 | `SOUND_MULTIROOM_MASTER` | Override master IP — skips mDNS discovery (for networks where mDNS is blocked) | unset |
 

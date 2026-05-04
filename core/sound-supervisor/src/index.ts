@@ -43,6 +43,7 @@ async function init() {
 
   monitor = new SnapserverMonitor({
     bufferMs: constants.multiroomBufferMs,
+    standaloneBufferMs: constants.standaloneBufferMs,
     groupName: constants.groupName,
     deviceUuid,
     groupLatency: constants.groupLatency,

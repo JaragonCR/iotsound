@@ -153,6 +153,7 @@ Current known risks/open items:
 - Runtime config persists in karaoke SQLite on `/data/app`; Balena env vars seed defaults, but the UI does not write back to Balena device variables.
 - Mic loopback is now implemented for local speaker mode, but should be tested with real microphones after any audio-stack change.
 - Karaoke must release source ownership when idle so librespot/AirPlay/Bluetooth can use `balena-sound.input` without karaoke holding play detection or adding multiroom delay.
+- Spotify/librespot cutoff investigation: auto/standalone Snapcast was using a hard-coded 50 ms buffer while still routing local playback through snapcast/snapclient. Local code now supports `SOUND_STANDALONE_BUFFER_MS` and defaults it to 150 ms; verify on hardware before further tuning.
 - Full end-to-end karaoke validation after UI/audio changes should include: queue song, local speakers, mic loopback, sync adjustment, switch to stream mode, stream volume, history delete.
 - Snapcast stale group ID after deploy can break volume with "Group not found"; that is a sound-supervisor/multiroom issue, not necessarily karaoke.
 - YouTube/yt-dlp behavior changes often; prefer isolating downloader behavior in `karaoke-fetcher`.

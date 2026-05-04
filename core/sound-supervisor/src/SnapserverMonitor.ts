@@ -4,19 +4,20 @@ import AvahiAdvertiser from './AvahiAdvertiser'
 import { browseSnapcast } from './AvahiBrowser'
 
 const SNAPSERVER_URL = 'http://localhost:1780/jsonrpc'
-const STANDALONE_BUFFER_MS = 50
 const POLL_INTERVAL_MS = 5000
 const DISCOVERY_INTERVAL_MS = 15000
 const RESTART_COOLDOWN_MS = 20000
 
 export interface SnapserverBufferStatus {
   configured: number
+  standalone: number
   effective: number
   mode: 'standalone' | 'multiroom'
 }
 
 export interface MonitorConfig {
   bufferMs: number
+  standaloneBufferMs: number
   groupName: string | undefined
   deviceUuid: string
   groupLatency: number
@@ -28,7 +29,8 @@ export interface MonitorConfig {
 
 export default class SnapserverMonitor {
   private configuredBufferMs: number
-  private effectiveBufferMs: number = STANDALONE_BUFFER_MS
+  private standaloneBufferMs: number
+  private effectiveBufferMs: number
   private previousRemoteCount: number = 0
   private cooldownUntil: number = 0
   private pollInterval: NodeJS.Timeout | null = null
@@ -50,6 +52,8 @@ export default class SnapserverMonitor {
 
   constructor(cfg: MonitorConfig) {
     this.configuredBufferMs = cfg.bufferMs
+    this.standaloneBufferMs = cfg.standaloneBufferMs
+    this.effectiveBufferMs = this.standaloneBufferMs
     this.groupName = cfg.groupName
     this.deviceUuid = cfg.deviceUuid
     this.groupLatency = cfg.groupLatency
@@ -64,8 +68,9 @@ export default class SnapserverMonitor {
   getStatus(): SnapserverBufferStatus {
     return {
       configured: this.configuredBufferMs,
+      standalone: this.standaloneBufferMs,
       effective: this.effectiveBufferMs,
-      mode: this.effectiveBufferMs === STANDALONE_BUFFER_MS ? 'standalone' : 'multiroom',
+      mode: this.effectiveBufferMs === this.standaloneBufferMs ? 'standalone' : 'multiroom',
     }
   }
 
@@ -86,10 +91,13 @@ export default class SnapserverMonitor {
   async setGroupVolume(percent: number): Promise<void> {
     if (!this.cachedGroupId) return
     try {
-      await axios.post(SNAPSERVER_URL, {
+      const resp = await axios.post(SNAPSERVER_URL, {
         id: 3, jsonrpc: '2.0', method: 'Group.SetVolume',
         params: { id: this.cachedGroupId, volume: { percent: Math.round(percent), muted: false } }
       }, { timeout: 3000 })
+      if (resp.data?.error) {
+        throw new Error(resp.data.error.message ?? JSON.stringify(resp.data.error))
+      }
       console.log(`[snapserver-monitor] Group volume set to ${Math.round(percent)}%`)
     } catch (err) {
       console.log(`[snapserver-monitor] Failed to set group volume: ${(err as Error).message}`)
@@ -153,8 +161,8 @@ export default class SnapserverMonitor {
         this.effectiveBufferMs = this.configuredBufferMs
         this.triggerRestart('multiroom')
       } else if (this.previousRemoteCount > 0 && remoteCount === 0) {
-        console.log(`[snapserver-monitor] Last remote client left. Buffer: ${this.effectiveBufferMs}ms → standalone (${STANDALONE_BUFFER_MS}ms)`)
-        this.effectiveBufferMs = STANDALONE_BUFFER_MS
+        console.log(`[snapserver-monitor] Last remote client left. Buffer: ${this.effectiveBufferMs}ms → standalone (${this.standaloneBufferMs}ms)`)
+        this.effectiveBufferMs = this.standaloneBufferMs
         this.triggerRestart('standalone')
       }
 
