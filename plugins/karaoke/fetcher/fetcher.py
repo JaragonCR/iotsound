@@ -13,6 +13,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
+from waitress import serve
 
 logging.basicConfig(level=logging.INFO, format='[fetcher] %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
@@ -136,12 +137,16 @@ def _update_ytdlp():
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-if __name__ == '__main__':
+def start_services():
     os.makedirs(MEDIA_PATH, exist_ok=True)
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(_update_ytdlp, 'cron', hour=3, minute=0)
     scheduler.start()
+    return scheduler
 
+
+if __name__ == '__main__':
+    start_services()
     log.info('Karaoke fetcher listening on :8081')
-    app.run(host='0.0.0.0', port=8081, threaded=True)
+    serve(app, host='0.0.0.0', port=8081, threads=4)
