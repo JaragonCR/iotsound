@@ -2,6 +2,11 @@
 CONFIG_DIR="/config"
 CONFIG_PATH="$CONFIG_DIR/config.yml"
 
+if [[ -n "$SOUND_DISABLE_SPOTIFY" ]]; then
+  echo "Spotify is disabled, exiting..."
+  exit 0
+fi
+
 mkdir -p "$CONFIG_DIR"
 
 # Wait for PulseAudio (pipewire-pulse) to be ready before starting the daemon.

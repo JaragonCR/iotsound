@@ -26,6 +26,15 @@ Spotify Connect requires a premium account. There is two methods of authenticati
 
 Manual authentication will let you stream audio over the internet from a client that is on a different network than the balenaSound device. This is useful if your IoTSound device is on a separate WiFi network that's harder to reach (e.g. a backyard network).
 
+### Karaoke
+
+Karaoke is shipped as a plugin under `plugins/karaoke` with two services:
+
+- `karaoke`: Go audience/singer UI and local playback controller on port 8080.
+- `karaoke-fetcher`: Python/Waitress sidecar on port 8081 that runs `yt-dlp` downloads into the shared `karaoke-media` volume.
+
+Set `SOUND_DISABLE_KARAOKE` to disable both services. In local speaker mode, karaoke sends audio and mic loopback into `balena-sound.input` only while a song is actively playing; in stream mode, the browser decodes the MP4 directly.
+
 ## Installable
 
 The following plugins are available to be added to your IoTSound installation:

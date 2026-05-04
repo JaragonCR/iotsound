@@ -1,8 +1,8 @@
 {
   "name": "iotsound",
-  "version": "4.0.0",
+  "version": "4.7.0",
   "private": true,
-  "description": "Multi-room audio streaming via Bluetooth, Airplay2, Spotify Connect",
+  "description": "Multi-room audio streaming via Bluetooth, AirPlay, Spotify Connect, and Karaoke",
   "repository": {
     "type": "git",
     "url": "https://github.com/JaragonCR/iotsound"

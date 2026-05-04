@@ -32,11 +32,11 @@
 |---|---|
 | **Multiroom 2.0** | Replaced cote UDP pub/sub election with mDNS auto-discovery. Play-triggered master promotion — the device you stream to becomes master instantly. Role system (`auto` / `host` / `join` / `disabled`) replaces the old three-mode system. No manual IP pinning needed. Group names let multiple independent groups coexist on the same network. |
 
-### 🔧 Pending / In Progress
+### 🔧 Sprint wrap-up
 
 | Item | Notes |
 |---|---|
-| **Karaoke support** | Integrating [pitube-karaoke](https://github.com/JaragonCR/pitube-karaoke) — Go-based karaoke with HDMI video output and 3.5mm audio input |
+| **Karaoke support** | Integrated as the `plugins/karaoke` plugin with a Go audience/singer UI, direct MP4 browser playback, local speaker mode, mic loopback, sync timing, history, and a Python/Waitress fetcher sidecar. |
 | **UPnP plugin update** | gmrender-resurrect base image update |
 
 ---
@@ -135,6 +135,7 @@ You can change role and group name live from the web UI at `http://<device-ip>/`
 
 | Variable | Description | Default |
 |---|---|---|
+| `SOUND_DISABLE_SPOTIFY` | Disable Spotify Connect entirely (set to any value) | unset |
 | `SOUND_SPOTIFY_BITRATE` | Streaming bitrate in kbps: `96`, `160`, or `320` | `160` |
 | `SOUND_SPOTIFY_INITIAL_VOLUME` | Volume level when Spotify connects (0–100) | `50` |
 | `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`) | unset |
@@ -162,6 +163,10 @@ You can change role and group name live from the web UI at `http://<device-ip>/`
 | Variable | Description | Default |
 |---|---|---|
 | `SOUND_DISABLE_KARAOKE` | Disable Karaoke entirely, including the player and fetcher containers (set to any value) | unset |
+| `KARAOKE_QUALITY` | Maximum downloaded video height for karaoke songs | `720` |
+| `KARAOKE_MAX_QUEUE_PER_SINGER` | Maximum queued songs per singer | `3` |
+| `KARAOKE_SYNC_OFFSET_MS` | Default local speaker A/V sync offset in ms, from `-2000` to `2000` in 200 ms steps | `0` |
+| `KARAOKE_MIC_GAIN` | Default karaoke mic gain 0-100, used when no saved UI value exists | `AUDIO_MIC_INPUT_VOLUME` or `35` |
 
 #### WiFi watchdog
 
@@ -172,7 +177,7 @@ You can change role and group name live from the web UI at `http://<device-ip>/`
 | `WIFI_RECOVERY_WAIT` | Seconds between recovery attempts | `300` |
 | `MAX_RECOVERY_ATTEMPTS` | Recovery attempts before forcing a device reboot | `3` |
 
-**For detailed audio configuration documentation**, see [AUDIO_CONFIGURATION.md](docs/AUDIO_CONFIGURATION.md) which includes:
+**For detailed audio configuration documentation**, see [Audio_Configuration.md](docs/Audio_Configuration.md) which includes:
 - Device detection and priority ordering
 - Output device selection (DAC prioritization)
 - Input device selection (microphone detection)
@@ -285,7 +290,7 @@ AUDIO_INPUT_LOWPASS = 0
 AUDIO_MIC_INPUT_VOLUME = 40
 ```
 
-For detailed filter descriptions and more configuration examples, see [AUDIO_CONFIGURATION.md](docs/AUDIO_CONFIGURATION.md).
+For detailed filter descriptions and more configuration examples, see [Audio_Configuration.md](docs/Audio_Configuration.md).
 
 ## Branch workflow
 
@@ -296,7 +301,7 @@ All changes should go through feature branches and PRs — see [.versionbot/COMM
 
 Head over to the [original docs](https://iotsound.github.io/) for detailed installation and usage instructions. Note some docs may reference older versions.
 
-For audio configuration details: see [AUDIO_CONFIGURATION.md](docs/AUDIO_CONFIGURATION.md)
+For audio configuration details: see [Audio_Configuration.md](docs/Audio_Configuration.md)
 
 ## Motivation
 

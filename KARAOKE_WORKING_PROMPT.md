@@ -76,7 +76,7 @@ Multiroom model:
 Karaoke branch architecture:
 
 - `plugins/karaoke/app/main.go`: Go HTTP server on port 8080. Owns SQLite state, queue, singer profiles/history/favorites, playback, volume proxy, QR, audio mode.
-- `plugins/karaoke/fetcher/fetcher.py`: Python Flask sidecar on port 8081. Runs `yt-dlp` downloads so the Go server does not block. Uses `/data/media`.
+- `plugins/karaoke/fetcher/fetcher.py`: Python Flask-compatible API served by Waitress on port 8081. Runs `yt-dlp` downloads so the Go server does not block. Uses `/data/media`.
 - `SOUND_DISABLE_KARAOKE`: disables both karaoke containers by making their plugin entrypoints exit cleanly.
 - Volumes:
   - `karaoke-media`: downloaded songs shared by karaoke and fetcher.
@@ -167,7 +167,7 @@ Latest known done state:
 - Local speaker A/V sync page exists at `/sync`; Audience View shows `Sync timing` only in local mode.
 - Audience View shows `Mic Gain` only in local mode.
 - Local mode enables mic loopback into `balena-sound.input`; stream mode disables it.
-- Release `1eaea0702a23888f431dabc9d3bbe616` was deployed to device `554b996` on 2026-05-03 and verified operational.
+- Latest sprint releases were deployed to device `554b996` on 2026-05-04 and verified operational through karaoke and multiroom endpoints.
 
 When given a task:
 
