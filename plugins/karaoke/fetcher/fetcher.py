@@ -131,7 +131,11 @@ def _download(job_id: str, url: str):
 
 def _update_ytdlp():
     log.info('Updating yt-dlp...')
-    subprocess.run(['pip', 'install', '--upgrade', 'yt-dlp', '-q'], check=False)
+    subprocess.run([
+        'pip', '--disable-pip-version-check',
+        'install', '--upgrade', 'yt-dlp', '-q',
+        '--root-user-action=ignore',
+    ], check=False)
     log.info('yt-dlp updated')
 
 

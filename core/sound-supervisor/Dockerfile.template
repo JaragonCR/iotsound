@@ -18,4 +18,4 @@ COPY core/sound-supervisor/package*.json ./
 COPY core/sound-supervisor/patches ./patches
 COPY --from=build /usr/src/build ./build
 RUN npm install --omit=dev
-CMD [ "npm", "start" ]
+CMD [ "node", "build/index.js" ]
