@@ -76,13 +76,20 @@ Set these in your balenaCloud fleet or device variables:
 |---|---|---|
 | `SOUND_DEVICE_NAME` | Hostname and broadcast name for Bluetooth, AirPlay, Spotify Connect, and UPnP | `iotsound` |
 
+#### Logging
+
+| Variable | Description | Default |
+|---|---|---|
+| `LOG_LEVEL` | Shared log verbosity for services that support it: `debug`, `info`, `warning`, `error` | `info` |
+| `SOUND_SUPERVISOR_LOG_LEVEL` | Override sound supervisor verbosity; `debug` enables extra event logs | `LOG_LEVEL` |
+
 #### Audio output
 
 | Variable | Description | Default |
 |---|---|---|
 | `SOUND_VOLUME` | Default volume (0–100) | `75` |
 | `AUDIO_OUTPUT` | Output device — `AUTO`, device name substring, or device number | `AUTO` |
-| `AUDIO_LOG_LEVEL` | Audio log verbosity: `ERROR`, `WARN`, `NOTICE`, `INFO`, `DEBUG` | `NOTICE` |
+| `AUDIO_LOG_LEVEL` | Override audio log verbosity: `ERROR`, `WARN`, `NOTICE`, `INFO`, `DEBUG` | `LOG_LEVEL` or `NOTICE` |
 
 #### Microphone input & filtering
 
@@ -141,7 +148,6 @@ You can change role and group name live from the web UI at `http://<device-ip>/`
 | `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`) | unset |
 | `SOUND_SPOTIFY_PASSWORD` | Spotify access token for credential auth | unset |
 | `SOUND_SPOTIFY_DISABLE_NORMALISATION` | Disable loudness normalization (set to `1`) | unset |
-| `LOG_LEVEL` | go-librespot log level: `debug`, `info`, `warning`, `error` | `info` |
 
 #### Bluetooth
 
@@ -167,6 +173,7 @@ You can change role and group name live from the web UI at `http://<device-ip>/`
 | `KARAOKE_MAX_QUEUE_PER_SINGER` | Maximum queued songs per singer | `3` |
 | `KARAOKE_SYNC_OFFSET_MS` | Default local speaker A/V sync offset in ms, from `-2000` to `2000` in 200 ms steps | `0` |
 | `KARAOKE_MIC_GAIN` | Default karaoke mic gain 0-100, used when no saved UI value exists | `AUDIO_MIC_INPUT_VOLUME` or `35` |
+| `KARAOKE_LOG_LEVEL` | Override karaoke app and fetcher verbosity | `LOG_LEVEL` or `info` |
 
 #### WiFi watchdog
 

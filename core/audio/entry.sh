@@ -19,7 +19,7 @@ function pa_disable_module() {
 function pa_set_log_level() {
   local PA_LOG_LEVEL="$1"
   declare -A options=(["ERROR"]=0 ["WARN"]=1 ["NOTICE"]=2 ["INFO"]=3 ["DEBUG"]=4)
-  if [[ "${options[$PA_LOG_LEVEL]}" ]]; then
+  if [[ -v options[$PA_LOG_LEVEL] ]]; then
     LOWER_LOG_LEVEL=$(echo "$PA_LOG_LEVEL" | tr '[:upper:]' '[:lower:]')
     if [[ -f /etc/pulse/daemon.conf ]]; then
       sed -i "s/log-level = notice/log-level = $LOWER_LOG_LEVEL/g" /etc/pulse/daemon.conf
@@ -62,7 +62,8 @@ function sanitize_volume () {
 
 # Environment variables and defaults
 INIT_LOG="${AUDIO_INIT_LOG:-true}"
-LOG_LEVEL="${AUDIO_LOG_LEVEL:-NOTICE}"
+LOG_LEVEL="${AUDIO_LOG_LEVEL:-${LOG_LEVEL:-NOTICE}}"
+LOG_LEVEL=$(echo "$LOG_LEVEL" | tr '[:lower:]' '[:upper:]')
 COOKIE="${AUDIO_PULSE_COOKIE}"
 DEFAULT_OUTPUT="${AUDIO_OUTPUT:-AUTO}"
 DEFAULT_VOLUME="${AUDIO_VOLUME:-75}"

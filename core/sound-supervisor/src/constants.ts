@@ -23,9 +23,11 @@ function resolveRole(): MultiroomRole {
 }
 
 const deviceType: string = process.env.BALENA_DEVICE_TYPE ?? 'unknown'
+const logLevel = (process.env.SOUND_SUPERVISOR_LOG_LEVEL ?? process.env.LOG_LEVEL ?? 'info').toLowerCase()
 
 export const constants = {
-  debug: process.env.SOUND_SUPERVISOR_DEBUG ? true : false,
+  debug: process.env.SOUND_SUPERVISOR_DEBUG ? true : logLevel === 'debug',
+  logLevel,
   port: checkInt(process.env.SOUND_SUPERVISOR_PORT) ?? 80,
   role: resolveRole(),
   groupName: process.env.SOUND_GROUP_NAME,

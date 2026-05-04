@@ -15,7 +15,11 @@ from flask import Flask, request, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from waitress import serve
 
-logging.basicConfig(level=logging.INFO, format='[fetcher] %(levelname)s %(message)s')
+LOG_LEVEL = os.environ.get('KARAOKE_LOG_LEVEL', os.environ.get('LOG_LEVEL', 'info')).upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format='[fetcher] %(levelname)s %(message)s',
+)
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)

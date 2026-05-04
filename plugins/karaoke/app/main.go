@@ -38,6 +38,7 @@ var (
 	soundSuper   = envOr("SOUND_SUPERVISOR_URL", "http://172.17.0.1:80")
 	quality      = envOr("KARAOKE_QUALITY", "720")
 	maxPerSinger = envIntOr("KARAOKE_MAX_QUEUE_PER_SINGER", 3)
+	logLevel     = parseLogLevel(envOr("KARAOKE_LOG_LEVEL", envOr("LOG_LEVEL", "info")))
 )
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -96,6 +97,39 @@ var (
 	micLoopbackMu    sync.Mutex
 )
 
+type logSeverity int
+
+const (
+	logDebug logSeverity = iota
+	logInfo
+	logWarn
+	logError
+)
+
+func parseLogLevel(level string) logSeverity {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug":
+		return logDebug
+	case "warn", "warning":
+		return logWarn
+	case "error":
+		return logError
+	default:
+		return logInfo
+	}
+}
+
+func logAt(level logSeverity, format string, args ...any) {
+	if logLevel <= level {
+		log.Printf(format, args...)
+	}
+}
+
+func logDebugf(format string, args ...any) { logAt(logDebug, format, args...) }
+func logInfof(format string, args ...any)  { logAt(logInfo, format, args...) }
+func logWarnf(format string, args ...any)  { logAt(logWarn, format, args...) }
+func logErrorf(format string, args ...any) { logAt(logError, format, args...) }
+
 // current song file served at /stream/current
 var (
 	currentFile   string
@@ -145,14 +179,15 @@ func main() {
 	mux := http.NewServeMux()
 	registerRoutes(mux)
 
-	log.Printf("[karaoke] Listening on %s", listenPort)
+	logInfof("[karaoke] Listening on %s", listenPort)
+	logDebugf("[karaoke] debug logging enabled")
 	log.Fatal(http.ListenAndServe(listenPort, mux))
 }
 
 func cleanupIdleMicLoopback() {
 	time.Sleep(5 * time.Second)
 	if err := disableMicLoopback(); err != nil {
-		log.Printf("[mic] idle loopback cleanup skipped: %v", err)
+		logDebugf("[mic] idle loopback cleanup skipped: %v", err)
 	}
 }
 
@@ -648,7 +683,7 @@ func handleGetSinger(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		log.Printf("[singer] history query failed for %q: %v", name, err)
+		logWarnf("[singer] history query failed for %q: %v", name, err)
 	}
 
 	favorites := []FavItem{}
@@ -662,7 +697,7 @@ func handleGetSinger(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		log.Printf("[singer] favorites query failed for %q: %v", name, err)
+		logWarnf("[singer] favorites query failed for %q: %v", name, err)
 	}
 
 	writeJSON(w, map[string]any{"singer": s, "history": history, "favorites": favorites})
@@ -831,7 +866,7 @@ func downloadWorker() {
 		db.Exec(`UPDATE jobs SET status='downloading' WHERE id=?`, id)
 
 		if err := ensureSpace(600 << 20); err != nil {
-			log.Printf("[storage] pre-download eviction failed: %v", err)
+			logWarnf("[storage] pre-download eviction failed: %v", err)
 			db.Exec(`UPDATE jobs SET status='failed' WHERE id=?`, id)
 			time.Sleep(5 * time.Second)
 			continue
@@ -880,10 +915,10 @@ func downloadWorker() {
 
 		if finalPath != "" {
 			db.Exec(`UPDATE jobs SET status='ready', filename=? WHERE id=?`, finalPath, id)
-			log.Printf("[download] done: %s", finalPath)
+			logInfof("[download] done: %s", finalPath)
 		} else {
 			db.Exec(`UPDATE jobs SET status='failed' WHERE id=?`, id)
-			log.Printf("[download] failed: %s", url)
+			logErrorf("[download] failed: %s", url)
 		}
 	}
 }
@@ -933,7 +968,7 @@ func playerWorker() {
 		currentFile = filename
 		currentFileMu.Unlock()
 
-		log.Printf("[player] %s — %s (key %+d)", singer, title, keyOffset)
+		logInfof("[player] %s — %s (key %+d)", singer, title, keyOffset)
 		play(filename, keyOffset)
 
 		currentFileMu.Lock()
@@ -989,20 +1024,20 @@ func play(filename string, semitones int) {
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Start(); err != nil {
-			log.Printf("[player] speakers start failed: %v", err)
+			logErrorf("[player] speakers start failed: %v", err)
 			return
 		}
 		playerCmd = cmd
-		log.Printf("[player] speakers on")
+		logInfof("[player] speakers on")
 		go func() {
 			err := cmd.Wait()
 			msg := strings.TrimSpace(stderr.String())
 			if err != nil {
-				log.Printf("[player] speakers exited: %v stderr=%q", err, msg)
+				logWarnf("[player] speakers exited: %v stderr=%q", err, msg)
 				return
 			}
 			if msg != "" {
-				log.Printf("[player] speakers stopped: %s", msg)
+				logDebugf("[player] speakers stopped: %s", msg)
 			}
 		}()
 	}
@@ -1015,19 +1050,19 @@ func play(filename string, semitones int) {
 		}
 		killCmd(playerCmd)
 		playerCmd = nil
-		log.Printf("[player] speakers off")
+		logInfof("[player] speakers off")
 	}
 
 	stopLocalAudio := func() {
 		stopSpeakers()
 		if err := disableMicLoopback(); err != nil {
-			log.Printf("[mic] loopback disable failed: %v", err)
+			logWarnf("[mic] loopback disable failed: %v", err)
 		}
 	}
 
 	startLocalAudio := func() {
 		if err := ensureMicLoopback(); err != nil {
-			log.Printf("[mic] loopback unavailable: %v", err)
+			logWarnf("[mic] loopback unavailable: %v", err)
 		}
 		startSpeakers()
 	}
@@ -1180,7 +1215,7 @@ func ensureMicLoopback() error {
 	defer micLoopbackMu.Unlock()
 
 	if err := unloadKaraokeMicLoopbacksLocked(); err != nil {
-		log.Printf("[mic] stale loopback cleanup failed: %v", err)
+		logDebugf("[mic] stale loopback cleanup failed: %v", err)
 	}
 	source, err := micSource()
 	if err != nil {
@@ -1202,7 +1237,7 @@ func ensureMicLoopback() error {
 	if err != nil {
 		return fmt.Errorf("load mic loopback failed: %s", strings.TrimSpace(string(out)))
 	}
-	log.Printf("[mic] loopback on (%s @ %d%%)", source, gain)
+	logInfof("[mic] loopback on (%s @ %d%%)", source, gain)
 	return nil
 }
 
@@ -1262,7 +1297,7 @@ func probeDuration(filename string) time.Duration {
 		filename,
 	).Output()
 	if err != nil {
-		log.Printf("[player] ffprobe duration failed: %v", err)
+		logDebugf("[player] ffprobe duration failed: %v", err)
 		return 0
 	}
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
@@ -1299,7 +1334,7 @@ func handleSetAudioMode(w http.ResponseWriter, r *http.Request) {
 	audioModeMu.Unlock()
 	if body.Mode == "stream" {
 		if err := disableMicLoopback(); err != nil {
-			log.Printf("[mic] loopback disable failed: %v", err)
+			logWarnf("[mic] loopback disable failed: %v", err)
 		}
 	}
 	// Signal play() to toggle speaker routing (non-blocking send).
@@ -1330,7 +1365,7 @@ func proxyVolume(percent int) {
 	body := strings.NewReader(fmt.Sprintf(`{"volume":%d}`, percent))
 	resp, err := http.Post(soundSuper+"/audio/volume", "application/json", body)
 	if err != nil {
-		log.Printf("[volume] proxy error: %v", err)
+		logWarnf("[volume] proxy error: %v", err)
 		return
 	}
 	resp.Body.Close()
@@ -1423,7 +1458,7 @@ func queryHistory(singer, filter string, limit int) []*Job {
 	}
 	jobs := []*Job{}
 	if err != nil {
-		log.Printf("[history] query failed for filter=%q singer=%q: %v", filter, singer, err)
+		logWarnf("[history] query failed for filter=%q singer=%q: %v", filter, singer, err)
 		return jobs
 	}
 	defer rows.Close()
@@ -1506,7 +1541,7 @@ func evictLRU(needed int64) error {
 		}
 		if os.Remove(fname) == nil {
 			freed += info.Size()
-			log.Printf("[storage] evicted %s (%.1f MB)", filepath.Base(fname), float64(info.Size())/(1<<20))
+			logInfof("[storage] evicted %s (%.1f MB)", filepath.Base(fname), float64(info.Size())/(1<<20))
 		}
 	}
 	if freed < needed {

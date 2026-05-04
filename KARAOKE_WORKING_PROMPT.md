@@ -78,6 +78,7 @@ Karaoke branch architecture:
 - `plugins/karaoke/app/main.go`: Go HTTP server on port 8080. Owns SQLite state, queue, singer profiles/history/favorites, playback, volume proxy, QR, audio mode.
 - `plugins/karaoke/fetcher/fetcher.py`: Python Flask-compatible API served by Waitress on port 8081. Runs `yt-dlp` downloads so the Go server does not block. Uses `/data/media`.
 - `SOUND_DISABLE_KARAOKE`: disables both karaoke containers by making their plugin entrypoints exit cleanly.
+- `LOG_LEVEL` controls shared service verbosity where supported. Karaoke app/fetcher can be overridden with `KARAOKE_LOG_LEVEL`.
 - Volumes:
   - `karaoke-media`: downloaded songs shared by karaoke and fetcher.
   - `karaoke-data`: SQLite app DB.
