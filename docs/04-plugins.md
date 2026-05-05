@@ -35,6 +35,19 @@ Karaoke is shipped as a plugin under `plugins/karaoke` with two services:
 
 Set `SOUND_DISABLE_KARAOKE` to disable both services. In local speaker mode, karaoke sends audio and mic loopback into `balena-sound.input` only while a song is actively playing; in stream mode, the browser decodes the MP4 directly.
 
+## Development checklist
+
+When adding or renaming a plugin service, keep the service name consistent across:
+
+- `docker-compose.yml`
+- the plugin's `SOUND_DISABLE_<PLUGIN>` handling
+- `core/sound-supervisor/src/SoundConfig.ts`
+- the configuration tables in `README.md` and `docs/03-customization.md`
+
+Source plugins that can create audio must be listed in `SoundConfig.ts` so role switching can start them in `auto`, `host`, and `disabled`, and stop them in `join`. A `join` device should act as a passive Snapcast receiver; leaving a source plugin running there can expose a local UI or stream endpoint that injects audio outside the elected master path.
+
+Plugins with sidecar services should include every sidecar that needs to follow the same role visibility. For karaoke, both `karaoke` and `karaoke-fetcher` are managed together because the UI and downloader should disappear together on passive client devices, and `SOUND_DISABLE_KARAOKE` disables both containers.
+
 ## Installable
 
 The following plugins are available to be added to your IoTSound installation:

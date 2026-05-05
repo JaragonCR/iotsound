@@ -17,9 +17,18 @@ export default class SoundConfig {
     type: constants.balenaDeviceType
   }
   private electedRole: ElectedRole | null = null
+  private readonly sourcePlugins = ['airplay', 'librespot', 'bluetooth', 'karaoke', 'karaoke-fetcher']
 
   private safeService(fn: (s: string) => Promise<unknown>, service: string): void {
     fn(service).catch((err: Error) => console.log(`Service call failed [${service}]: ${err.message}`))
+  }
+
+  private startSourcePlugins(): void {
+    this.sourcePlugins.forEach((service) => this.safeService(startBalenaService, service))
+  }
+
+  private stopSourcePlugins(): void {
+    this.sourcePlugins.forEach((service) => this.safeService(stopBalenaService, service))
   }
 
   private applyRoleServices(): void {
@@ -28,9 +37,7 @@ export default class SoundConfig {
         // HOST is always master — start everything including server immediately.
         this.safeService(startBalenaService, 'multiroom-server')
         this.safeService(startBalenaService, 'multiroom-client')
-        this.safeService(startBalenaService, 'airplay')
-        this.safeService(startBalenaService, 'librespot')
-        this.safeService(startBalenaService, 'bluetooth')
+        this.startSourcePlugins()
         break
       case MultiroomRole.AUTO:
         // Pre-warm both multiroom containers so they're ready when play fires.
@@ -38,25 +45,19 @@ export default class SoundConfig {
         // (pacat / snapclient) once that endpoint returns true.
         this.safeService(startBalenaService, 'multiroom-server')
         this.safeService(startBalenaService, 'multiroom-client')
-        this.safeService(startBalenaService, 'airplay')
-        this.safeService(startBalenaService, 'librespot')
-        this.safeService(startBalenaService, 'bluetooth')
+        this.startSourcePlugins()
         break
       case MultiroomRole.JOIN:
         // Invisible to streaming apps; only snapcast client runs.
         this.safeService(stopBalenaService, 'multiroom-server')
-        this.safeService(stopBalenaService, 'airplay')
-        this.safeService(stopBalenaService, 'librespot')
-        this.safeService(stopBalenaService, 'bluetooth')
+        this.stopSourcePlugins()
         this.safeService(startBalenaService, 'multiroom-client')
         break
       case MultiroomRole.DISABLED:
         // Standalone only; no multiroom participation.
         this.safeService(stopBalenaService, 'multiroom-server')
         this.safeService(stopBalenaService, 'multiroom-client')
-        this.safeService(startBalenaService, 'airplay')
-        this.safeService(startBalenaService, 'librespot')
-        this.safeService(startBalenaService, 'bluetooth')
+        this.startSourcePlugins()
         break
     }
   }

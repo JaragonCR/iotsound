@@ -214,14 +214,31 @@ export default class SoundAPI {
     this.api.post('/device/reboot', async (_req, res) => res.json(await rebootDevice()))
     this.api.post('/device/shutdown', async (_req, res) => res.json(await shutdownDevice()))
     this.api.post('/device/dtoverlay', async (req, res) => {
-      const { dtoverlay } = req.body
+      let { dtoverlay } = req.body
+      if (typeof dtoverlay !== 'string') {
+        res.status(400).json({ error: 'dtoverlay must be a string' })
+        return
+      }
+
+      dtoverlay = dtoverlay.trim()
       try {
+        // Check current value to avoid redundant reboots
+        const currentVars = await this.sdk.models.device.configVar.getAllByDevice(process.env.BALENA_DEVICE_UUID!)
+        const currentOverlay = currentVars.find(v => v.name === 'BALENA_HOST_CONFIG_dtoverlay')
+
+        if (currentOverlay && currentOverlay.value === dtoverlay) {
+          console.log(`BALENA_HOST_CONFIG_dtoverlay is already set to "${dtoverlay}". Skipping update.`)
+          res.json({ status: 'OK', changed: false })
+          return
+        }
+
         console.log(`Applying BALENA_HOST_CONFIG_dtoverlay=${dtoverlay}...`)
         await this.sdk.models.device.configVar.set(process.env.BALENA_DEVICE_UUID!, 'BALENA_HOST_CONFIG_dtoverlay', dtoverlay)
-        res.json({ status: 'OK' })
+        res.json({ status: 'OK', changed: true })
       } catch (error) {
-        console.log(error)
-        res.json({ error: error })
+        const message = (error as any).message || String(error)
+        console.log(`Failed to set dtoverlay: ${message}`)
+        res.status(500).json({ error: message })
       }
     })
 
