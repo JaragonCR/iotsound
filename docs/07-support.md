@@ -122,7 +122,7 @@ HDMI audio output is currently not working as intended on Raspberry Pi 4. See th
 
 You can force HDMI audio to work by setting the device environment variable `BALENA_HOST_CONFIG_hdmi_mode` to `2`. Thanks to [@zchbndcc9](https://github.com/zchbndcc9) for finding this workaround.
 
-### No audio when using balenaOS 64 bit on Raspberry Pi 3's
+### No audio when using balenaOS 64 bit on Raspberry Pi 3s
 
 #### Description
 
@@ -135,7 +135,14 @@ For details see:
 
 #### Workaround
 
-Remove the `vc4-kms-v3d` dtoverlay setting from the `Device Configuration` section of your device.
+For the onboard 3.5mm headphone jack, set these values on the specific Pi 3 device in balenaCloud `Device Configuration`:
+
+| Variable | Value |
+| -------- | ----- |
+| `BALENA_HOST_CONFIG_dtoverlay` | `"vc4-kms-v3d,noaudio"` |
+| `BALENA_HOST_CONFIG_dtparam` | `"i2c_arm=on","spi=on","audio=on"` |
+
+The important detail is `noaudio` on the `vc4-kms-v3d` overlay. Do not use `vc4-kms-v3d,audio=off`; on recent 64-bit balenaOS and Supervisor releases that value can make the device repeatedly apply host configuration. Do not rely on manual edits to `/mnt/boot/config.txt` either, because Supervisor rewrites that file from balenaCloud-managed configuration.
 
 ## Contact us
 

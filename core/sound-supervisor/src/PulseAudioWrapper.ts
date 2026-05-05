@@ -148,9 +148,43 @@ export class PulseAudioWrapper extends EventEmitter {
   // Volume control
   // -------------------------------------------------------------------------
 
+  private _quote(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`
+  }
+
+  private async _getVolumeTargetSinks(): Promise<string[]> {
+    const sinks = await this.getSinks()
+    const names = sinks.map((sink) => sink.name).filter(Boolean)
+    const hardware = names.filter((name) =>
+      name.startsWith('alsa_output.') && !name.includes('balena-sound') && name !== 'snapcast'
+    )
+    const targets = [
+      ...hardware,
+      ...names.filter((name) => name === 'balena-sound.output'),
+    ]
+    return targets.length > 0 ? targets : ['@DEFAULT_SINK@']
+  }
+
   async setVolume(percent: number): Promise<void> {
     const clamped = Math.max(0, Math.min(100, Math.round(percent)))
     this._currentVolume = clamped
+    const targets = await this._getVolumeTargetSinks()
+    let applied = false
+
+    for (const sink of targets) {
+      const sinkRef = sink === '@DEFAULT_SINK@' ? sink : this._quote(sink)
+      try {
+        await execAsync(
+          `pactl --server ${this.server} set-sink-volume ${sinkRef} ${clamped}%`
+        )
+        applied = true
+      } catch (err) {
+        console.warn(`[PulseAudioWrapper] setVolume failed for ${sink}: ${(err as Error).message}`)
+      }
+    }
+
+    if (applied) return
+
     try {
       await execAsync(
         `pactl --server ${this.server} set-sink-volume @DEFAULT_SINK@ ${clamped}%`
@@ -161,6 +195,24 @@ export class PulseAudioWrapper extends EventEmitter {
   }
 
   async getVolume(): Promise<number> {
+    const targets = await this._getVolumeTargetSinks()
+
+    for (const sink of targets) {
+      const sinkRef = sink === '@DEFAULT_SINK@' ? sink : this._quote(sink)
+      try {
+        const { stdout } = await execAsync(
+          `pactl --server ${this.server} get-sink-volume ${sinkRef}`
+        )
+        const match = stdout.match(/(\d+)%/)
+        if (match) {
+          this._currentVolume = parseInt(match[1], 10)
+          return this._currentVolume
+        }
+      } catch (err) {
+        console.warn(`[PulseAudioWrapper] getVolume failed for ${sink}: ${(err as Error).message}`)
+      }
+    }
+
     try {
       const { stdout } = await execAsync(
         `pactl --server ${this.server} get-sink-volume @DEFAULT_SINK@`

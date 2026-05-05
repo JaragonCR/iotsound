@@ -10,6 +10,19 @@ As a general rule of thumb, onboard and USB soundcards should work out of the bo
 
 While most boards have built-in soundcards it's well known that the quality you can get from them is not the greatest. For the Raspberry Pi family for example, the Pi Foundation does an excellent job at keeping the cost of their boards down, but that comes with some compromises with audio being one of them. The [audio circuitry](https://hackaday.com/2018/07/13/behind-the-pin-how-the-raspberry-pi-gets-its-audio/) does an OK job, but it's nothing stellar. Onboard audiocards don't require any configuration.
 
+### Raspberry Pi 3 headphone jack on 64-bit balenaOS
+
+On Raspberry Pi 3 devices running recent 64-bit balenaOS and Supervisor releases, the onboard 3.5mm headphone jack may not appear as an ALSA/PipeWire sink with the default KMS overlay alone. The tested working configuration is to keep onboard audio enabled with `dtparam=audio=on`, and disable only HDMI audio on the KMS overlay with `noaudio`.
+
+Set these values on the specific Pi 3 device in balenaCloud `Device Configuration`:
+
+| Variable | Value |
+| -------- | ----- |
+| `BALENA_HOST_CONFIG_dtoverlay` | `"vc4-kms-v3d,noaudio"` |
+| `BALENA_HOST_CONFIG_dtparam` | `"i2c_arm=on","spi=on","audio=on"` |
+
+Do not use `vc4-kms-v3d,audio=off` for this case. On recent Supervisor/OS combinations that value can be normalized as an overlay/audio parameter conflict and cause repeated host-config apply/reboot behavior. Also do not hand-edit `/mnt/boot/config.txt` as a permanent fix on managed balenaOS devices; Supervisor reconciles that file from balenaCloud configuration and will restore the managed state.
+
 ## USB Soundcards
 
 USB soundcards are also supported without any special configuration needed. Just make sure you power cycle your device after plugging in the soundcard and you should be good to go.
