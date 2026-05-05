@@ -98,8 +98,10 @@ function goProfile(e) {
 // ── Volume ────────────────────────────────────────────────────────────────────
 let currentMode = 'local';
 let volTimer;
+let volumeHoldUntil = 0;
 
 function loadVolume() {
+  if (Date.now() < volumeHoldUntil) return;
   if (currentMode === 'stream') {
     // Browser audio — slider reflects video.volume
     const v = Math.round(video.volume * 100);
@@ -107,7 +109,7 @@ function loadVolume() {
     document.getElementById('vol-label').textContent = v + '%';
   } else {
     fetch('/api/volume').then(r=>r.json()).then(d=>{
-      const v = d.volume ?? d.percent ?? 80;
+      const v = typeof d === 'number' ? d : (d.volume ?? d.percent ?? 80);
       document.getElementById('vol-slider').value = v;
       document.getElementById('vol-label').textContent = v + '%';
     }).catch(()=>{});
@@ -115,6 +117,7 @@ function loadVolume() {
 }
 
 function setVolume(v) {
+  volumeHoldUntil = Date.now() + 1500;
   document.getElementById('vol-label').textContent = v + '%';
   clearTimeout(volTimer);
   if (currentMode === 'stream') {
@@ -270,6 +273,7 @@ function pollStatus() {
 loadVolume();
 pollStatus();
 setInterval(pollStatus, 2000);
+setInterval(loadVolume, 3000);
 </script>
 </body>
 </html>

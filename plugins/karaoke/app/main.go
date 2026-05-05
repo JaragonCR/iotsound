@@ -262,6 +262,7 @@ func initDB() {
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	_, err = db.Exec(`
 	CREATE TABLE IF NOT EXISTS jobs (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -760,8 +761,19 @@ func handleGetVolume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	w.Header().Set("Content-Type", "application/json")
-	io.Copy(w, resp.Body)
+	var raw any
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	switch v := raw.(type) {
+	case float64:
+		writeJSON(w, map[string]int{"volume": int(v), "percent": int(v)})
+	case map[string]any:
+		writeJSON(w, v)
+	default:
+		writeJSON(w, map[string]any{"volume": raw})
+	}
 }
 
 func handleSetVolume(w http.ResponseWriter, r *http.Request) {
@@ -770,7 +782,7 @@ func handleSetVolume(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&body)
 	proxyVolume(body.Volume)
-	writeJSON(w, map[string]string{"status": "ok"})
+	writeJSON(w, map[string]any{"status": "ok", "volume": body.Volume, "percent": body.Volume})
 }
 
 func handleGetMicGain(w http.ResponseWriter, r *http.Request) {
@@ -1058,9 +1070,12 @@ func play(filename string, semitones int) {
 		if err := disableMicLoopback(); err != nil {
 			logWarnf("[mic] loopback disable failed: %v", err)
 		}
+		notifyPlayback(false)
 	}
 
 	startLocalAudio := func() {
+		notifyPlayback(true)
+		time.Sleep(800 * time.Millisecond)
 		if err := ensureMicLoopback(); err != nil {
 			logWarnf("[mic] loopback unavailable: %v", err)
 		}
@@ -1140,6 +1155,28 @@ func makePipeWireCmd(filename string, semitones int, pitch float64, startMs, syn
 	cmd := exec.Command("ffmpeg", args...)
 	cmd.Env = os.Environ()
 	return cmd
+}
+
+func notifyPlayback(playing bool) {
+	endpoint := "/internal/stop"
+	if playing {
+		endpoint = "/internal/play"
+	}
+	req, err := http.NewRequest(http.MethodPost, soundSuper+endpoint, nil)
+	if err != nil {
+		logDebugf("[player] playback notify request failed: %v", err)
+		return
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logWarnf("[player] playback notify %s failed: %v", endpoint, err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		logWarnf("[player] playback notify %s returned %s", endpoint, resp.Status)
+	}
 }
 
 func syncOffset() int {

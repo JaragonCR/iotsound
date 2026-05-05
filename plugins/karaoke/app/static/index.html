@@ -180,15 +180,18 @@ function goProfile(e) {
 
 // ── Volume ───────────────────────────────────────────────────────────────────
 function loadVolume() {
+  if (Date.now() < volumeHoldUntil) return;
   fetch('/api/volume').then(r=>r.json()).then(d=>{
-    const v = d.volume ?? d.percent ?? 80;
+    const v = typeof d === 'number' ? d : (d.volume ?? d.percent ?? 80);
     document.getElementById('volume-slider').value = v;
     document.getElementById('volume-label').textContent = v + '%';
   }).catch(()=>{});
 }
 let volTimer;
 let micTimer;
+let volumeHoldUntil = 0;
 function setVolume(v) {
+  volumeHoldUntil = Date.now() + 1500;
   document.getElementById('volume-label').textContent = v + '%';
   clearTimeout(volTimer);
   volTimer = setTimeout(()=>{
@@ -418,6 +421,7 @@ loadVolume();
 loadMicGain();
 fetchData();
 setInterval(fetchData, 1500);
+setInterval(loadVolume, 3000);
 </script>
 </body>
 </html>
