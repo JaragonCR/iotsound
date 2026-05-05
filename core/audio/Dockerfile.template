@@ -1,4 +1,4 @@
-FROM alpine:3.21
+FROM alpine:3.23
 WORKDIR /usr/src
 
 ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket

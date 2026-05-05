@@ -26,6 +26,7 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
+    "balena-register-device": "9.0.33-build-renovate-npm-uuid-vulnerability-cc37e4c50572a1495164363cf3d64af10f8325e9-1",
     "diff": ">=4.0.4"
   }
 }

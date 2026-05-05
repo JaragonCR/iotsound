@@ -5,12 +5,12 @@
 # Changes vs upstream balena-labs-projects/bluetooth:
 #   - int() cast fix for RECONNECT_MAX_RETRIES
 #   - Wipe all paired devices on startup for fresh connections
-#   - balenalib alpine-python:3.12 → alpine:3.21 + apk python3
+#   - balenalib alpine-python:3.12 → alpine:3.23 + apk python3
 #
-# Note: alpine:3.21 (not python:3.12-alpine) so py3-dbus and py3-gobject3
+# Note: alpine:3.23 (not python:3.12-alpine) so py3-dbus and py3-gobject3
 # use the same Python interpreter they were built against.
 
-FROM alpine:3.21
+FROM alpine:3.23
 
 WORKDIR /usr/src
 

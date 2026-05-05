@@ -1,5 +1,7 @@
-FROM node:24-bookworm-slim AS build
+FROM node:24-trixie-slim AS build
+ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /usr/src
+RUN npm install -g npm@11.13.0
 COPY core/sound-supervisor/package*.json ./
 RUN npm install
 #dev-cmd-live=npm run livepush
@@ -7,7 +9,9 @@ COPY core/sound-supervisor/src ./src
 COPY core/sound-supervisor/tsconfig.json .
 RUN npm run build
 
-FROM node:24-bookworm-slim
+FROM node:24-trixie-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN npm install -g npm@11.13.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio-utils \
     curl \

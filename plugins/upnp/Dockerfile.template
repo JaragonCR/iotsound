@@ -1,4 +1,5 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
+ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /usr/src
 
 ENV PULSE_SERVER=tcp:localhost:4317

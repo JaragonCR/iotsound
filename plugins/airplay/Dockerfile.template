@@ -1,4 +1,4 @@
-FROM mikebrady/shairport-sync:5.0.4
+FROM mikebrady/shairport-sync:5.0.1
 WORKDIR /usr/src
 
 ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket

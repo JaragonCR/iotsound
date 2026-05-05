@@ -1,6 +1,7 @@
 # Stage 1: Build snapserver from source
-FROM debian:bookworm-slim AS snapcast-builder
-ARG SNAPCAST_VERSION=0.27.0
+FROM debian:trixie-slim AS snapcast-builder
+ENV DEBIAN_FRONTEND=noninteractive
+ARG SNAPCAST_VERSION=0.35.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -28,7 +29,8 @@ RUN cmake -B build \
     cmake --build build -j$(nproc) --target snapserver
 
 # Stage 2: Runtime
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
+ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /usr/src
 
 ENV PULSE_SERVER=tcp:audio:4317
@@ -41,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libopus0 \
     libvorbis0a \
-    libflac12 \
+    libflac14 \
     libsoxr0 \
     libssl3 \
     libavahi-client3 \
