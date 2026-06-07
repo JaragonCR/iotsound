@@ -202,3 +202,92 @@ See PR `fix/multiroom-audit-safe-fixes`:
 - **B10:** correct the play-detection comments to point at the `pactl` watcher.
 
 Deferred (need device validation): B1/B2/B3/B5 and the redesign options.
+
+---
+
+## Follow-up design review (2026-06-07)
+
+Constraint clarified: **PipeWire is the deliberate output abstraction** — only the `audio`
+container touches ALSA; every other container speaks the PulseAudio protocol to pipewire-pulse.
+So pure Option A (snapclient → raw ALSA) is **rejected** — it would make a plugin container own
+the device. Below are PipeWire-preserving fixes.
+
+### B1 — corrected mechanism + Options C/D
+Correction: under PipeWire (not classic PulseAudio) the `output.monitor → hw` loopback does not
+independently resample — null sinks follow the graph driver clock. So the defect is a
+**hidden, per-device, large fixed offset** (100 ms I2S/USB vs 500 ms HDMI) that snapclient's
+PulseAudio latency query can't see — not runtime drift. Cross-device skew = the 100/500 delta;
+absolute lateness = the offset snapclient doesn't compensate.
+
+**Option C (recommended, PipeWire-preserving):** point snapclient at the **hardware sink node
+directly** instead of the `balena-sound.output` null sink — i.e. `PULSE_SINK=<hw_sink>` (or just
+`@DEFAULT_SINK@`, which `core/audio/start.sh` already sets to `HW_SINK`). pipewire-pulse then
+places the stream straight on the device, the `output.monitor → hw` loopback leaves the playback
+path, and the **latency reported back to snapclient is the real device latency** → snapclient
+compensates it → devices sync. PipeWire still owns the device; snapclient never touches ALSA.
+Bonus: removes a whole buffer stage → lower latency and smaller buffers (the stated goal).
+Work: expose `HW_SINK` to the client (supervisor `GET /multiroom` or `/audio`), or rely on
+`@DEFAULT_SINK@`; ensure volume control targets the hw sink (PulseAudioWrapper already includes
+hardware sinks in its volume targets); confirm the master's local snapclient uses the same path.
+
+**Option D (more elegant, more setup):** make `balena-sound.output` *be* the device — a 1:1
+passthrough / node-rename so writing to that name lands on the DAC with no loopback. Keeps the
+stable abstraction name (clients/volume unchanged, hw swap transparent) but is fiddlier to wire
+in WirePlumber and loses none of C's latency benefit. Prefer D only if the stable-name
+abstraction is worth the WirePlumber work; otherwise C is simpler.
+
+C and D both reduce latency and buffer depth, so they serve the "speed / smaller buffers" goal as
+well as sync. Validate C first on a JOIN-only pair.
+
+### B2 — likely shrinks after B1
+With C/D, the real per-device output latency is **reported by PipeWire** and snapclient
+compensates automatically, so much of the designed manual `hw_latency` reconciliation may become
+unnecessary. **Decision: do not build B2 until B1 lands and we re-measure.** Keep one fixed
+per-device `--latency` knob only for any residual DAC delta.
+
+### B3 — kill the restart-as-transition pattern (in-place mechanisms)
+- **Latency change:** replace the `multiroom-client` restart in `POST /multiroom/latency` with a
+  Snapcast JSON-RPC **`Client.SetLatency`** call (snapserver already exposes the API the monitor
+  uses for volume). Instant, no audio gap, no restart.
+- **Demotion (server):** don't restart `multiroom-server`. Keep snapserver running with the FIFO
+  write-end held open (the script already holds `fd 3`), and just **stop the inner `pacat`**
+  (kill `PACAT_PID`). Re-promote = `start_pacat` again. The watchdog loop already manages pacat;
+  add a polled flag (`/multiroom/active`) so it stops pacat when active→false and starts it when
+  false→true. Server transitions become inner-process start/stop, no container bounce.
+- **Master change (client):** the client watchdog already respawns snapclient in place on master
+  IP change every 5 s, so `restartClientForNewMaster()` (container restart) is redundant — drop
+  it and let the in-place watchdog handle goodbye/TTL.
+Net: no container restarts on any normal transition.
+
+### B4 — authoritative tiebreaker
+The TXT record already carries **`master_uuid`** (stable, canonical balena identity). Use
+**lowest UUID wins**: when a device that is advertising (master) sees another `_snapcast._tcp`
+for its group with a lower `master_uuid`, it demotes and becomes that master's client. No new data
+needed; IP is rejected (DHCP-unstable), MAC would need adding. Optionally add `started_epoch` to
+TXT for "earliest source wins" semantics, but UUID is simpler and deterministic. The collision
+window is tiny (two local sources starting within ~1 RTT); UUID resolves it cleanly.
+
+### B5 — make the fallback reversible, or delete it
+Short term: while `inMultiroomFallback`, keep polling `snapserverHasClients()`; when a client
+appears, call `restoreSnapcastRouting()` and clear the flag — so a late-joining speaker is no
+longer muted for the session. Long term: once B1 (C/D) makes local-through-snapclient fast and
+low-buffer, the master can **always** play via its own local snapclient and the direct-bypass
+fallback can be **deleted entirely** (removes B5 and B7).
+
+### Preferred model: transient source-master (lower idle cost, faster promote)
+Inversion of today's election that the maintainer favors and that composes with the above:
+- Every device boots **warm and master-ready**: snapserver running, FIFO open, `pacat` stopped,
+  **not advertising**.
+- On local play: start `pacat` + publish the `_snapcast._tcp` advertisement. That *is* promotion —
+  inner-process start, sub-second, **no container start**.
+- A device that sees a remote advertisement while not sourcing locally starts snapclient in place
+  (becomes slave). The client watchdog already does the in-place spawn.
+- 30 s of no local play → stop `pacat` + unpublish advertisement, keep snapserver warm. In-place
+  rollback, **no restart** (this is B3's demotion).
+- Conflict (two local sources at once, same group): **lowest `master_uuid` keeps the group**; the
+  higher-UUID device with its own source either yields or plays standalone until it stops, then
+  rejoins. Rare; arguably user error. One decision to confirm here.
+
+This deletes the idle-browse/optimistic-promote/direct-fallback machinery (B4, B5, B7 collapse),
+keeps "automatic" UX, and is faster. Higher-risk rewrite — needs hardware validation.
+

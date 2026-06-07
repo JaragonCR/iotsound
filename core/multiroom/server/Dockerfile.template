@@ -53,7 +53,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=snapcast-builder /snapcast/bin/snapserver /usr/bin/snapserver
 
-COPY snapserver.conf /etc/snapserver.conf
+# snapserver runs with a config generated at runtime (/tmp/snapserver.conf in start.sh)
+# so the effective buffer reflects SOUND_MULTIROOM_BUFFER_MS. No static config is baked in.
 COPY start.sh .
 
 CMD [ "/bin/bash", "/usr/src/start.sh" ]
