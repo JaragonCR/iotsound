@@ -81,15 +81,15 @@ export async function handlePlayDetect(): Promise<void> {
     console.log('[play-detect] Demotion timer cancelled — still playing')
   }
 
-  if (config.isElectedMaster() || config.isSolo()) return
+  if (config.isElectedMaster()) return
 
-  const competitor = monitor.getSelectedMaster()
-  if (competitor && (competitor.txt['master_uuid'] ?? '') < deviceUuid) {
-    console.log(`[play-detect] Lower-UUID master ${competitor.ip} owns the group — playing SOLO`)
-    config.enterSolo()
-    await audioBlock.rerouteInputDirect().catch(err =>
-      console.log(`[solo] reroute error: ${(err as Error).message}`))
-    return
+  // Newest source wins: promote unconditionally. If another device is actively sourcing,
+  // its monitor sees our newer epoch and yields. If we were SOLO (lost an earlier race),
+  // restore snapcast routing before taking the group.
+  if (config.isSolo()) {
+    config.exitSolo()
+    await audioBlock.restoreSnapcastRouting().catch(err =>
+      console.log(`[solo] restore error: ${(err as Error).message}`))
   }
 
   console.log('[play-detect] Becoming group master (SOURCING)')
@@ -124,7 +124,9 @@ export function handleStopDetect(): void {
 // Monitor callback: we are SOURCING but a lower-UUID master exists, so we yield the group.
 // If we still have a local source, fall back to SOLO (play it locally); otherwise go warm.
 function handleSuperseded(_svc: SnapcastService): void {
+  if (config.role !== MultiroomRole.AUTO) return // HOST never yields
   if (!config.isElectedMaster()) return
+  if (stopTimer) { clearTimeout(stopTimer); stopTimer = null }
   config.demoteFromSourcing()
   monitor.setMaster(false)
   if (localSourceActive) {

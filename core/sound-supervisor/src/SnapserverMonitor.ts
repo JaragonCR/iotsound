@@ -57,6 +57,9 @@ export default class SnapserverMonitor {
   private readonly localIp: string | undefined
   private readonly multiroomMaster: string | undefined
   private isMaster: boolean
+  // Wall-clock ms when this device last became the SOURCING master. Advertised so peers can
+  // apply "newest source wins": a device that started sourcing more recently owns the group.
+  private sourcingEpoch = 0
 
   // Invoked when this device is SOURCING but a master with a lower UUID appears,
   // i.e. we lost the tiebreak and must demote. The orchestrator decides SLAVE vs SOLO.
@@ -148,6 +151,7 @@ export default class SnapserverMonitor {
     // Browse in every state so we always know the current group masters.
     this.startBrowsing()
     if (this.isMaster) {
+      this.sourcingEpoch = Date.now()
       this.startPolling()
       this.advertise()
     }
@@ -165,6 +169,7 @@ export default class SnapserverMonitor {
     this.isMaster = isMaster
     console.log(`[snapserver-monitor] → ${isMaster ? 'SOURCING (master)' : 'not sourcing'}`)
     if (isMaster) {
+      this.sourcingEpoch = Date.now()
       this.startPolling()
       this.advertise()
     } else {
@@ -186,6 +191,7 @@ export default class SnapserverMonitor {
       hw_latency: String(this.hwLatency),
       role: 'host',
       version: '2.1',
+      epoch: String(this.sourcingEpoch),
       master_uuid: this.deviceUuid,
     })
   }
@@ -223,13 +229,21 @@ export default class SnapserverMonitor {
     // Optimistic reachable: it just announced. checkReachability() corrects it within 10s.
     this.masters.set(svc.name, { svc, reachable: true })
     if (!known) {
-      console.log(`[snapserver-monitor] Master discovered: ${svc.name} @ ${svc.ip} (uuid=${svc.txt['master_uuid'] ?? '?'})`)
+      console.log(`[snapserver-monitor] Master discovered: ${svc.name} @ ${svc.ip} (uuid=${svc.txt['master_uuid'] ?? '?'} epoch=${svc.txt['epoch'] ?? '?'})`)
     }
 
-    // Lost-tiebreak check: if we are sourcing and a lower-UUID master exists, step down.
-    if (this.isMaster && (svc.txt['master_uuid'] ?? '') < this.deviceUuid) {
-      console.log(`[snapserver-monitor] Lower-UUID master ${svc.ip} present — superseded, demoting`)
-      this.onSuperseded?.(svc)
+    // Newest source wins: if we are sourcing and another master started MORE RECENTLY
+    // (higher epoch; UUID breaks an exact tie), step down. This lets a freshly-played device
+    // take the group from one whose source already stopped and is just in its demotion grace.
+    if (this.isMaster) {
+      const otherEpoch = parseInt(svc.txt['epoch'] ?? '0', 10)
+      const otherUuid = svc.txt['master_uuid'] ?? ''
+      const otherIsNewer = otherEpoch > this.sourcingEpoch ||
+        (otherEpoch === this.sourcingEpoch && otherUuid < this.deviceUuid)
+      if (otherIsNewer) {
+        console.log(`[snapserver-monitor] Newer master ${svc.ip} (epoch ${otherEpoch} > ${this.sourcingEpoch}) — superseded`)
+        this.onSuperseded?.(svc)
+      }
     }
   }
 
