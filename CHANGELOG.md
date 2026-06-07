@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.0
+## (2026-06-07)
+
+* feat(multiroom): transient source-master, Option C direct-to-DAC sync, hardening [JaragonCR]
+* chore(multiroom): remove dead latency knobs, default latency 0, doc cleanup, qs bump [JaragonCR]
+* fix(multiroom): give SOLO an exit — promote when no master remains [JaragonCR]
+* fix(multiroom): newest source wins the group (replace lowest-UUID tiebreak) [JaragonCR]
+* fix(multiroom): self-heal wedged snapserver; keep unreachable masters discoverable [JaragonCR]
+* fix(multiroom): Option C sink selection — match audio container, never use null default [JaragonCR]
+* feat(multiroom): transient source-master + Option C direct-to-DAC sync [JaragonCR]
+* docs(multiroom): add transient source-master redesign spec [JaragonCR]
+* fix(multiroom): remove dead static snapserver.conf; expand sync design options [JaragonCR]
+* fix(multiroom): harden election tiebreak + advert stability; add sync audit [JaragonCR]
+* fix(mdns): reject balena bridge addresses [JaragonCR]
+
 # v5.0.1
 ## (2026-05-16)
 

@@ -1,4 +1,352 @@
 - commits:
+    - subject: "feat(multiroom): transient source-master, Option C direct-to-DAC sync,
+        hardening"
+      hash: f45365f12838b4fb741ca8369a738dad0024be33
+      body: >
+        PR summary — reworks the multiroom control plane for reliable,
+        low-latency, hands-off
+
+        multi-room audio. Validated on hardware (Pi4 + Pi3). Full
+        design/decision records in
+
+        docs/architecture/multiroom-audit-2026-06.md, -redesign-master-logic.md,
+        -testing-*.md.
+
+
+        Sync (Option C):
+
+        - snapclient plays straight to the detected hardware sink instead of the
+        balena-sound.output
+          null sink, so PipeWire reports the real device output latency and Snapcast compensates it —
+          heterogeneous hardware (different DACs / Pi models) stays in sync with NO per-device tuning.
+        - getHardwareSink() mirrors core/audio/start.sh's sink-selection
+        priority so the client
+          targets the same device the speaker is on; it waits for a real sink and never plays to the
+          null default sink (that was a snapclient segfault / silent-output source).
+
+        Transient source-master:
+
+        - A device advertises + captures only while playing a local source, and
+        demotes 30s after it
+          stops. Promotion and demotion are in-place — start/stop pacat, publish/withdraw the mDNS
+          advert — with no container restarts on transitions.
+        - Newest source wins the group (epoch in the advert): switching what you
+        play to hands the
+          group over immediately; the previous master yields.
+        - SOLO (two genuinely simultaneous sources) now has an exit: a SOLO
+        device promotes once no
+          reachable master remains, instead of playing alone forever.
+
+        Reliability:
+
+        - snapserver self-heals if it comes up wedged (alive but not listening
+        after a host-port race):
+          start.sh checks JSON-RPC on 1780 and restarts the container if it cannot bind.
+        - A momentarily-unreachable but still-advertised master is kept and
+        re-selected when it answers
+          again, instead of being deleted and stranding clients with no target.
+        - FNV-1a election jitter; guarded snapserver status parsing; removed
+        dead static snapserver.conf.
+
+
+        Cleanup / docs / security:
+
+        - Sync is automatic: SOUND_MULTIROOM_LATENCY defaults to 0 (advanced
+        override only). Removed the
+          never-implemented SOUND_GROUP_LATENCY / SOUND_DEVICE_HW_LATENCY knobs and dead mDNS TXT fields,
+          and the dangerous UI latency slider.
+        - Configurable stream codec via SOUND_MULTIROOM_CODEC (default flac).
+
+        - Docs rewritten to match: audio-flow, MULTIROOM, README,
+        03-customization, ownership-map.
+
+        - Security: bump qs 6.15.1 -> 6.15.2 (npm_and_yarn group) in
+        core/sound-supervisor.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "chore(multiroom): remove dead latency knobs, default latency 0, doc
+        cleanup, qs bump"
+      hash: 43cf5ad765ffa3650e98f4931da17c2743338ac8
+      body: >
+        PR-closing cleanup now that Option C makes manual latency tuning
+        unnecessary:
+
+        - UI: remove the playback-latency slider (dangerous now — sync is
+        automatic).
+
+        - Default SOUND_MULTIROOM_LATENCY to 0 (advanced override only);
+        snapclient plays direct
+          to the hardware sink and Snapcast compensates the real device latency.
+        - Remove the never-implemented SOUND_GROUP_LATENCY /
+        SOUND_DEVICE_HW_LATENCY knobs and their
+          dead group_latency/hw_latency mDNS TXT fields; drop now-unused getSelectedMaster().
+        - Docs: rewrite audio-flow.md (direct-to-sink path, SOLO fallback, no
+        manual tuning),
+          trim MULTIROOM.md's obsolete per-device calibration regime, refresh README /
+          03-customization / ownership-map; document SOUND_MULTIROOM_CODEC.
+        - Security: bump qs 6.15.1 -> 6.15.2 (npm_and_yarn group) in
+        core/sound-supervisor.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): give SOLO an exit — promote when no master remains"
+      hash: 1080ce43fc7801977674c79548155e9418994a71
+      body: >
+        SOLO previously only exited when the device's own source stopped, so a
+        device that lost
+
+        a simultaneous-play race stayed stuck playing locally forever, never
+        forming the group,
+
+        even after the peer that beat it went away. Add a recovery loop: while
+        SOLO and still
+
+        sourcing, if no reachable master remains, restore snapcast routing and
+        promote to SOURCING
+
+        so other devices can join. Pairs with newest-source-wins (which keeps
+        the common
+
+        source-switch case out of SOLO entirely).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): newest source wins the group (replace lowest-UUID
+        tiebreak)"
+      hash: adde59cdda589df667125bc98e2c033ea8cf237a
+      body: >
+        Hardware test exposed the lowest-UUID rule as wrong for
+        source-switching. When you
+
+        stop device A and play device B within A's 30s demotion grace, A is
+        still advertising
+
+        as master; B (higher UUID) yielded to SOLO and never formed the group,
+        so only B played
+
+        locally and A went idle. Lowest-UUID only makes sense for truly
+        simultaneous play.
+
+
+        Switch to "newest source wins": the advert carries an `epoch` (ms when
+        the device became
+
+        the sourcing master); a sourcing device yields when it sees a master
+        with a strictly newer
+
+        epoch (UUID breaks an exact tie). A freshly-played device thus takes the
+        group from one
+
+        whose source already stopped, instead of getting stuck. play-detect now
+        promotes
+
+        unconditionally (no pre-emptive SOLO); SOLO only happens when a peer
+        starts sourcing while
+
+        this device is genuinely still playing. handleSuperseded clears the
+        demotion timer and
+
+        never fires for HOST.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): self-heal wedged snapserver; keep unreachable masters
+        discoverable"
+      hash: 6f61424a493f7efa9b04d0d41133742c68f48721
+      body: >
+        Two failures surfaced on hardware when swapping which device sources:
+
+
+        - Wedged snapserver (Pergola silent as master): during a container
+        update the previous
+          snapserver can still hold 1704/1780 (host networking); boost.asio leaves the new
+          instance ALIVE but not listening, so the reconcile loop's kill -0 check passed while
+          clients connected to nothing. start.sh now verifies snapserver actually answers JSON-RPC
+          on 1780 at startup (exit→clean restart if not) and watches it in the loop (exit after
+          ~10s of no-listen), so it rebinds instead of serving silence.
+
+        - Master never re-selected (Coolbeans silent as client): the monitor
+        deleted a master from
+          its map on a port-probe failure, but the mDNS advert stayed up, so avahi never re-emitted
+          'up' and the master was never re-added even after it recovered. Masters are now kept while
+          advertised and flagged reachable/unreachable by the probe; selection skips unreachable
+          ones and picks them back up when they answer — no fresh announcement needed. Removal now
+          only happens on a real avahi 'down' (goodbye).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): Option C sink selection — match audio container, never
+        use null default"
+      hash: 2e3c3967d57c9f14f27a6c7c7d997c3d2fbd6154
+      body: >
+        Bug 1 (Pergola silent): snapclient played to the wrong sink.
+
+        - getHardwareSink() returned the first alsa_output.* with no priority,
+        so on a device
+          with multiple sinks it picked USB while core/audio/start.sh had routed to the 3.5mm
+          soc_sound jack → snapclient played to a device with no speaker → silence. Now mirrors
+          select_hardware_sink()'s AUDIO_OUTPUT override + priority order exactly.
+        - The client fell back to `unset PULSE_SINK` (PA default =
+        balena-sound.input null sink)
+          when /audio/output-sink was momentarily empty → snapclient segfaulted. The client now
+          waits for a verified non-empty hardware sink and always passes it explicitly; it never
+          targets the default sink.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "feat(multiroom): transient source-master + Option C direct-to-DAC sync"
+      hash: a23cdae6b70f5d7e6462846d04c3f0642a03a213
+      body: >
+        Reworks the multiroom control plane around the agreed model. Unvalidated
+        on
+
+        hardware — see docs/architecture/multiroom-testing-transient-master.md.
+
+
+        Option C (sync fix):
+
+        - multiroom-client plays snapcast straight to the detected hardware sink
+          (PULSE_SINK from new GET /audio/output-sink) instead of the balena-sound.output
+          null sink. PipeWire then reports the real device latency to snapclient, which
+          compensates it — removing the hidden, per-device, variable loopback offset that
+          made heterogeneous hardware impossible to sync. Also removes a buffer stage.
+
+        Transient source-master:
+
+        - A device advertises _snapcast._tcp (is master) only while playing a
+        local source;
+          30s after stop it demotes. Promotion/demotion are in-place: server start.sh starts/
+          stops pacat against /multiroom/active (snapserver + FIFO stay up), and the client
+          follows /multiroom/master in place. No container restarts on transitions.
+        - Lowest master_uuid keeps the group on simultaneous play; the loser
+        goes SOLO
+          (plays locally via input→output direct, does not advertise or join) until it stops.
+        - SnapserverMonitor now browses always, tracks remote masters by UUID
+        (filtering its
+          own advert), and supersedes itself when a lower-UUID master appears.
+
+        No-restart transitions (B3):
+
+        - POST /multiroom/latency applies live via Snapcast Client.SetLatency
+        RPC.
+
+        - Removed container-restart-as-transition
+        (demoteToIdle/restartClientForNewMaster);
+          removed the now-unused ElectionManager.
+
+        Other:
+
+        - Stream codec configurable via SOUND_MULTIROOM_CODEC (default flac; was
+        hardcoded pcm).
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "docs(multiroom): add transient source-master redesign spec"
+      hash: 88550c90381bd34f59c95a315115d71ddb69c493
+      body: >
+        State machine (WARM/SOURCING/SLAVE/SOLO), in-place transitions (no
+        container
+
+        restarts), lowest-UUID conflict tiebreaker, and a file-level change map.
+        Pairs
+
+        with Option C sync fix. Implementation sequenced behind hardware
+        validation.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): remove dead static snapserver.conf; expand sync design
+        options"
+      hash: 571a7545259ae18f78e7910a68f7f235cb3fc264
+      body: >
+        - B9: delete core/multiroom/server/snapserver.conf and its COPY.
+        snapserver runs
+          with /tmp/snapserver.conf generated at runtime by start.sh; the static file had
+          no [stream] and was never read — pure debugging trap.
+        - docs: add the 2026-06-07 design review to the audit —
+        PipeWire-preserving B1 fix
+          (Option C: snapclient → hw sink directly so PipeWire reports real latency; Option
+          D: rename device to balena-sound.output), in-place B3 transitions (Client.SetLatency
+          RPC, stop inner pacat instead of restarting containers), lowest-UUID tiebreaker for
+          B4, reversible/deletable fallback for B5, and the transient source-master model.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): harden election tiebreak + advert stability; add sync
+        audit"
+      hash: 3c6f81fd81be359de903b4d280971ac9040b05c6
+      body: >
+        Three correct-by-inspection fixes plus an architecture audit. No
+        audio-timing
+
+        changes (those need hardware validation and are proposed in the audit
+        doc).
+
+
+        - ElectionManager: replace XOR-of-char-codes jitter with FNV-1a. The old
+        hash
+          collapsed to <256 values and collided constantly, so simultaneous-boot AUTO
+          devices often drew identical jitter and both promoted to master (split brain).
+        - SnapserverMonitor.poll: guard every hop of the JSON-RPC status. A
+        malformed-but-
+          responding snapserver reply no longer throws into the catch and unpublishes the
+          mDNS advertisement (which made every client see "master DOWN" and restart).
+        - Correct stale comments: play detection is the pactl-subscribe watcher
+        in
+          core/audio/start.sh, not the WirePlumber Lua (which is a no-op stub).
+        - docs: add multiroom-audit-2026-06.md — ranked bug inventory and a sync
+        redesign
+          proposal (root cause: snapclient plays into a PipeWire null sink + variable
+          loopback, downstream of snapcast's sync point).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(mdns): reject balena bridge addresses"
+      hash: abe9aac55d8fd62502c75d0b5973caa79a1a4cca
+      body: >
+        Avahi can resolve a Snapcast service through a LAN interface while
+        returning the local Docker bridge or Balena supervisor/VPN address.
+        Those addresses are not valid remote snapclient targets, so reject them
+        by address as well as by interface name.
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+  version: 5.1.0
+  title: ""
+  date: 2026-06-07T20:37:19.537Z
+- commits:
     - subject: "fix(multiroom): harden discovery and latency calibration"
       hash: 1aad65c5ada3a923333dff5e0f107f37149950c9
       body: >
