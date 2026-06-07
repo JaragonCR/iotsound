@@ -86,6 +86,12 @@ export default class SnapserverMonitor {
     return this.selectedMaster()
   }
 
+  // True if any advertised, reachable remote master exists. Used for SOLO recovery: when
+  // this goes false, a SOLO device (still playing locally) can take the group.
+  hasReachableMaster(): boolean {
+    return this.selectedMaster() !== null
+  }
+
   // Lowest-UUID REACHABLE remote master service, or null. Deterministic group authority.
   private selectedMaster(): SnapcastService | null {
     let best: SnapcastService | null = null

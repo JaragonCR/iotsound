@@ -49,6 +49,11 @@ async function init() {
   soundAPI.setMonitor(monitor)
   monitor.start()
 
+  // SOLO recovery: a device that lost a simultaneous-play race plays locally (SOLO) without
+  // advertising. Poll so that once the master that beat it is gone, it takes over the group
+  // instead of staying stuck playing alone forever.
+  setInterval(reconcileSolo, 3000)
+
   // Connect to PulseAudio in the background; the wrapper retries indefinitely so a slow
   // audio container never blocks startup or handler registration.
   audioBlock.listen().then(() => audioBlock.setVolume(constants.volume)).catch(() => {})
@@ -119,6 +124,24 @@ export function handleStopDetect(): void {
     }
     console.log('[stop-detect] Demoted — warm (will join a remote master if one appears)')
   }, STOP_DEMOTION_MS)
+}
+
+// SOLO recovery loop. A SOLO device is still playing a local source but yielded the group
+// to a peer that started sourcing at the same time. When that peer is gone (no reachable
+// master left), promote: restore snapcast routing and take the group so other devices can
+// join. If our own source has stopped, stop-detect handles the exit instead.
+function reconcileSolo(): void {
+  if (!monitor) return
+  if (config.role !== MultiroomRole.AUTO) return
+  if (!config.isSolo()) return
+  if (!localSourceActive) return
+  if (monitor.hasReachableMaster()) return
+  console.log('[solo] No reachable master left — promoting SOLO → SOURCING')
+  config.exitSolo()
+  audioBlock.restoreSnapcastRouting().catch(err =>
+    console.log(`[solo] restore error: ${(err as Error).message}`))
+  config.promoteToSourcing()
+  monitor.setMaster(true)
 }
 
 // Monitor callback: we are SOURCING but a lower-UUID master exists, so we yield the group.
