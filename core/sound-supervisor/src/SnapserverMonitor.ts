@@ -199,7 +199,11 @@ export default class SnapserverMonitor {
   private async poll(): Promise<void> {
     try {
       const status = await this.fetchServerStatus()
-      this.cachedGroupId = status.server.groups[0]?.id ?? null
+      // Guard every hop: a malformed-but-responding RPC (e.g. an {error:...} shape
+      // during snapserver startup) must not throw here. A throw lands in the catch
+      // below and unpublishes the mDNS advertisement, which makes every client see
+      // "master DOWN" and restart. Only a real outage (axios reject) should do that.
+      this.cachedGroupId = status?.server?.groups?.[0]?.id ?? null
 
       if (!this.serverWasUp) {
         this.serverWasUp = true

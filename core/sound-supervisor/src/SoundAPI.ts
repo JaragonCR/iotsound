@@ -183,9 +183,10 @@ export default class SoundAPI {
 
     // --- Internal (WirePlumber → supervisor events) ---
 
-    // POST /internal/play — fired by WirePlumber Lua (99-balena-play-detect.lua) when a
-    // stream links to balena-sound.input. For AUTO devices not yet master, delegates to
-    // handlePlayDetect() (wired via setPlayHandler() in index.ts) to trigger re-election.
+    // POST /internal/play — fired by the `pactl subscribe` watcher in core/audio/start.sh
+    // when a sink-input appears on balena-sound.input. For AUTO devices not yet master,
+    // delegates to handlePlayDetect() (wired via setPlayHandler() in index.ts) to trigger
+    // re-election.
     this.api.post('/internal/play', (_req, res) => {
       this.playHandler?.().catch((err: Error) => console.log(`[play-detect] handler error: ${err.message}`))
       res.json({ received: true })

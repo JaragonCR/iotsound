@@ -6,9 +6,17 @@ export type ElectedRole = 'master' | 'client'
 const ELECTION_DEFAULT_GROUP = 'default'
 
 // Deterministic jitter from UUID so the same device always races the same way.
+// FNV-1a (32-bit): a plain XOR-of-char-codes collapses to <256 distinct values and
+// collides constantly, so two devices booting together would often draw identical
+// jitter and both promote to master (split brain). FNV-1a spreads UUIDs across the
+// full range, making simultaneous-boot ties actually stagger.
 function uuidJitterMs(uuid: string, maxMs: number): number {
-  const hash = uuid.split('').reduce((acc, c) => acc ^ c.charCodeAt(0), 0)
-  return Math.abs(hash % maxMs)
+  let hash = 0x811c9dc5
+  for (let i = 0; i < uuid.length; i++) {
+    hash ^= uuid.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0) % maxMs
 }
 
 function delay(ms: number): Promise<void> {

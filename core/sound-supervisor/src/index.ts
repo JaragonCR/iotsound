@@ -56,7 +56,10 @@ async function init() {
   audioBlock.listen().then(() => audioBlock.setVolume(constants.volume)).catch(() => {})
 }
 
-// WirePlumber Lua fires POST /internal/play when a stream links to balena-sound.input.
+// Play detection: the `pactl subscribe` watcher at the end of core/audio/start.sh
+// POSTs /internal/play when a sink-input appears on balena-sound.input. (The
+// WirePlumber Lua balena-play-detect.lua is a no-op stub — null-sink links are not
+// exposed to the WirePlumber session manager in this environment.)
 audioBlock.on('play', async (sink: any) => {
   // PipeWire emits a synthetic stream with name '-' during graph init — skip it.
   if (!sink?.name || sink.name === '-') return
