@@ -37,7 +37,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /usr/src
 
 ENV PULSE_SERVER=tcp:localhost:4317
-ENV PULSE_SINK=balena-sound.output
+# PULSE_SINK is set at runtime by start.sh (Option C): snapclient targets the detected
+# hardware sink so PipeWire reports the real device latency, instead of the
+# balena-sound.output null sink which hid it behind a loopback.
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpulse0 \

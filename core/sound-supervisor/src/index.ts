@@ -2,7 +2,7 @@ import PulseAudioWrapper from './PulseAudioWrapper'
 import SoundAPI from './SoundAPI'
 import SoundConfig from './SoundConfig'
 import SnapserverMonitor from './SnapserverMonitor'
-import { electMaster } from './ElectionManager'
+import type { SnapcastService } from './AvahiBrowser'
 import { MultiroomRole } from './types'
 import { constants } from './constants'
 import sdk from './BalenaClient'
@@ -14,26 +14,22 @@ const soundAPI: SoundAPI = new SoundAPI(config, audioBlock)
 
 let monitor: SnapserverMonitor
 let stopTimer: NodeJS.Timeout | null = null
-let fallbackTimer: NodeJS.Timeout | null = null
-let inMultiroomFallback = false
+// True between a local /internal/play and /internal/stop — the *immediate* source state,
+// independent of the 30s demotion grace. Drives the SOURCING-vs-SOLO decision.
+let localSourceActive = false
 const STOP_DEMOTION_MS = 30_000
-const MULTIROOM_FALLBACK_MS = 20_000
 
 init()
 async function init() {
   await soundAPI.listen(constants.port)
 
-  // Register play/stop handlers and start monitor before waiting for Pulse.
-  // WirePlumber fires /internal/play as soon as audio starts — handlers must
-  // be wired before that can happen, regardless of how long Pulse takes to init.
+  // Register play/stop handlers and start the monitor before waiting for Pulse: the
+  // audio container's pactl watcher can POST /internal/play the moment audio starts.
   config.applyCurrentRole()
 
-  // HOST is always master — elect immediately.
-  // AUTO stays unelected at boot; it promotes to master on first play via handlePlayDetect.
-  // JOIN / DISABLED are always clients — applyCurrentRole already handles service state.
+  // HOST is unconditionally the group master.
   if (config.role === MultiroomRole.HOST) {
-    const elected = await electMaster(config.role, config.groupName, deviceUuid)
-    config.applyElectionResult(elected)
+    config.promoteToSourcing()
   }
 
   soundAPI.setPlayHandler(handlePlayDetect)
@@ -42,27 +38,29 @@ async function init() {
   monitor = new SnapserverMonitor({
     groupName: constants.groupName,
     deviceUuid,
-    groupLatency: constants.groupLatency,
-    hwLatency: constants.hwLatency,
     localIp: config.device.ip,
     isMaster: config.isElectedMaster(),
     multiroomMaster: constants.multiroomMaster,
   })
+  // Lower-UUID master appeared while we were sourcing → step down (in place).
+  monitor.setOnSuperseded(handleSuperseded)
   soundAPI.setMonitor(monitor)
   monitor.start()
 
-  // Connect to PulseAudio in the background. PulseWrapper retries indefinitely,
-  // so startup is never blocked by a slow audio container.
+  // SOLO recovery: a device that lost a simultaneous-play race plays locally (SOLO) without
+  // advertising. Poll so that once the master that beat it is gone, it takes over the group
+  // instead of staying stuck playing alone forever.
+  setInterval(reconcileSolo, 3000)
+
+  // Connect to PulseAudio in the background; the wrapper retries indefinitely so a slow
+  // audio container never blocks startup or handler registration.
   audioBlock.listen().then(() => audioBlock.setVolume(constants.volume)).catch(() => {})
 }
 
-// WirePlumber Lua fires POST /internal/play when a stream links to balena-sound.input.
+// Metrics tag on first play (best-effort).
 audioBlock.on('play', async (sink: any) => {
-  // PipeWire emits a synthetic stream with name '-' during graph init — skip it.
   if (!sink?.name || sink.name === '-') return
-  if (constants.debug) {
-    console.log('[event] Audio block: play', sink)
-  }
+  if (constants.debug) console.log('[event] Audio block: play', sink)
   try {
     await sdk.models.device.tags.set(deviceUuid, 'metrics:play', '')
   } catch (error) {
@@ -70,11 +68,14 @@ audioBlock.on('play', async (sink: any) => {
   }
 })
 
-// Called by SoundAPI when /internal/play fires.
-// Cancels any pending demotion timer, then optimistically promotes to master.
-// Collisions are rare; existing snapcast conflict resolution handles them.
+// POST /internal/play — a local source started.
+// AUTO: become the group master, unless a lower-UUID master already owns the group, in
+// which case play locally (SOLO) without disturbing it. Promotion is in-place and optimistic;
+// if a lower-UUID master appears slightly later, handleSuperseded() steps us down.
 export async function handlePlayDetect(): Promise<void> {
   if (!monitor) return
+  localSourceActive = true
+
   if (config.role !== MultiroomRole.AUTO) return
 
   if (stopTimer) {
@@ -85,63 +86,76 @@ export async function handlePlayDetect(): Promise<void> {
 
   if (config.isElectedMaster()) return
 
-  console.log('[play-detect] AUTO device — optimistically promoting to master')
-  config.applyElectionResult('master', Boolean(monitor.getDiscoveredMasterIp()))
-  monitor.setMaster(true)
+  // Newest source wins: promote unconditionally. If another device is actively sourcing,
+  // its monitor sees our newer epoch and yields. If we were SOLO (lost an earlier race),
+  // restore snapcast routing before taking the group.
+  if (config.isSolo()) {
+    config.exitSolo()
+    await audioBlock.restoreSnapcastRouting().catch(err =>
+      console.log(`[solo] restore error: ${(err as Error).message}`))
+  }
 
-  // Start a fallback timer. If no snapclient connects within MULTIROOM_FALLBACK_MS,
-  // bypass Snapcast and route input directly to output so audio is never silent.
-  if (fallbackTimer) clearTimeout(fallbackTimer)
-  fallbackTimer = setTimeout(async () => {
-    fallbackTimer = null
-    if (!config.isElectedMaster() || inMultiroomFallback) return
-    const hasClients = await snapserverHasClients()
-    if (!hasClients) {
-      console.log(`[multiroom-fallback] No snapclient — bypassing Snapcast`)
-      inMultiroomFallback = true
-      audioBlock.rerouteInputDirect().catch(err =>
-        console.log(`[multiroom-fallback] reroute error: ${(err as Error).message}`)
-      )
-    }
-  }, MULTIROOM_FALLBACK_MS)
+  console.log('[play-detect] Becoming group master (SOURCING)')
+  config.promoteToSourcing()
+  monitor.setMaster(true)
 }
 
-// Called by SoundAPI when /internal/stop fires.
-// Starts a 30s timer; if no play arrives before it fires, tears down multiroom stack.
+// POST /internal/stop — local source stopped. Arms a 30s grace; if no replay, demote in place.
 export function handleStopDetect(): void {
   if (!monitor) return
-  if (config.role !== MultiroomRole.AUTO || !config.isElectedMaster()) return
+  localSourceActive = false
+  if (config.role !== MultiroomRole.AUTO) return
+  if (!config.isElectedMaster() && !config.isSolo()) return
 
-  if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null }
   if (stopTimer) clearTimeout(stopTimer)
-  console.log(`[stop-detect] Stream stopped — demoting in ${STOP_DEMOTION_MS / 1000}s if no replay`)
+  console.log(`[stop-detect] Source stopped — demoting in ${STOP_DEMOTION_MS / 1000}s if no replay`)
   stopTimer = setTimeout(async () => {
     stopTimer = null
-    if (inMultiroomFallback) {
-      inMultiroomFallback = false
+    if (config.isSolo()) {
+      config.exitSolo()
       await audioBlock.restoreSnapcastRouting().catch(err =>
-        console.log(`[multiroom-fallback] restore error: ${(err as Error).message}`)
-      )
+        console.log(`[solo] restore error: ${(err as Error).message}`))
     }
-    console.log('[stop-detect] No replay — demoting to idle')
-    config.demoteToIdle()
-    monitor.setMaster(false)
+    if (config.isElectedMaster()) {
+      config.demoteFromSourcing()
+      monitor.setMaster(false)
+    }
+    console.log('[stop-detect] Demoted — warm (will join a remote master if one appears)')
   }, STOP_DEMOTION_MS)
 }
 
-async function snapserverHasClients(): Promise<boolean> {
-  try {
-    const res = await fetch('http://localhost:1780/jsonrpc', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: 1, jsonrpc: '2.0', method: 'Server.GetStatus' }),
-      signal: AbortSignal.timeout(3000),
-    })
-    const data = await res.json() as any
-    const groups: any[] = data?.result?.server?.groups ?? []
-    return groups.some((g: any) => (g.clients ?? []).some((c: any) => c.connected))
-  } catch {
-    return false
-  }
+// SOLO recovery loop. A SOLO device is still playing a local source but yielded the group
+// to a peer that started sourcing at the same time. When that peer is gone (no reachable
+// master left), promote: restore snapcast routing and take the group so other devices can
+// join. If our own source has stopped, stop-detect handles the exit instead.
+function reconcileSolo(): void {
+  if (!monitor) return
+  if (config.role !== MultiroomRole.AUTO) return
+  if (!config.isSolo()) return
+  if (!localSourceActive) return
+  if (monitor.hasReachableMaster()) return
+  console.log('[solo] No reachable master left — promoting SOLO → SOURCING')
+  config.exitSolo()
+  audioBlock.restoreSnapcastRouting().catch(err =>
+    console.log(`[solo] restore error: ${(err as Error).message}`))
+  config.promoteToSourcing()
+  monitor.setMaster(true)
 }
 
+// Monitor callback: we are SOURCING but a lower-UUID master exists, so we yield the group.
+// If we still have a local source, fall back to SOLO (play it locally); otherwise go warm.
+function handleSuperseded(_svc: SnapcastService): void {
+  if (config.role !== MultiroomRole.AUTO) return // HOST never yields
+  if (!config.isElectedMaster()) return
+  if (stopTimer) { clearTimeout(stopTimer); stopTimer = null }
+  config.demoteFromSourcing()
+  monitor.setMaster(false)
+  if (localSourceActive) {
+    console.log('[supersede] Yielded group but still sourcing locally → SOLO')
+    config.enterSolo()
+    audioBlock.rerouteInputDirect().catch(err =>
+      console.log(`[solo] reroute error: ${(err as Error).message}`))
+  } else {
+    console.log('[supersede] Yielded group → warm')
+  }
+}

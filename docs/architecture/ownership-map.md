@@ -55,7 +55,7 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | `SOUND_MULTIROOM_ROLE` | `constants.ts`, `SoundConfig.ts`, `core/audio/start.sh` | Role and initial input routing. |
 | `SOUND_GROUP_NAME` | `SnapserverMonitor.ts`, `AvahiBrowser.ts` | mDNS group filtering and advertisement TXT. |
 | `SOUND_MULTIROOM_MASTER` | `SnapserverMonitor.ts` | Explicit Snapcast master IP, bypasses discovery. |
-| `SOUND_GROUP_LATENCY` | `constants.ts`, `SnapserverMonitor.ts` | Advertised group latency metadata. |
+| `SOUND_MULTIROOM_CODEC` | `core/multiroom/server/start.sh` | Snapcast stream codec (default `flac`). |
 | `SOUND_MULTIROOM_BUFFER_MS` | `core/multiroom/server/start.sh` | Snapserver stream buffer. |
 | `SOUND_MULTIROOM_CAPTURE_MS` | `core/multiroom/server/start.sh` | `pacat` capture latency. |
 | `SOUND_MULTIROOM_LATENCY` | `core/multiroom/client/start.sh` | `snapclient --latency`. |

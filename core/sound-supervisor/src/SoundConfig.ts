@@ -1,8 +1,7 @@
 import { getIPAddress } from './utils'
 import { MultiroomRole, SoundModes } from './types'
 import { constants } from './constants'
-import { startBalenaService, stopBalenaService, restartBalenaService } from './utils'
-import type { ElectedRole } from './ElectionManager'
+import { startBalenaService, stopBalenaService } from './utils'
 
 interface DeviceConfig {
   ip: string
@@ -16,7 +15,14 @@ export default class SoundConfig {
     ip: getIPAddress() ?? 'localhost',
     type: constants.balenaDeviceType
   }
-  private electedRole: ElectedRole | null = null
+  // Transient source-master state (role=auto). HOST is always sourcing; JOIN/DISABLED never.
+  // sourcing → we are the group master (advertising, pacat running).
+  // solo     → we lost the UUID tiebreak but have a local source, so we play locally
+  //            (input→output direct) without advertising or joining anyone.
+  // Both transitions are in-place: the multiroom containers stay running and react to the
+  // /multiroom/active + /multiroom/master endpoints. Nothing here restarts a container.
+  private sourcing = false
+  private solo = false
   private readonly sourcePlugins = ['airplay', 'librespot', 'bluetooth', 'karaoke', 'karaoke-fetcher']
 
   private safeService(fn: (s: string) => Promise<unknown>, service: string, attempt = 1): void {
@@ -77,34 +83,45 @@ export default class SoundConfig {
     this.applyRoleServices()
   }
 
-  // Called after promotion. Starts the full multiroom stack for the elected role.
-  applyElectionResult(elected: ElectedRole, _hadRemoteMaster = false): void {
-    this.electedRole = elected
-    if (elected === 'master') {
-      this.safeService(startBalenaService, 'multiroom-server')
-      // multiroom-client stays running; its watchdog detects the master IP
-      // change and respawns snapclient in-place within 5s.
-      console.log('[election] Promoted to master — starting multiroom-server + multiroom-client')
-      this.safeService(startBalenaService, 'multiroom-client')
-    } else {
-      console.log('[election] Elected client — starting multiroom-client, stopping multiroom-server')
-      this.safeService(stopBalenaService, 'multiroom-server')
-      this.safeService(startBalenaService, 'multiroom-client')
-    }
+  // --- Transient source-master transitions (all in-place, no container restarts) ---
+
+  // We started a local source AND won (or are unopposed): become the group master.
+  // The pre-warmed multiroom-server starts pacat once /multiroom/active flips true;
+  // the multiroom-client watchdog retargets snapclient to our own snapserver in place.
+  promoteToSourcing(): void {
+    this.sourcing = true
+    this.solo = false
+    console.log('[state] → SOURCING (group master)')
   }
 
-  // Called when stop demotion timer fires. Bounces both containers so they
-  // re-enter the waiting-for-active state cleanly for the next play event.
-  demoteToIdle(): void {
-    this.electedRole = null
-    console.log('[election] Demoted to idle — bouncing multiroom containers to standby')
-    this.safeService(restartBalenaService, 'multiroom-server')
-    this.safeService(restartBalenaService, 'multiroom-client')
+  // Stop sourcing (30s idle, or superseded by a lower-UUID master with no local source).
+  // /multiroom/active flips false → server stops pacat in place, advertisement is pulled.
+  demoteFromSourcing(): void {
+    this.sourcing = false
+    console.log('[state] → not sourcing')
   }
 
+  // We have a local source but lost the UUID tiebreak: play locally, do not advertise,
+  // do not join. The orchestrator reroutes input→output direct for this state.
+  enterSolo(): void {
+    this.sourcing = false
+    this.solo = true
+    console.log('[state] → SOLO (local source, lost tiebreak)')
+  }
+
+  exitSolo(): void {
+    this.solo = false
+    console.log('[state] → leaving SOLO')
+  }
+
+  isSolo(): boolean {
+    return this.solo
+  }
+
+  // Drives /multiroom/active (server pacat + advertisement). SOLO is NOT master.
   isElectedMaster(): boolean {
     if (this.role === MultiroomRole.HOST) return true
-    if (this.role === MultiroomRole.AUTO) return this.electedRole === 'master'
+    if (this.role === MultiroomRole.AUTO) return this.sourcing
     return false
   }
 
@@ -129,9 +146,7 @@ export default class SoundConfig {
     return {
       role: this.role,
       groupName: this.groupName ?? null,
-      deviceIp: this.device.ip,
-      groupLatency: constants.groupLatency,
-      hwLatency: constants.hwLatency
+      deviceIp: this.device.ip
     }
   }
 

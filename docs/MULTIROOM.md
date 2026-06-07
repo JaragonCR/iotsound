@@ -29,24 +29,24 @@ Bluetooth / AirPlay / Spotify / UPnP
     snapclient (on every device in the group, including the master)
             │
             ▼
-    balena-sound.output → speakers
+    hardware sink (DAC) → speakers
 ```
 
-Snapcast delivers **sample-accurate synchronisation** by timestamping every audio chunk and buffering at the client side to absorb network jitter.
+Snapcast delivers **sample-accurate synchronisation** by timestamping every audio chunk and buffering at the client side to absorb network jitter. Snapclient plays **straight to the hardware sink** (not through the `balena-sound.output` null sink), so PipeWire reports the real device output latency and Snapcast compensates it automatically — heterogeneous devices (different DACs / Pi models) stay in sync without per-device latency tuning.
 
-### Play-triggered master election
+### Play-triggered master (transient source-master)
 
-There is no permanent master device. IoTSound uses **optimistic instant promotion**:
+There is no permanent master device. The device you play to becomes the group master:
 
 1. You stream to any device (Bluetooth, AirPlay, Spotify, etc.)
 2. The audio block detects audio on `balena-sound.input` via `pactl subscribe`
-3. That device **immediately** promotes itself to master — starts snapserver, advertises via mDNS (`_snapcast._tcp`)
+3. That device promotes itself in place — starts capturing into snapserver and advertises via mDNS (`_snapcast._tcp`)
 4. All other devices in the same group discover the master and connect their snapclient
 5. All devices sync within a few seconds and play the same audio
 
-When you stop playing for 30 seconds, the master releases its role — snapserver and snapclient both stop, and the device returns to idle. The next play event promotes it instantly again.
+When you stop playing for 30 seconds, the master demotes in place — capture stops and its advertisement is withdrawn; containers are not restarted. The next play event promotes it again instantly.
 
-Collision (two devices promoted simultaneously) is handled by Snapcast conflict resolution and is rare in practice.
+**Newest source wins:** if you start playing on a second device, *that* device takes the group (its advertisement carries a newer timestamp) and the previous master yields. If two devices are genuinely playing different sources at once, the newest owns the synced group and the other plays locally on its own until it stops, then rejoins.
 
 ### Groups
 
@@ -132,99 +132,23 @@ SOUND_MULTIROOM_MASTER = 192.168.1.100
 
 This pins all snapclients to the specified IP and bypasses mDNS entirely.
 
-### Latency tuning
+### Buffer tuning
 
-If speakers stutter together, increase the master Snapserver stream buffer:
+**Sync is automatic — you should not need per-device latency tuning.** Snapclient plays
+straight to each device's hardware sink, so PipeWire reports the real output latency and
+Snapcast compensates it; devices with different DACs stay in sync on their own. The only knobs
+you may touch are the **buffers** that absorb network/CPU jitter, and only if you hear dropouts:
 
-```
-SOUND_MULTIROOM_BUFFER_MS = 400   # milliseconds
-```
+| Symptom | Knob | Default |
+|---|---|---|
+| All clients stutter together | `SOUND_MULTIROOM_BUFFER_MS` (snapserver buffer) | `400` |
+| The master itself stutters at capture | `SOUND_MULTIROOM_CAPTURE_MS` (pacat buffer) | `50` |
+| One client pops/crackles locally | `SOUND_MULTIROOM_PA_LATENCY_MS` (client PA buffer) | `200` |
+| Frequent Wi‑Fi dropouts | leave codec at `flac` (lower bandwidth than `pcm`) | `flac` |
 
-The server also protects this automatically for the master device: the effective stream buffer is at least `SOUND_MULTIROOM_LATENCY + 100`. If `SOUND_MULTIROOM_BUFFER_MS=250` and the master has `SOUND_MULTIROOM_LATENCY=500`, the server runs with a `600ms` stream buffer. If a remote client needs a larger per-device latency than the master, set the master's requested `SOUND_MULTIROOM_BUFFER_MS` high enough for that remote client too.
-
-If only the master capture path underruns, increase the capture buffer:
-
-```
-SOUND_MULTIROOM_CAPTURE_MS = 100   # milliseconds
-```
-
-If one client pops, crackles, or drops out locally, increase the snapclient-to-PulseAudio buffer:
-
-```
-SOUND_MULTIROOM_PA_LATENCY_MS = 200   # milliseconds
-```
-
-For per-device sync tuning on any device running `snapclient` (including the master device's local client):
-
-```
-SOUND_MULTIROOM_LATENCY = 400   # milliseconds (default: 400; negative values allowed)
-```
-
-`SOUND_MULTIROOM_LATENCY` is passed to snapclient as `--latency`. This is best understood as **hardware/output-path latency compensation**, not a simple "add this much delay" control. Use it to describe how slow that device's local PCM/output path already is.
-
-Current code applies the value to every running `snapclient` on that device:
-
-| Runtime path | `--latency` passed to snapclient |
-|---|---|
-| Master + local client | `SOUND_MULTIROOM_LATENCY` or `400` ms |
-| Remote client | `SOUND_MULTIROOM_LATENCY` or `400` ms |
-
-Use the same value on identical devices and output paths. Use different values only to compensate for known device-specific delay such as HDMI/mailbox output, USB DAC buffering, Bluetooth paths, or a slow ALSA/PipeWire sink.
-
-Direction of adjustment:
-
-- If a device is consistently late because its own output path is slow, raise `SOUND_MULTIROOM_LATENCY` on that device.
-- If a device is consistently early, lower that device's value.
-- Avoid solving a slow client by adding a huge value to the faster client. That increases delay from reality and can exceed the client's playback buffer.
-- If a client goes silent or unstable when the latency value gets large, the value is likely larger than the available Snapcast buffer headroom.
-
-#### Practical workflow
-
-1. Put both devices on stable buffers first:
-
-```
-SOUND_MULTIROOM_PA_LATENCY_MS = 200
-SOUND_MULTIROOM_BUFFER_MS = 250-400
-SOUND_MULTIROOM_CAPTURE_MS = 50-100
-```
-
-2. Start with `SOUND_MULTIROOM_LATENCY` equal on devices with similar hardware.
-3. If one device is late every time, identify its hardware output sink with:
-
-```
-pactl list short sinks
-```
-
-HDMI/mailbox sinks can be hundreds of milliseconds slower than I2S/USB/analog outputs.
-4. Tune the late hardware path in 50-100 ms steps, restarting `multiroom-client` after each change.
-
-#### Example: Pi4 source to Pi3 HDMI client
-
-In one live fleet, Pi4 was the master/source and Pi3 was a remote client. Audio came back when Pi4 was reduced from a large `SOUND_MULTIROOM_LATENCY=900` to a lower value, but the Pi3 still sounded about 500 ms late. The Pi3 output sink was:
-
-```
-alsa_output.platform-3f00b840.mailbox.stereo-fallback
-```
-
-That is the Raspberry Pi HDMI/mailbox path, which can add large hardware latency. In that case, prefer compensating Pi3 instead of delaying Pi4:
-
-```
-# Pi4: fast/local output path
-SOUND_MULTIROOM_LATENCY = 0-200
-SOUND_MULTIROOM_PA_LATENCY_MS = 200
-
-# Pi3: slow HDMI/mailbox output path
-SOUND_MULTIROOM_LATENCY = 500
-SOUND_MULTIROOM_PA_LATENCY_MS = 200
-```
-
-Then adjust Pi3:
-
-- Pi3 still late: try `600`.
-- Pi3 now early: try `400`.
-- Either device stutters or goes silent: reduce the offset or increase `SOUND_MULTIROOM_PA_LATENCY_MS`.
-
-These values are starting points, not fleet defaults. They vary by Raspberry Pi model, DAC/HDMI path, CPU load, network quality, and which device is master. Changing the value from the web UI restarts `multiroom-client` so the running `snapclient` uses the new offset.
+`SOUND_MULTIROOM_LATENCY` (snapclient `--latency`) is an **advanced** escape hatch, default `0`.
+Only set a non-zero value if one specific device has a known fixed output delay that Snapcast
+genuinely cannot see; otherwise leave it at `0` and let the automatic compensation do its job.
 
 ---
 
@@ -246,7 +170,7 @@ These values are starting points, not fleet defaults. They vary by Raspberry Pi 
 - mDNS is link-local — it will not cross routed subnet boundaries
 
 **Audio drops or stutters on clients**
-- Increase `SOUND_GROUP_LATENCY` (try 600–800ms)
+- Increase `SOUND_MULTIROOM_BUFFER_MS` (try 600–800ms)
 - Use wired Ethernet on the master device if possible
 
 **A device stopped syncing after a reboot**

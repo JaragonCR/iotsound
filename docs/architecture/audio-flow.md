@@ -55,14 +55,10 @@ snapserver  (multiroom-server container)
         │
         ▼
 snapclient  (multiroom-client container on the master device)
-        │  Hardware latency offset: 400 ms default
-        │  Env var: SOUND_MULTIROOM_LATENCY
-        │
-        │  PulseAudio sink-input buffer: 100 ms default
-        │  Env var: SOUND_MULTIROOM_PA_LATENCY_MS
-        ▼
-balena-sound.output                            (PipeWire null sink, audio container)
-        │  WirePlumber loopback rule
+        │  --latency offset: 0 ms default (SOUND_MULTIROOM_LATENCY, advanced)
+        │  PulseAudio sink-input buffer: 200 ms (SOUND_MULTIROOM_PA_LATENCY_MS)
+        │  Plays DIRECTLY to the hardware sink (PULSE_SINK = detected HW sink).
+        │  PipeWire reports the real device latency → snapclient compensates it.
         ▼
 Hardware DAC / ALSA sink
         │
@@ -78,42 +74,45 @@ snapserver  (master device)
         ▼  ── network ──────────────────────────────────────────────
         │
 snapclient  (multiroom-client container, each speaker device)
-        │  Hardware latency offset: 400 ms default
-        │  Env var: SOUND_MULTIROOM_LATENCY     (set per-device)
-        │
-        │  PulseAudio sink-input buffer: 100 ms default
-        │  Env var: SOUND_MULTIROOM_PA_LATENCY_MS
-        ▼
-balena-sound.output                            (PipeWire null sink, audio container)
-        │  WirePlumber loopback rule
+        │  --latency offset: 0 ms default (SOUND_MULTIROOM_LATENCY, advanced)
+        │  PulseAudio sink-input buffer: 200 ms (SOUND_MULTIROOM_PA_LATENCY_MS)
+        │  Plays DIRECTLY to that device's hardware sink — no balena-sound.output
+        │  null sink / loopback in the path, so each device's real output latency
+        │  is visible to Snapcast and compensated automatically.
         ▼
 Hardware DAC / ALSA sink
-        │  DAC hardware buffer — device-specific, not configurable via env var
-        │  (HiFiBerry PCM5122: typically ~5 ms)
+        │  DAC hardware buffer — device-specific (HiFiBerry PCM5122: ~5 ms)
         ▼
 Speakers
 ```
 
+> **Why direct-to-sink (Option C):** routing snapclient through the `balena-sound.output`
+> null sink + a WirePlumber loopback hid a per-device, variable output delay that Snapcast
+> could not see, which made heterogeneous hardware impossible to sync. Playing straight to the
+> hardware sink lets PipeWire report the true latency, so Snapcast keeps devices in sync with
+> no per-device tuning. The `balena-sound.output` sink is still used for the standalone
+> (`disabled`) path and as the SOLO fallback.
+
 ---
 
-## Auto direct fallback
+## SOLO (simultaneous-source) fallback
 
-An `auto` device that promotes to master can temporarily bypass Snapcast if no snapclient connects within the fallback window.
+If two devices in the same group are *both* playing a local source at once, the newest one owns
+the synced group; the other plays its own audio locally (it cannot merge two different sources):
 
 ```
-[Plugin source]
+[Plugin source on the losing device]
         │
         ▼
 balena-sound.input
-        │  runtime fallback loopback loaded by sound-supervisor
+        │  input → output direct loopback (loaded by sound-supervisor)
         ▼
-balena-sound.output
-        │
-        ▼
-Hardware DAC / speakers
+balena-sound.output → Hardware DAC / speakers
 ```
 
-This fallback is not the same as `SOUND_MULTIROOM_ROLE=disabled`: the configured role is still `auto`, and routing is restored to Snapcast when the device demotes.
+When that device's source stops, or the other master goes away, it leaves SOLO and rejoins/takes
+the group. This only happens on genuinely simultaneous play — normal source-switching hands the
+group straight to the newest device.
 
 ---
 
@@ -124,83 +123,23 @@ This fallback is not the same as `SOUND_MULTIROOM_ROLE=disabled`: the configured
 | pacat capture | 50 ms | `core/multiroom/server/start.sh` | `SOUND_MULTIROOM_CAPTURE_MS` |
 | Kernel FIFO pipe | ~64 KB | OS | — not applicable — |
 | snapserver stream buffer | 400 ms | `core/multiroom/server/start.sh` | `SOUND_MULTIROOM_BUFFER_MS` |
-| snapclient hardware latency offset | 400 ms | `core/multiroom/client/start.sh` | `SOUND_MULTIROOM_LATENCY` |
-| PulseAudio sink-input (snapclient → PA) | 100 ms | `core/multiroom/client/start.sh` | `SOUND_MULTIROOM_PA_LATENCY_MS` |
+| PulseAudio sink-input (snapclient → PA) | 200 ms | `core/multiroom/client/start.sh` | `SOUND_MULTIROOM_PA_LATENCY_MS` |
+| snapclient `--latency` offset (advanced) | 0 ms | `core/multiroom/client/start.sh` | `SOUND_MULTIROOM_LATENCY` |
 | Hardware DAC | device-specific | n/a | — not configurable — |
 
 ---
 
-## How latency offsets work
+## Latency compensation (automatic)
 
-`SOUND_MULTIROOM_LATENCY` is passed to snapclient as `--latency N`. It is a **hardware/output-path compensation** value, not a plain "delay this speaker" knob.
+There is **no manual per-device latency tuning** in normal use. Because snapclient plays directly
+to the hardware sink, PipeWire reports that sink's real latency to snapclient, and Snapcast
+schedules playback so every device hits the same wall-clock moment — identical and mixed hardware
+alike. `SOUND_MULTIROOM_LATENCY` (snapclient `--latency`, default `0`) is an advanced escape hatch
+for a device with a known fixed output delay Snapcast cannot otherwise observe; leave it at `0`
+unless you have measured a reason not to. If you hear dropouts, raise a **buffer**
+(`SOUND_MULTIROOM_BUFFER_MS` / `SOUND_MULTIROOM_CAPTURE_MS` / `SOUND_MULTIROOM_PA_LATENCY_MS`),
+not the latency offset.
 
-Snapclient describes this flag as the latency of the PCM device. In practice, use it to tell Snapcast that a device's local output path is already slow. If a Pi, HDMI output, DAC, or audio stack adds about 500 ms after snapclient writes the sample, setting that device near `SOUND_MULTIROOM_LATENCY=500` gives Snapcast enough information to schedule that client against the rest of the group.
-
-- All clients receive the **same audio data** from snapserver at the same wall-clock time.
-- If one device is consistently late because its hardware path is slow, raise `SOUND_MULTIROOM_LATENCY` on that device first.
-- If a device is consistently early, lower that device's value or raise the later device only if the later path is known to have hardware latency.
-- Large values require enough Snapcast buffering. The master enforces an effective `SOUND_MULTIROOM_BUFFER_MS` of at least `SOUND_MULTIROOM_LATENCY + 100` for its own configured latency; if a remote client has an even larger per-device latency, set the master's requested buffer high enough for that client too.
-- Setting mismatched values intentionally desynchronises the speakers unless they match real hardware/path differences. Use the same value on identical devices and outputs.
-- The server reports each client's configured latency as 0 — it is purely client-side and does not feed back to the server.
-
-### Sync tuning workflow
-
-Keep tuning methodical. Change one variable at a time, restart the affected `multiroom-client`, and test with the same source and volume each time.
-
-1. Stabilize buffers first:
-   - `SOUND_MULTIROOM_BUFFER_MS`: master Snapserver stream buffer. Raise if all clients stutter together. The effective server buffer is whichever is larger: the requested value or `SOUND_MULTIROOM_LATENCY + 100` on the master.
-   - `SOUND_MULTIROOM_CAPTURE_MS`: master `pacat` capture buffer into Snapserver. Raise if the master capture path underruns.
-   - `SOUND_MULTIROOM_PA_LATENCY_MS`: per-client snapclient-to-PulseAudio buffer. Use this for stability, not fine sync.
-2. Start with conservative buffers:
-   - `SOUND_MULTIROOM_BUFFER_MS=250-400`
-   - `SOUND_MULTIROOM_CAPTURE_MS=50-100`
-   - `SOUND_MULTIROOM_PA_LATENCY_MS=200`
-3. Tune per-device sync with `SOUND_MULTIROOM_LATENCY`:
-   - A late device with a slow hardware path: increase that device's value in 50-100 ms steps.
-   - An early device: decrease that device's value, or increase the genuinely late hardware path if known.
-   - Avoid huge values on the faster device just to wait for a slow device; that increases delay from reality and can exceed the client's buffer.
-
-### Working example: Pi4 master to Pi3 client
-
-This fleet had a Pi4 with a HiFiBerry-style output and a Pi3 using the Raspberry Pi HDMI/mailbox sink. The Pi3 remained roughly 500 ms late even after normal buffer tuning. The important discovery was that the Pi3 hardware sink was:
-
-```
-alsa_output.platform-3f00b840.mailbox.stereo-fallback
-```
-
-The audio startup code treats mailbox/HDMI outputs as high-latency paths because they can have hardware periods in the hundreds of milliseconds. That means the better fix is to compensate the Pi3 hardware path, not to delay the Pi4 by a large amount.
-
-Known-good-ish baseline from live testing:
-
-| Device | Role in test | Important values |
-|---|---|---|
-| Pi4 | master/source | `SOUND_MULTIROOM_BUFFER_MS=250`, `SOUND_MULTIROOM_CAPTURE_MS=50`, `SOUND_MULTIROOM_PA_LATENCY_MS=400`, `SOUND_MULTIROOM_LATENCY=400-600` during testing |
-| Pi3 | remote client | `SOUND_MULTIROOM_PA_LATENCY_MS=100-200`, `SOUND_MULTIROOM_LATENCY=0` before compensation |
-
-Observed behavior:
-
-- Pi4 audio could go silent when pushed above about `SOUND_MULTIROOM_LATENCY=600`, because the latency value was larger than the useful local playback buffer/headroom.
-- Pi3 was still late, which pointed to Pi3's HDMI/mailbox output path rather than network jitter.
-
-Recommended next calibration for this hardware:
-
-```
-# Pi4: keep the fast/local path modest
-SOUND_MULTIROOM_LATENCY=0-200
-SOUND_MULTIROOM_PA_LATENCY_MS=200
-
-# Pi3: compensate the slow HDMI/mailbox output path
-SOUND_MULTIROOM_LATENCY=500
-SOUND_MULTIROOM_PA_LATENCY_MS=200
-```
-
-Then tune Pi3 in small steps:
-
-- Pi3 still late: try `600`.
-- Pi3 now early: try `400`.
-- Either device stutters or goes silent: increase `SOUND_MULTIROOM_PA_LATENCY_MS` or reduce the latency offset.
-
-These numbers are not universal. They vary by Raspberry Pi model, OS/audio stack, DAC or HDMI path, CPU load, Wi-Fi/Ethernet quality, and which device is currently master.
 
 ## Key PipeWire null sinks
 

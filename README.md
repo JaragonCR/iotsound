@@ -86,13 +86,13 @@ See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of roles, grou
 
 | Variable | Description | Default |
 |---|---|---|
-| `SOUND_MULTIROOM_ROLE` | `auto` (play-triggered master), `host` (always master), `join` (always client), `disabled` (standalone) | `auto` |
+| `SOUND_MULTIROOM_ROLE` | `auto` (the device you play to becomes the group master), `host` (always master), `join` (always client), `disabled` (standalone) | `auto` |
 | `SOUND_GROUP_NAME` | Multiroom group — devices with the same name sync together | `default` |
-| `SOUND_GROUP_LATENCY` | Group latency advertised in mDNS TXT records; informational for discovery/UI | `750` |
+| `SOUND_MULTIROOM_CODEC` | Snapcast stream codec: `flac` (lossless, Wi‑Fi‑friendly), `pcm`, `opus`, `ogg` | `flac` |
 | `SOUND_MULTIROOM_BUFFER_MS` | Snapserver stream buffer in ms — increase if all Snapcast clients stutter | `400` |
 | `SOUND_MULTIROOM_CAPTURE_MS` | Master-side pacat capture latency in ms | `50` |
-| `SOUND_MULTIROOM_PA_LATENCY_MS` | PulseAudio sink-input buffer for snapclient output in ms | `100` |
-| `SOUND_MULTIROOM_LATENCY` | Per-device snapclient latency offset in ms; applies to any running snapclient, including the master-local client. Use a higher value on earlier devices or a lower/negative value on later devices. | `400` |
+| `SOUND_MULTIROOM_PA_LATENCY_MS` | PulseAudio sink-input buffer for snapclient output in ms | `200` |
+| `SOUND_MULTIROOM_LATENCY` | **Advanced.** Extra fixed snapclient `--latency` offset in ms. Leave at `0` — snapclient plays direct to the hardware sink and Snapcast compensates the real device latency automatically, so no per-device tuning is needed. | `0` |
 | `SOUND_MULTIROOM_MASTER` | Override master IP — skips mDNS discovery (for networks where mDNS is blocked) | unset |
 
 #### Multiroom roles
