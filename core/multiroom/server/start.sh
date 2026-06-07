@@ -53,6 +53,16 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
   fi
   echo "- Snapcast buffer: ${BUFFER_MS}ms (requested ${REQUESTED_BUFFER_MS}ms, minimum ${MIN_BUFFER_MS}ms)"
 
+  # Stream codec. flac (lossless, ~half the bandwidth of pcm) is snapcast's default and
+  # is more robust on lossy WiFi — fewer burst-induced dropouts. pcm has zero codec
+  # latency but heavier bandwidth. A/B these on hardware via SOUND_MULTIROOM_CODEC.
+  CODEC="${SOUND_MULTIROOM_CODEC:-flac}"
+  case "$CODEC" in
+    pcm|flac|ogg|opus) ;;
+    *) echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_CODEC '$CODEC', using flac"; CODEC="flac" ;;
+  esac
+  echo "- Snapcast codec: ${CODEC}"
+
   # Write dynamic snapserver config with the current effective buffer
   cat > /tmp/snapserver.conf << SNAPEOF
 [server]
@@ -65,7 +75,7 @@ port = 1780
 doc_root = /var/www/
 
 [stream]
-stream = pipe:///tmp/snapserver-audio?name=balenaSound&sampleformat=48000:16:2&codec=pcm&bufferMs=${BUFFER_MS}
+stream = pipe:///tmp/snapserver-audio?name=balenaSound&sampleformat=48000:16:2&codec=${CODEC}&bufferMs=${BUFFER_MS}
 sampleformat = 48000:16:2
 
 [logging]
@@ -106,33 +116,48 @@ SNAPEOF
     echo "[pacat] Started (PID: $PACAT_PID)"
   }
 
+  # Stop pacat in place (transient-master demotion). snapserver and the held FIFO fd stay
+  # alive, so the container never restarts and the audio graph is untouched.
+  stop_pacat() {
+    if [[ -n "$PACAT_PID" ]] && kill -0 "$PACAT_PID" 2>/dev/null; then
+      echo "[pacat] Stopping (PID $PACAT_PID)"
+      kill "$PACAT_PID" 2>/dev/null || true
+      wait "$PACAT_PID" 2>/dev/null || true
+    fi
+    PACAT_PID=""
+  }
+
+  is_active() {
+    curl -sf "$SOUND_SUPERVISOR/multiroom/active" 2>/dev/null | grep -q '"active":true'
+  }
+
   # Start snapserver in background (it blocks on FIFO open until a writer appears).
   /usr/bin/snapserver --config /tmp/snapserver.conf &
   SNAPSERVER_PID=$!
 
   # Hold the FIFO write-end open in this shell so snapserver never reads EOF while
-  # pacat is restarting. Blocks here until snapserver opens the read end.
+  # pacat is stopped/restarting. Blocks here until snapserver opens the read end.
   exec 3>"$FIFO"
 
-  # Container pre-warms at AUTO boot — wait for sound-supervisor to promote us to master
-  # before starting pacat. Polls every 500ms so latency from play-detect to first audio
-  # is <500ms instead of the previous container cold-start (~3s).
-  echo "[multiroom-server] Waiting for master promotion..."
-  until curl -sf "$SOUND_SUPERVISOR/multiroom/active" 2>/dev/null | grep -q '"active":true'; do
-    sleep 0.5
-  done
-  echo "[multiroom-server] Active — starting pacat"
-
-  start_pacat
-
-  # Watchdog: if pacat exits for any reason, restart it.
-  # The held fd 3 keeps the FIFO alive so snapserver doesn't see EOF during the gap.
+  # Reconcile loop: pacat runs only while the supervisor reports this device as the
+  # SOURCING master (/multiroom/active). Promotion and demotion are an in-place pacat
+  # start/stop — snapserver and the FIFO stay up, so there is no container churn and no
+  # audio-graph teardown on either transition. Also covers pacat crash recovery.
+  POLL_S="${SOUND_MULTIROOM_POLL_S:-2}"
+  echo "[multiroom-server] snapserver up — reconciling pacat against /multiroom/active (every ${POLL_S}s)"
   while kill -0 "$SNAPSERVER_PID" 2>/dev/null; do
-    if [[ -n "$PACAT_PID" ]] && ! kill -0 "$PACAT_PID" 2>/dev/null; then
-      echo "[pacat-watchdog] pacat (PID $PACAT_PID) exited — restarting..."
-      start_pacat
+    if is_active; then
+      if [[ -z "$PACAT_PID" ]] || ! kill -0 "$PACAT_PID" 2>/dev/null; then
+        [[ -n "$PACAT_PID" ]] && echo "[pacat-watchdog] pacat exited — restarting"
+        start_pacat
+      fi
+    else
+      if [[ -n "$PACAT_PID" ]]; then
+        echo "[multiroom-server] Demoted — stopping pacat in place"
+        stop_pacat
+      fi
     fi
-    sleep 5
+    sleep "$POLL_S"
   done
 
   wait "$SNAPSERVER_PID"

@@ -27,32 +27,6 @@ until PULSE_SERVER="tcp:localhost:4317" pactl info >/dev/null 2>&1; do
 done
 echo "[snapclient] PulseAudio ready (waited ${_pa_waited}s)"
 
-# AUTO role: container is pre-warmed at boot. Start snapclient once this device
-# has a real target: either local master promotion, or a discovered/default-room
-# master advertised by another device.
-# JOIN/HOST: use the same readiness check so JOIN waits for discovery instead
-# of falling back to its own IP.
-ROLE=$(curl -sf "$SOUND_SUPERVISOR/multiroom" 2>/dev/null | grep -o '"role":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
-if [[ "$ROLE" == "auto" || "$ROLE" == "join" || "$ROLE" == "host" ]]; then
-  echo "[snapclient] $ROLE role — waiting for snapcast target..."
-  _waited=0
-  until curl -sf "$SOUND_SUPERVISOR/multiroom/client-ready" 2>/dev/null | grep -q '"active":true'; do
-    if [[ "$LOG_LEVEL" == "debug" ]] && (( _waited % 300 == 0 )); then
-      echo "[snapclient] Still waiting for snapcast target... (${_waited}s)"
-    fi
-    sleep 1
-    _waited=$((_waited + 1))
-  done
-  echo "[snapclient] Snapcast target ready (waited ${_waited}s)"
-fi
-
-# Fetch master IP after election completes (supervisor election runs in parallel with audio init).
-SNAPSERVER=$(curl --silent "$SOUND_SUPERVISOR/multiroom/master" || true)
-if [[ -z "$SNAPSERVER" ]]; then
-  echo "[snapclient] ERROR: no snapcast target available"
-  exit 1
-fi
-
 # Snapcast hostID is identity, not display name. It must be unique per device;
 # using SOUND_DEVICE_NAME here breaks fleets where the name is set globally.
 if [[ -n "$BALENA_DEVICE_UUID" ]]; then
@@ -68,53 +42,80 @@ fi
 
 SNAPCLIENT_PID_FILE=/tmp/snapclient.pid
 
+# Block until this device has a snapcast target: client-ready AND a non-empty master IP.
+# A SOLO device (lost the UUID tiebreak but sourcing locally) reports not-ready and an
+# empty master, so we correctly stay idle here and never join anyone while it plays local.
+_wait_for_target() {
+  local m
+  while true; do
+    if curl -sf "$SOUND_SUPERVISOR/multiroom/client-ready" 2>/dev/null | grep -q '"active":true'; then
+      m=$(curl -sf "$SOUND_SUPERVISOR/multiroom/master" 2>/dev/null || true)
+      if [[ -n "$m" ]]; then
+        printf '%s' "$m"
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+}
+
 _spawn_snapclient() {
   local target="$1"
   local latency_ms
   latency_ms="${SOUND_MULTIROOM_LATENCY:-}"
   if [[ -z "$latency_ms" ]]; then
     latency_ms=$(curl -sf "$SOUND_SUPERVISOR/multiroom/latency" 2>/dev/null | grep -o '"latencyMs":-*[0-9]*' | cut -d':' -f2 || true)
+    latency_ms=${latency_ms:-400}
   fi
-  latency_ms=${latency_ms:-400}
-  local pa_latency_ms="${SOUND_MULTIROOM_PA_LATENCY_MS:-100}"
-  local latency="--latency ${latency_ms}"
-  echo "[snapclient] Starting → $target ($latency, pulse buffer ${pa_latency_ms}ms, hostID $SNAPCAST_CLIENT_ID)"
-  PULSE_SERVER="tcp:localhost:4317" \
+  local pa_latency_ms="${SOUND_MULTIROOM_PA_LATENCY_MS:-200}"
+
+  # Option C: play snapcast straight to the hardware sink instead of the balena-sound.output
+  # null sink. PipeWire then reports the real device latency to snapclient (which compensates
+  # it) and a buffer stage is removed — the core cross-device sync fix. Fall back to the
+  # PulseAudio default sink (the audio container sets it to the detected HW sink) if the
+  # supervisor cannot report a hardware sink yet.
+  local hw_sink
+  hw_sink=$(curl -sf "$SOUND_SUPERVISOR/audio/output-sink" 2>/dev/null || true)
+  if [[ -n "$hw_sink" ]]; then
+    export PULSE_SINK="$hw_sink"
+  else
+    unset PULSE_SINK
+  fi
+
+  echo "[snapclient] Starting → $target (latency ${latency_ms}ms, pulse buffer ${pa_latency_ms}ms, sink ${PULSE_SINK:-<default>}, hostID $SNAPCAST_CLIENT_ID)"
   PULSE_LATENCY_MSEC="$pa_latency_ms" \
   /usr/bin/snapclient \
-    --player "pulse:server=tcp:localhost:4317,buffer_time=${pa_latency_ms}" \
+    --player pulse \
     --host "$target" \
-    $latency \
+    --latency "$latency_ms" \
     --hostID "$SNAPCAST_CLIENT_ID" \
     --logfilter '*:error' \
     >/dev/null &
   echo $! > "$SNAPCLIENT_PID_FILE"
 }
 
-echo "Starting multi-room client..."
-echo "- balenaSound mode: $MODE"
-echo "- Target snapcast server: $SNAPSERVER"
+echo "Starting multi-room client (mode: $MODE)..."
 
-_spawn_snapclient "$SNAPSERVER"
-
-# Watchdog: re-fetch master IP every 5s. If it changes while snapclient is
-# running (e.g. this device just promoted to master), kill and respawn with
-# the new target without restarting the container.
+# Target-driven supervisor loop. snapclient runs only while a target exists and follows
+# target changes in place — master moved, or this device went SOLO (target cleared) — with
+# no container restart. If snapclient dies, we re-evaluate and respawn in place too.
 while true; do
-  sleep 5
+  SNAPSERVER=$(_wait_for_target)
+  echo "[snapclient] Target acquired: $SNAPSERVER"
+  _spawn_snapclient "$SNAPSERVER"
   SNAPCLIENT_PID=$(cat "$SNAPCLIENT_PID_FILE" 2>/dev/null || true)
-  if [[ -z "$SNAPCLIENT_PID" ]] || ! kill -0 "$SNAPCLIENT_PID" 2>/dev/null; then
-    wait "$SNAPCLIENT_PID" 2>/dev/null || true
-    RC=$?
-    echo "[snapclient] exited with code $RC"
-    exit $RC
-  fi
-  NEW_SERVER=$(curl --silent "$SOUND_SUPERVISOR/multiroom/master" 2>/dev/null || true)
-  if [[ -n "$NEW_SERVER" && "$NEW_SERVER" != "$SNAPSERVER" ]]; then
-    echo "[snapclient] Master changed: $SNAPSERVER → $NEW_SERVER. Respawning."
-    kill "$SNAPCLIENT_PID" 2>/dev/null || true
-    wait "$SNAPCLIENT_PID" 2>/dev/null || true
-    SNAPSERVER="$NEW_SERVER"
-    _spawn_snapclient "$SNAPSERVER"
-  fi
+
+  while [[ -n "$SNAPCLIENT_PID" ]] && kill -0 "$SNAPCLIENT_PID" 2>/dev/null; do
+    sleep 5
+    NEW_SERVER=$(curl -sf "$SOUND_SUPERVISOR/multiroom/master" 2>/dev/null || true)
+    if [[ "$NEW_SERVER" != "$SNAPSERVER" ]]; then
+      echo "[snapclient] Target changed: '$SNAPSERVER' → '${NEW_SERVER:-<none>}' — stopping snapclient"
+      kill "$SNAPCLIENT_PID" 2>/dev/null || true
+      wait "$SNAPCLIENT_PID" 2>/dev/null || true
+      break
+    fi
+  done
+
+  echo "[snapclient] snapclient stopped — re-evaluating target"
+  sleep 2
 done

@@ -282,6 +282,20 @@ export class PulseAudioWrapper extends EventEmitter {
     return found ? parseInt(found.index, 10) : null
   }
 
+  // The real hardware output sink (alsa_output.*, excluding the balena-sound/snapcast null
+  // sinks). Used by the multiroom client to play snapcast straight to the DAC (Option C),
+  // so PipeWire reports the true device latency to snapclient instead of hiding it behind
+  // the balena-sound.output null sink + loopback. Returns null if none is up yet.
+  async getHardwareSink(): Promise<string | null> {
+    const sinks = await this.getSinks()
+    const hw = sinks
+      .map(s => s.name)
+      .filter(name =>
+        name.startsWith('alsa_output.') && !name.includes('balena-sound') && name !== 'snapcast'
+      )
+    return hw[0] ?? null
+  }
+
   async getSinkInputIndexBySource(sourceName: string): Promise<number | null> {
     try {
       const { stdout } = await execAsync(`pactl --server ${this.server} list sink-inputs`)

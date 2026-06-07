@@ -5,7 +5,7 @@ import SoundConfig from './SoundConfig'
 import PulseAudioWrapper from './PulseAudioWrapper'
 import SnapserverMonitor from './SnapserverMonitor'
 import { constants } from './constants'
-import { restartBalenaService, restartDevice, rebootDevice, shutdownDevice } from './utils'
+import { restartDevice, rebootDevice, shutdownDevice } from './utils'
 import { MultiroomRole, SoundModes } from './types'
 import { BalenaSDK } from 'balena-sdk'
 import sdk from './BalenaClient'
@@ -78,16 +78,20 @@ export default class SoundAPI {
     })
 
     // GET /multiroom/client-ready — true when snapclient has a real target.
-    // Masters target their local snapserver; idle AUTO/JOIN devices wait for
-    // an advertised master in their group.
+    // Sourcing masters target their own snapserver; warm devices wait for an advertised
+    // master in their group. SOLO devices play locally (input→output direct) and must NOT
+    // join anyone, so they report not-ready.
     this.api.get('/multiroom/client-ready', (_req, res) => {
+      if (this.config.isSolo()) { res.json({ active: false }); return }
       const hasTarget = this.config.isElectedMaster() || Boolean(this.monitor?.getDiscoveredMasterIp())
       res.json({ active: hasTarget })
     })
 
     // GET /multiroom/master — returns the snapcast server IP for multiroom-client to connect to.
-    // Masters return themselves. Idle clients only return a discovered/explicit master.
+    // Sourcing masters return themselves; warm devices return a discovered/explicit master;
+    // SOLO returns empty (no target — it plays locally).
     this.api.get('/multiroom/master', (_req, res) => {
+      if (this.config.isSolo()) { res.send(''); return }
       const masterIp = this.config.isElectedMaster()
         ? (this.monitor?.getMasterIp() ?? this.config.getMultiroomStatus().deviceIp)
         : (this.monitor?.getDiscoveredMasterIp() ?? '')
@@ -157,10 +161,9 @@ export default class SoundAPI {
       res.json({ latencyMs: constants.multiroomClientLatency })
     })
 
-    // POST /multiroom/latency — persist SOUND_MULTIROOM_LATENCY; snapclient picks it
-    // up from this API on next respawn. Bounce multiroom-client immediately so
-    // tuning from the UI affects the running Snapcast client instead of waiting
-    // for a future container restart.
+    // POST /multiroom/latency — persist SOUND_MULTIROOM_LATENCY and apply it live via the
+    // snapserver JSON-RPC (Client.SetLatency), so tuning from the UI takes effect immediately
+    // with NO container restart. The persisted env still seeds the value on the next spawn.
     this.api.post('/multiroom/latency', async (req, res) => {
       const { latencyMs } = req.body
       if (typeof latencyMs !== 'number' || latencyMs < -1000 || latencyMs > 2000) {
@@ -175,10 +178,17 @@ export default class SoundAPI {
       } catch (err) {
         console.log(`Failed to persist SOUND_MULTIROOM_LATENCY: ${(err as Error).message}`)
       }
-      restartBalenaService('multiroom-client').catch((err: Error) =>
-        console.log(`Failed to restart multiroom-client after latency change: ${err.message}`)
+      this.monitor?.setClientLatency(constants.multiroomClientLatency).catch((err: Error) =>
+        console.log(`Failed to apply latency live: ${err.message}`)
       )
-      res.json({ latencyMs: constants.multiroomClientLatency, restarting: true })
+      res.json({ latencyMs: constants.multiroomClientLatency, applied: 'live' })
+    })
+
+    // GET /audio/output-sink — the detected hardware sink name. The multiroom client uses
+    // this as PULSE_SINK so snapclient plays straight to the DAC (Option C). Empty if not up.
+    this.api.get('/audio/output-sink', async (_req, res) => {
+      const sink = await this.audioBlock.getHardwareSink().catch(() => null)
+      res.send(sink ?? '')
     })
 
     // --- Internal (WirePlumber → supervisor events) ---
