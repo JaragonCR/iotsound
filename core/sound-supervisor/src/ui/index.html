@@ -111,28 +111,6 @@
             <div class="col-sm-6">
               <div class="card text-center h-100">
                 <div class="card-body">
-                  <h5 class="card-title">Playback latency</h5>
-                  <p class="card-text">
-                    Hardware output delay for <em>this</em> device.<br/>
-                    <small class="text-muted">Only applies during multiroom playback.</small>
-                  </p>
-                  <input
-                    type="range"
-                    min="-1000"
-                    max="2000"
-                    step="50"
-                    value="400"
-                    class="form-range"
-                    id="latency-slider"
-                  />
-                  <small class="text-muted">Current: <span id="latency-text">400</span>ms</small>
-                </div>
-              </div>
-            </div>
-
-            <div class="col-sm-6">
-              <div class="card text-center h-100">
-                <div class="card-body">
                   <h5 class="card-title">
                     DAC device tree overlay
                     <span
@@ -316,32 +294,6 @@
         );
       };
 
-      // Latency slider
-      var latencySlider = document.getElementById("latency-slider");
-      var latencyText = document.getElementById("latency-text");
-
-      latencySlider.oninput = function () {
-        latencyText.innerHTML = this.value;
-        var $this = $(this);
-        clearTimeout($this.data("timeout"));
-        $this.data(
-          "timeout",
-          setTimeout(async function () {
-            await postAPI("/multiroom/latency", "latencyMs", parseInt($this.val()));
-          }, 400)
-        );
-      };
-
-      async function refreshLatency() {
-        let lat = await getAPI("/multiroom/latency");
-        if (lat && typeof lat.latencyMs === "number") {
-          latencySlider.value = lat.latencyMs;
-          latencyText.innerHTML = lat.latencyMs;
-        }
-      }
-
-      setInterval(refreshLatency, 10000);
-
       init();
       async function init() {
         let volume = await getAPI("/audio/volume");
@@ -352,7 +304,6 @@
 
         await refreshMultiroom();
         await loadKnownGroups();
-        await refreshLatency();
       }
 
       setInterval(refreshMultiroom, 5000);

@@ -32,7 +32,7 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
   echo "Starting multi-room server..."
 
   REQUESTED_BUFFER_MS=${SOUND_MULTIROOM_BUFFER_MS:-400}
-  CLIENT_LATENCY_MS=${SOUND_MULTIROOM_LATENCY:-400}
+  CLIENT_LATENCY_MS=${SOUND_MULTIROOM_LATENCY:-0}
   if ! [[ "$REQUESTED_BUFFER_MS" =~ ^[0-9]+$ ]]; then
     echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BUFFER_MS '$REQUESTED_BUFFER_MS', falling back to 400ms"
     REQUESTED_BUFFER_MS=400

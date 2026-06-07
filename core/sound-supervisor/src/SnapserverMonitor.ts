@@ -11,8 +11,6 @@ const REACHABILITY_CHECK_INTERVAL_MS = 10000
 export interface MonitorConfig {
   groupName: string | undefined
   deviceUuid: string
-  groupLatency: number
-  hwLatency: number
   localIp: string
   isMaster: boolean
   multiroomMaster?: string
@@ -52,8 +50,6 @@ export default class SnapserverMonitor {
 
   private readonly groupName: string | undefined
   private readonly deviceUuid: string
-  private readonly groupLatency: number
-  private readonly hwLatency: number
   private readonly localIp: string | undefined
   private readonly multiroomMaster: string | undefined
   private isMaster: boolean
@@ -68,8 +64,6 @@ export default class SnapserverMonitor {
   constructor(cfg: MonitorConfig) {
     this.groupName = cfg.groupName
     this.deviceUuid = cfg.deviceUuid
-    this.groupLatency = cfg.groupLatency
-    this.hwLatency = cfg.hwLatency
     this.localIp = cfg.localIp === 'localhost' ? undefined : cfg.localIp
     this.multiroomMaster = cfg.multiroomMaster
     this.isMaster = cfg.isMaster
@@ -79,11 +73,6 @@ export default class SnapserverMonitor {
 
   setOnSuperseded(cb: (svc: SnapcastService) => void): void {
     this.onSuperseded = cb
-  }
-
-  // Public: the deterministic group authority (lowest-UUID remote master), or null.
-  getSelectedMaster(): SnapcastService | null {
-    return this.selectedMaster()
   }
 
   // True if any advertised, reachable remote master exists. Used for SOLO recovery: when
@@ -193,13 +182,14 @@ export default class SnapserverMonitor {
     const name = this.groupName ?? 'default'
     this.advertiser.advertise(name, SNAPCAST_TCP_PORT, {
       group: name,
-      group_latency: String(this.groupLatency),
-      hw_latency: String(this.hwLatency),
       role: 'host',
       version: '2.1',
       epoch: String(this.sourcingEpoch),
       master_uuid: this.deviceUuid,
     })
+    // group_latency/hw_latency intentionally not advertised: the per-device hardware-latency
+    // reconciliation they were meant to feed was never implemented and is unnecessary under
+    // Option C (snapclient plays direct to the DAC; PipeWire reports real latency).
   }
 
   unadvertise(): void {

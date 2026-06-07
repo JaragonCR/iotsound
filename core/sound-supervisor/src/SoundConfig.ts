@@ -146,9 +146,7 @@ export default class SoundConfig {
     return {
       role: this.role,
       groupName: this.groupName ?? null,
-      deviceIp: this.device.ip,
-      groupLatency: constants.groupLatency,
-      hwLatency: constants.hwLatency
+      deviceIp: this.device.ip
     }
   }
 

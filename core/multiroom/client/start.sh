@@ -65,7 +65,7 @@ _spawn_snapclient() {
   latency_ms="${SOUND_MULTIROOM_LATENCY:-}"
   if [[ -z "$latency_ms" ]]; then
     latency_ms=$(curl -sf "$SOUND_SUPERVISOR/multiroom/latency" 2>/dev/null | grep -o '"latencyMs":-*[0-9]*' | cut -d':' -f2 || true)
-    latency_ms=${latency_ms:-400}
+    latency_ms=${latency_ms:-0}
   fi
   local pa_latency_ms="${SOUND_MULTIROOM_PA_LATENCY_MS:-200}"
 

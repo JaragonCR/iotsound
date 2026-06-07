@@ -57,7 +57,7 @@ devices under test for verbose supervisor + container logs.
   the other is still playing, joins it as a client.
 
 ### 5. Latency tuning without restart
-- While playing in a group, `POST /multiroom/latency {"latencyMs": 150}` (or the UI slider).
+- While playing in a group, `POST /multiroom/latency {"latencyMs": 150}` (advanced API; the UI slider was removed).
 - Expect supervisor `Client.SetLatency 150ms (<uuid>)` and an **immediate** shift with **no**
   snapclient/container restart (no audio gap beyond the latency change itself).
 

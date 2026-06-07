@@ -31,11 +31,12 @@ export const constants = {
   port: checkInt(process.env.SOUND_SUPERVISOR_PORT) ?? 80,
   role: resolveRole(),
   groupName: process.env.SOUND_GROUP_NAME,
-  groupLatency: Math.min(checkInt(process.env.SOUND_GROUP_LATENCY) ?? 750, 1000),
-  hwLatency: Math.min(checkInt(process.env.SOUND_DEVICE_HW_LATENCY) ?? 0, 200),
   balenaDeviceType: deviceType,
   volume: checkInt(process.env.SOUND_VOLUME) ?? 75,
   inputSink: process.env.SOUND_INPUT_SINK ?? 'balena-sound.input',
   multiroomMaster: process.env.SOUND_MULTIROOM_MASTER,
-  multiroomClientLatency: checkInt(process.env.SOUND_MULTIROOM_LATENCY) ?? 400
+  // Extra fixed offset added to snapclient. 0 by default: with Option C, snapclient plays
+  // straight to the hardware sink and PipeWire reports the real device latency, which
+  // snapclient compensates — so no manual per-device offset is needed. Advanced override only.
+  multiroomClientLatency: checkInt(process.env.SOUND_MULTIROOM_LATENCY) ?? 0
 }
