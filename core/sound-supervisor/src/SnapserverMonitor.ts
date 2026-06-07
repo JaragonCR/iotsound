@@ -6,9 +6,7 @@ import { SnapcastBrowser, type SnapcastService } from './AvahiBrowser'
 const RPC_PORT = 1780
 const SNAPCAST_TCP_PORT = 1704
 const POLL_INTERVAL_MS = 5000
-// 3× the 30s demotion timer — safety net for masters that crash without a goodbye.
-const MASTER_TTL_MS = 90000
-const TTL_CHECK_INTERVAL_MS = 30000
+const REACHABILITY_CHECK_INTERVAL_MS = 10000
 
 export interface MonitorConfig {
   groupName: string | undefined
@@ -22,7 +20,11 @@ export interface MonitorConfig {
 
 interface TrackedMaster {
   svc: SnapcastService
-  lastSeen: number
+  // mDNS says it exists; reachable says its snapserver port actually answers. A master that
+  // is advertised but momentarily unreachable (e.g. snapserver restarting) is KEPT and just
+  // excluded from selection — it is re-selected when it answers again, without needing a
+  // fresh avahi 'up' event (which never comes while the advert stays published).
+  reachable: boolean
 }
 
 /**
@@ -81,12 +83,13 @@ export default class SnapserverMonitor {
     return this.selectedMaster()
   }
 
-  // Lowest-UUID remote master service, or null. Deterministic group authority.
+  // Lowest-UUID REACHABLE remote master service, or null. Deterministic group authority.
   private selectedMaster(): SnapcastService | null {
     let best: SnapcastService | null = null
-    for (const { svc } of this.masters.values()) {
-      const uuid = svc.txt['master_uuid'] ?? ''
-      if (!best || uuid < (best.txt['master_uuid'] ?? '')) best = svc
+    for (const m of this.masters.values()) {
+      if (!m.reachable) continue
+      const uuid = m.svc.txt['master_uuid'] ?? ''
+      if (!best || uuid < (best.txt['master_uuid'] ?? '')) best = m.svc
     }
     return best
   }
@@ -203,7 +206,7 @@ export default class SnapserverMonitor {
       this.groupName
     )
     this.browser.start()
-    this.ttlTimer = setInterval(() => this.checkMasterTtl(), TTL_CHECK_INTERVAL_MS)
+    this.ttlTimer = setInterval(() => this.checkReachability(), REACHABILITY_CHECK_INTERVAL_MS)
   }
 
   private stopBrowsing(): void {
@@ -217,7 +220,8 @@ export default class SnapserverMonitor {
     if ((svc.txt['master_uuid'] ?? '') === this.deviceUuid) return
 
     const known = this.masters.has(svc.name)
-    this.masters.set(svc.name, { svc, lastSeen: Date.now() })
+    // Optimistic reachable: it just announced. checkReachability() corrects it within 10s.
+    this.masters.set(svc.name, { svc, reachable: true })
     if (!known) {
       console.log(`[snapserver-monitor] Master discovered: ${svc.name} @ ${svc.ip} (uuid=${svc.txt['master_uuid'] ?? '?'})`)
     }
@@ -235,17 +239,17 @@ export default class SnapserverMonitor {
     }
   }
 
-  private async checkMasterTtl(): Promise<void> {
-    for (const [name, m] of [...this.masters.entries()]) {
+  // Probe each known master's snapserver port and update reachability. We never delete here:
+  // real disappearance arrives as an avahi 'down' event (onMasterDown). This only flips a
+  // wedged/restarting master out of and back into selection as its port stops/starts
+  // answering, so recovery needs no fresh mDNS announcement.
+  private async checkReachability(): Promise<void> {
+    for (const m of this.masters.values()) {
       const alive = await this.probe(m.svc.ip, SNAPCAST_TCP_PORT)
-      if (alive) {
-        m.lastSeen = Date.now()
-        continue
+      if (alive !== m.reachable) {
+        console.log(`[snapserver-monitor] Master ${m.svc.ip} ${alive ? 'reachable' : 'unreachable'}`)
       }
-      if (Date.now() - m.lastSeen > MASTER_TTL_MS) {
-        console.log(`[snapserver-monitor] Master TTL expired: ${name} @ ${m.svc.ip}`)
-        this.masters.delete(name)
-      }
+      m.reachable = alive
     }
   }
 
