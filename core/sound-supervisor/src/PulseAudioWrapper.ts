@@ -286,6 +286,11 @@ export class PulseAudioWrapper extends EventEmitter {
   // sinks). Used by the multiroom client to play snapcast straight to the DAC (Option C),
   // so PipeWire reports the true device latency to snapclient instead of hiding it behind
   // the balena-sound.output null sink + loopback. Returns null if none is up yet.
+  //
+  // CRITICAL: this MUST pick the same sink core/audio/start.sh select_hardware_sink() chose,
+  // or snapclient plays to a different device than the one the speaker is on (e.g. picking
+  // USB when the audio container routed to the 3.5mm soc_sound jack) → silence. We mirror its
+  // logic: honour AUDIO_OUTPUT when set, else the same priority order, else first available.
   async getHardwareSink(): Promise<string | null> {
     const sinks = await this.getSinks()
     const hw = sinks
@@ -293,7 +298,19 @@ export class PulseAudioWrapper extends EventEmitter {
       .filter(name =>
         name.startsWith('alsa_output.') && !name.includes('balena-sound') && name !== 'snapcast'
       )
-    return hw[0] ?? null
+    if (hw.length === 0) return null
+
+    const pref = process.env.AUDIO_OUTPUT
+    if (pref && pref.toUpperCase() !== 'AUTO') {
+      const match = hw.find(n => n.toLowerCase().includes(pref.toLowerCase()))
+      if (match) return match
+    }
+    // Same priority list as select_hardware_sink() in core/audio/start.sh.
+    for (const key of ['hifiberry', 'dac', 'soc_sound', 'usb', 'dac+', 'hdmi']) {
+      const match = hw.find(n => n.toLowerCase().includes(key))
+      if (match) return match
+    }
+    return hw[0]
   }
 
   async getSinkInputIndexBySource(sourceName: string): Promise<number | null> {

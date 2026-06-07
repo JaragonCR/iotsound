@@ -70,19 +70,12 @@ _spawn_snapclient() {
   local pa_latency_ms="${SOUND_MULTIROOM_PA_LATENCY_MS:-200}"
 
   # Option C: play snapcast straight to the hardware sink instead of the balena-sound.output
-  # null sink. PipeWire then reports the real device latency to snapclient (which compensates
-  # it) and a buffer stage is removed — the core cross-device sync fix. Fall back to the
-  # PulseAudio default sink (the audio container sets it to the detected HW sink) if the
-  # supervisor cannot report a hardware sink yet.
-  local hw_sink
-  hw_sink=$(curl -sf "$SOUND_SUPERVISOR/audio/output-sink" 2>/dev/null || true)
-  if [[ -n "$hw_sink" ]]; then
-    export PULSE_SINK="$hw_sink"
-  else
-    unset PULSE_SINK
-  fi
+  # null sink, so PipeWire reports the real device latency to snapclient. The caller passes a
+  # verified, non-empty hardware sink ($2). We must NEVER target the PA default sink: it is
+  # balena-sound.input (a null sink), and snapclient segfaults / plays into the void on it.
+  export PULSE_SINK="$2"
 
-  echo "[snapclient] Starting → $target (latency ${latency_ms}ms, pulse buffer ${pa_latency_ms}ms, sink ${PULSE_SINK:-<default>}, hostID $SNAPCAST_CLIENT_ID)"
+  echo "[snapclient] Starting → $target (latency ${latency_ms}ms, pulse buffer ${pa_latency_ms}ms, sink $PULSE_SINK, hostID $SNAPCAST_CLIENT_ID)"
   PULSE_LATENCY_MSEC="$pa_latency_ms" \
   /usr/bin/snapclient \
     --player pulse \
@@ -101,8 +94,16 @@ echo "Starting multi-room client (mode: $MODE)..."
 # no container restart. If snapclient dies, we re-evaluate and respawn in place too.
 while true; do
   SNAPSERVER=$(_wait_for_target)
-  echo "[snapclient] Target acquired: $SNAPSERVER"
-  _spawn_snapclient "$SNAPSERVER"
+  # Resolve the hardware sink BEFORE spawning. If the supervisor cannot report one yet,
+  # wait — do not fall back to the default sink (balena-sound.input null sink → segfault).
+  HW_SINK=$(curl -sf "$SOUND_SUPERVISOR/audio/output-sink" 2>/dev/null || true)
+  if [[ -z "$HW_SINK" ]]; then
+    echo "[snapclient] Target $SNAPSERVER ready but no hardware sink reported yet — waiting"
+    sleep 2
+    continue
+  fi
+  echo "[snapclient] Target acquired: $SNAPSERVER (sink $HW_SINK)"
+  _spawn_snapclient "$SNAPSERVER" "$HW_SINK"
   SNAPCLIENT_PID=$(cat "$SNAPCLIENT_PID_FILE" 2>/dev/null || true)
 
   while [[ -n "$SNAPCLIENT_PID" ]] && kill -0 "$SNAPCLIENT_PID" 2>/dev/null; do
