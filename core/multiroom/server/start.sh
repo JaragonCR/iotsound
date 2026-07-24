@@ -31,11 +31,14 @@ fi
 if [[ "$MODE" == "MULTI_ROOM" ]]; then
   echo "Starting multi-room server..."
 
-  REQUESTED_BUFFER_MS=${SOUND_MULTIROOM_BUFFER_MS:-400}
+  # Default 600ms: high-latency output sinks (e.g. Pi 3 HDMI/mailbox, ~450-500ms) underrun
+  # with a 400ms buffer, so the out-of-box value must clear typical sink latency + margin.
+  # Override per-fleet/device with SOUND_MULTIROOM_BUFFER_MS for lower-latency hardware.
+  REQUESTED_BUFFER_MS=${SOUND_MULTIROOM_BUFFER_MS:-600}
   CLIENT_LATENCY_MS=${SOUND_MULTIROOM_LATENCY:-0}
   if ! [[ "$REQUESTED_BUFFER_MS" =~ ^[0-9]+$ ]]; then
-    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BUFFER_MS '$REQUESTED_BUFFER_MS', falling back to 400ms"
-    REQUESTED_BUFFER_MS=400
+    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BUFFER_MS '$REQUESTED_BUFFER_MS', falling back to 600ms"
+    REQUESTED_BUFFER_MS=600
   fi
   if ! [[ "$CLIENT_LATENCY_MS" =~ ^-?[0-9]+$ ]]; then
     echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_LATENCY '$CLIENT_LATENCY_MS', falling back to 400ms"
@@ -116,8 +119,8 @@ SNAPEOF
     echo "[pacat] Started (PID: $PACAT_PID)"
   }
 
-  # Stop pacat in place (transient-master demotion). snapserver and the held FIFO fd stay
-  # alive, so the container never restarts and the audio graph is untouched.
+  # Stop pacat in place (transient-master demotion). snapserver stays alive; the FIFO
+  # write-end is released separately (see release_fifo) so the stream resets cleanly.
   stop_pacat() {
     if [[ -n "$PACAT_PID" ]] && kill -0 "$PACAT_PID" 2>/dev/null; then
       echo "[pacat] Stopping (PID $PACAT_PID)"
@@ -125,6 +128,34 @@ SNAPEOF
       wait "$PACAT_PID" 2>/dev/null || true
     fi
     PACAT_PID=""
+  }
+
+  # FIFO write-end lifecycle (fd 3). The write-end is held open ONLY while this device is
+  # the sourcing master:
+  #  - Held WHILE ACTIVE so a pacat crash/restart mid-song never drops the last writer →
+  #    snapserver sees no EOF and playback stays seamless across pacat recovery.
+  #  - RELEASED ON DEMOTE so snapserver reads EOF and the pipe stream goes cleanly idle.
+  #    On the next promote it re-emits a fresh FLAC header to (re)connecting clients.
+  # This is the wedge fix: previously fd 3 was held open forever, so a demote→promote left
+  # snapserver's FLAC encoder mid-stream with no fresh header → reconnecting snapclients
+  # segfaulted. Tying the write-end to the active state lets snapserver reset the stream.
+  HOLDING_FIFO=0
+  hold_fifo() {
+    if [[ "$HOLDING_FIFO" == "0" ]]; then
+      # Open read-write (<>) rather than write-only (>): on Linux this never blocks,
+      # so a re-open on promote cannot hang the reconcile loop even if snapserver is
+      # momentarily not reading. We only ever hold it (never read fd 3), so snapserver
+      # still consumes all of pacat's data.
+      exec 3<>"$FIFO"
+      HOLDING_FIFO=1
+    fi
+  }
+  release_fifo() {
+    if [[ "$HOLDING_FIFO" == "1" ]]; then
+      exec 3>&-
+      HOLDING_FIFO=0
+      echo "[multiroom-server] Released FIFO write-end — stream idle until next promote"
+    fi
   }
 
   is_active() {
@@ -146,9 +177,10 @@ SNAPEOF
   /usr/bin/snapserver --config /tmp/snapserver.conf &
   SNAPSERVER_PID=$!
 
-  # Hold the FIFO write-end open in this shell so snapserver never reads EOF while
-  # pacat is stopped/restarting. Blocks here until snapserver opens the read end.
-  exec 3>"$FIFO"
+  # Open the FIFO write-end once at startup so snapserver's blocking pipe-open completes
+  # and it can bind its control/stream ports. From here the write-end is reconciled against
+  # the active state in the loop below (held while sourcing, released on demote).
+  hold_fifo
 
   # Confirm snapserver actually bound its ports before doing anything else. If it is wedged
   # (alive but not listening, e.g. a port still held by a previous instance), exit so the
@@ -168,9 +200,10 @@ SNAPEOF
 
   # Reconcile loop: pacat runs only while the supervisor reports this device as the
   # SOURCING master (/multiroom/active). Promotion and demotion are an in-place pacat
-  # start/stop — snapserver and the FIFO stay up, so there is no container churn and no
-  # audio-graph teardown on either transition. Also covers pacat crash recovery, and
-  # self-heals a snapserver that stops listening mid-life.
+  # start/stop — snapserver stays up, so there is no container churn and no audio-graph
+  # teardown. The FIFO write-end is held while active and released on demote so snapserver
+  # resets its FLAC stream between sessions (see hold_fifo/release_fifo). Also covers pacat
+  # crash recovery, and self-heals a snapserver that stops listening mid-life.
   POLL_S="${SOUND_MULTIROOM_POLL_S:-2}"
   echo "[multiroom-server] snapserver listening on 1780 — reconciling pacat against /multiroom/active (every ${POLL_S}s)"
   _unhealthy=0
@@ -185,6 +218,8 @@ SNAPEOF
       fi
     fi
     if is_active; then
+      # Hold the write-end while sourcing so a pacat crash/restart stays seamless.
+      hold_fifo
       if [[ -z "$PACAT_PID" ]] || ! kill -0 "$PACAT_PID" 2>/dev/null; then
         [[ -n "$PACAT_PID" ]] && echo "[pacat-watchdog] pacat exited — restarting"
         start_pacat
@@ -194,6 +229,9 @@ SNAPEOF
         echo "[multiroom-server] Demoted — stopping pacat in place"
         stop_pacat
       fi
+      # Release the write-end after pacat is down so snapserver reads EOF and resets the
+      # stream — the next promote emits a fresh FLAC header instead of a wedged mid-stream.
+      release_fifo
     fi
     sleep "$POLL_S"
   done
