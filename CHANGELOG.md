@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.1
+## (2026-07-24)
+
+* fix(multiroom): raise default snapcast buffer 400->600ms for high-latency sinks [JaragonCR]
+* fix(multiroom): reset snapserver FLAC stream on demote to stop client segfault loop [JaragonCR]
+
 # v5.1.0
 ## (2026-06-07)
 

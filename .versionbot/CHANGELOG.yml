@@ -1,4 +1,76 @@
 - commits:
+    - subject: "fix(multiroom): raise default snapcast buffer 400->600ms for
+        high-latency sinks"
+      hash: e630f74b8d73f93d0d8bf0904651d51e761c7783
+      body: >
+        The 400ms default underruns high-latency output sinks (Pi 3
+        HDMI/mailbox,
+
+        ~450-500ms) out of the box, forcing a manual SOUND_MULTIROOM_BUFFER_MS
+        override.
+
+        600ms clears typical sink latency plus margin so multiroom is
+        dropout-free by
+
+        default; low-latency hardware can still override down. Addresses the
+        base-value
+
+        half of the HDMI/buffer report (#45); the segfault half is the FLAC
+        stream reset.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(multiroom): reset snapserver FLAC stream on demote to stop client
+        segfault loop"
+      hash: 6d2e89201178bab3495211813636f85456c06144
+      body: >
+        The server held the FIFO write-end (fd 3) open for its whole life so
+        snapserver
+
+        never saw EOF across pacat stop/start. That left the FLAC stream
+        mid-encode
+
+        across a demote->promote: reconnecting snapclients got no fresh
+        STREAMINFO header
+
+        and segfaulted in a tight connect->crash->retry loop (observed on a Pi 3
+        bcm2835
+
+        mailbox sink), which only a full snapserver restart cleared.
+
+
+        Tie the FIFO write-end to the sourcing state instead: hold it while
+        active (so a
+
+        pacat crash/restart mid-song stays seamless), release it on demote so
+        snapserver
+
+        reads EOF and the pipe stream goes cleanly idle, then re-emits a fresh
+        FLAC header
+
+        on the next promote. Open the write-end read-write (<>) so a re-open can
+        never
+
+        block the reconcile loop.
+
+
+        Keeps FLAC (bandwidth-efficient on lossy WiFi) and the churn-free
+        in-place pacat
+
+        transitions; no snapserver restart, no port-rebind race.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 5.1.1
+  title: ""
+  date: 2026-07-24T23:39:53.152Z
+- commits:
     - subject: "feat(multiroom): transient source-master, Option C direct-to-DAC sync,
         hardening"
       hash: f45365f12838b4fb741ca8369a738dad0024be33
