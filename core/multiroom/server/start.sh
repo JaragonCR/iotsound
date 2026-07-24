@@ -31,11 +31,14 @@ fi
 if [[ "$MODE" == "MULTI_ROOM" ]]; then
   echo "Starting multi-room server..."
 
-  REQUESTED_BUFFER_MS=${SOUND_MULTIROOM_BUFFER_MS:-400}
+  # Default 600ms: high-latency output sinks (e.g. Pi 3 HDMI/mailbox, ~450-500ms) underrun
+  # with a 400ms buffer, so the out-of-box value must clear typical sink latency + margin.
+  # Override per-fleet/device with SOUND_MULTIROOM_BUFFER_MS for lower-latency hardware.
+  REQUESTED_BUFFER_MS=${SOUND_MULTIROOM_BUFFER_MS:-600}
   CLIENT_LATENCY_MS=${SOUND_MULTIROOM_LATENCY:-0}
   if ! [[ "$REQUESTED_BUFFER_MS" =~ ^[0-9]+$ ]]; then
-    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BUFFER_MS '$REQUESTED_BUFFER_MS', falling back to 400ms"
-    REQUESTED_BUFFER_MS=400
+    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BUFFER_MS '$REQUESTED_BUFFER_MS', falling back to 600ms"
+    REQUESTED_BUFFER_MS=600
   fi
   if ! [[ "$CLIENT_LATENCY_MS" =~ ^-?[0-9]+$ ]]; then
     echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_LATENCY '$CLIENT_LATENCY_MS', falling back to 400ms"
