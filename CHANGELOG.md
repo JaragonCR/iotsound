@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.2
+## (2026-07-25)
+
+* fix(deps): patch flagged security advisories in sound-supervisor [JaragonCR]
+
 # v5.1.1
 ## (2026-07-24)
 

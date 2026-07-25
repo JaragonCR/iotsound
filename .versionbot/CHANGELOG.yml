@@ -1,4 +1,27 @@
 - commits:
+    - subject: "fix(deps): patch flagged security advisories in sound-supervisor"
+      hash: 62142abba3edbbe0cdcfb48729fc541f34b4f623
+      body: >
+        npm audit fix for the flagged transitive advisories across axios,
+        body-parser,
+
+        brace-expansion (high), and js-yaml (high) — the 4 packages behind
+        Dependabot's
+
+        12 GHSA advisories (3 high, 8 moderate, 1 low). Lock-file-only (all
+        transitive);
+
+        npm audit now reports 0 vulnerabilities and tsc --noEmit is clean.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 5.1.2
+  title: ""
+  date: 2026-07-25T00:38:11.664Z
+- commits:
     - subject: "fix(multiroom): raise default snapcast buffer 400->600ms for
         high-latency sinks"
       hash: e630f74b8d73f93d0d8bf0904651d51e761c7783
