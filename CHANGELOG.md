@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.3
+## (2026-08-06)
+
+* chore(librespot): build go-librespot from upstream latest, drop fork [JaragonCR]
+
 # v5.1.2
 ## (2026-07-25)
 

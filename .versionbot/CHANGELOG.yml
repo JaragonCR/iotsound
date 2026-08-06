@@ -1,4 +1,25 @@
 - commits:
+    - subject: "chore(librespot): build go-librespot from upstream latest, drop fork"
+      hash: 15532ddc52d2cc97b2fbab9c67ce6320c5517208
+      body: >
+        devgianlu merged the DJ support (PR #352, clean reimplementation with
+
+        narration/TTS) and our audio-key-skip freeze fix is upstream too, so the
+
+        JaragonCR/go-librespot fork is no longer needed. Clone the upstream
+        default
+
+        branch (unpinned, --depth 1) so DJ/Spotify compatibility stays current.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 5.1.3
+  title: ""
+  date: 2026-08-06T02:49:24.325Z
+- commits:
     - subject: "fix(deps): patch flagged security advisories in sound-supervisor"
       hash: 62142abba3edbbe0cdcfb48729fc541f34b4f623
       body: >
