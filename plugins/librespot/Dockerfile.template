@@ -12,7 +12,12 @@ RUN apk add --no-cache \
     libvorbis-dev \
     flac-dev
 
-RUN git clone --branch feature/dj-clean https://github.com/JaragonCR/go-librespot.git /go-librespot
+# Build go-librespot from upstream latest (devgianlu/go-librespot default branch).
+# Intentionally UNPINNED — always builds the newest upstream, which now carries the
+# clean DJ support (PR #352, incl. narration/TTS) and our upstreamed audio-key-skip
+# fix. Reproducibility is traded for always-current DJ/Spotify compatibility (same
+# rationale as the unpinned yt-dlp in the karaoke fetcher).
+RUN git clone --depth 1 https://github.com/devgianlu/go-librespot.git /go-librespot
 WORKDIR /go-librespot
 RUN go mod download
 RUN go build -v -o /daemon ./cmd/daemon
