@@ -173,8 +173,8 @@ AUDIO_MIC_INPUT_VOLUME=40
 Control audio latency for different use cases.
 
 **Configuration:**
-- `SOUND_INPUT_LATENCY` - Loopback input latency in milliseconds (default: 200ms)
-- `SOUND_OUTPUT_LATENCY` - Loopback output latency in milliseconds (default: 200ms)
+- `SOUND_INPUT_LATENCY` - Loopback input latency in milliseconds (default: 100ms, auto-raised to 500ms on HDMI/mailbox sinks)
+- `SOUND_OUTPUT_LATENCY` - Loopback output latency in milliseconds (default: 100ms, auto-raised to 500ms on HDMI/mailbox sinks)
 
 **For Karaoke:**
 ```

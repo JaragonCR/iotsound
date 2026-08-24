@@ -8,7 +8,7 @@ We've outlined the installation steps below. If you want a step-by-step tutorial
 
 ## Hardware required
 
-![hardware](https://raw.githubusercontent.com/iotsound/iotsound/master/docs/images/hardware.jpeg)
+![hardware](images/hardware.jpeg)
 
 - Any device from our [supported devices list](device-support#recommended). For the best experience, we recommend using a Raspberry Pi 3B+ or 4B.
 - An SD Card! We recommend the Sandisk Extreme Pro series. 8GB should be plenty enough for this project.
@@ -30,11 +30,11 @@ One-click deploy is the easiest way to get started with IoTSound as it allows yo
 
 Click this button to go straight to balenaCloud fleet creation, where IoTSound app will be pre-loaded:
 
-[![balena deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/iotsound/iotsound&defaultDeviceType=raspberry-pi)
+[![balena deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/JaragonCR/iotsound&defaultDeviceType=raspberry-pi)
 
 ### Provision your device
 
-![sdcard](https://raw.githubusercontent.com/iotsound/iotsound/master/docs/images/sdcard.gif)
+![sdcard](images/sdcard.gif)
 
 Once your fleet has been created you'll need to add a device to it:
 
@@ -62,7 +62,7 @@ For example, if you don't plan on using the Spotify integration, you can edit th
 
 - Install the [balena CLI tools](https://github.com/balena-io/balena-cli/blob/master/INSTALL.md)
 - Login with `balena login`
-- Download this [app](https://github.com/iotsound/iotsound/) and from the project directory run `balena push <fleetName>` where `<fleetName>` is the name you gave your balenaCloud fleet in the first step.
+- Download this [app](https://github.com/JaragonCR/iotsound/) and from the project directory run `balena push <fleetName>` where `<fleetName>` is the name you gave your balenaCloud fleet in the first step.
 
 ## Upgrade
 
@@ -72,7 +72,7 @@ To deploy bug fixes or new features to your IoTSound application, the process is
 
 - Install the [balena CLI tools](https://github.com/balena-io/balena-cli/blob/master/INSTALL.md)
 - Login with `balena login`
-- Download this [project](https://github.com/iotsound/iotsound/) and from the project directory run `balena push <appName>` where `<appName>` is the name you gave your balenaCloud application during the provision step above.
+- Download this [project](https://github.com/JaragonCR/iotsound/) and from the project directory run `balena push <appName>` where `<appName>` is the name you gave your balenaCloud application during the provision step above.
 
 > **Note:** If you receive the message "Application is ambiguous" during the push, then you will need to specify your balenaCloud username along with the `<appName>`, ie. `balena push <username>/<appName>`
 
@@ -80,11 +80,11 @@ To deploy bug fixes or new features to your IoTSound application, the process is
 
 To update your application via one-click deploy just click the Deploy with balena button below. Make sure you select your already existing IoTSound application so you don't create a new one!
 
-[![balena deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/iotsound/iotsound&defaultDeviceType=raspberry-pi)
+[![balena deploy button](https://balena.io/deploy.svg)](https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/JaragonCR/iotsound&defaultDeviceType=raspberry-pi)
 
 ## Having trouble?
 
 If you are running into issues getting your IoTSound app running, please try the following:
 
-1. Check the [support and troubleshooting guide](https://iotsound.github.io/docs/07-support.html) for common issues and how to resolve them.
-2. Create an issue on the [IoTSound GitHub project](https://github.com/iotsound/iotsound/issues/new/choose) if you find your issue may be a problem with IoTSound.
+1. Check the [support and troubleshooting guide](07-support.md) for common issues and how to resolve them.
+2. Create an issue on the [IoTSound GitHub project](https://github.com/JaragonCR/iotsound/issues/new/choose) if you find your issue may be a problem with IoTSound.

@@ -77,8 +77,8 @@ Set these in your balenaCloud fleet or device variables:
 | `AUDIO_INPUT_BOXY_CUT` | Peaking gain at 500 Hz (dB) to reduce boxy sound | `-2` |
 | `AUDIO_INPUT_PROXIMITY_CUT` | Peaking gain at 250 Hz (dB) to reduce proximity effect | `-2` |
 | `SOUND_ENABLE_SOUNDCARD_INPUT` | Route soundcard mic into the audio mix (set to any value to enable) | unset |
-| `SOUND_INPUT_LATENCY` | Input loopback latency in ms | `200` |
-| `SOUND_OUTPUT_LATENCY` | Output loopback latency in ms | `200` |
+| `SOUND_INPUT_LATENCY` | Input loopback latency in ms (auto-raised to `500` on HDMI/mailbox sinks) | `100` |
+| `SOUND_OUTPUT_LATENCY` | Output loopback latency in ms (auto-raised to `500` on HDMI/mailbox sinks) | `100` |
 
 #### Multiroom (Snapcast)
 
@@ -89,7 +89,7 @@ See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of roles, grou
 | `SOUND_MULTIROOM_ROLE` | `auto` (the device you play to becomes the group master), `host` (always master), `join` (always client), `disabled` (standalone) | `auto` |
 | `SOUND_GROUP_NAME` | Multiroom group — devices with the same name sync together | `default` |
 | `SOUND_MULTIROOM_CODEC` | Snapcast stream codec: `flac` (lossless, Wi‑Fi‑friendly), `pcm`, `opus`, `ogg` | `flac` |
-| `SOUND_MULTIROOM_BUFFER_MS` | Snapserver stream buffer in ms — increase if all Snapcast clients stutter | `400` |
+| `SOUND_MULTIROOM_BUFFER_MS` | Snapserver stream buffer in ms — increase if all Snapcast clients stutter | `600` |
 | `SOUND_MULTIROOM_CAPTURE_MS` | Master-side pacat capture latency in ms | `50` |
 | `SOUND_MULTIROOM_PA_LATENCY_MS` | PulseAudio sink-input buffer for snapclient output in ms | `200` |
 | `SOUND_MULTIROOM_LATENCY` | **Advanced.** Extra fixed snapclient `--latency` offset in ms. Leave at `0` — snapclient plays direct to the hardware sink and Snapcast compensates the real device latency automatically, so no per-device tuning is needed. | `0` |
