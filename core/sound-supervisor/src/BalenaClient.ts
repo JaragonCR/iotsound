@@ -1,3 +1,4 @@
+import './jsYamlCompat' // must precede balena-sdk: restores js-yaml legacy APIs for balena-settings-client
 import { getSdk, BalenaSDK } from 'balena-sdk'
 
 const sdk: BalenaSDK = getSdk({ apiUrl: 'https://api.balena-cloud.com/' })

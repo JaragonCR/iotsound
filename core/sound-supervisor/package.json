@@ -14,7 +14,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "axios": "^1.16.0",
-    "balena-sdk": "^23.0.0",
+    "balena-sdk": "^23.2.15",
     "express": "^5.0.0"
   },
   "devDependencies": {
@@ -25,7 +25,9 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "balena-register-device": "9.0.33-build-renovate-npm-uuid-vulnerability-cc37e4c50572a1495164363cf3d64af10f8325e9-1",
-    "diff": ">=4.0.4"
+    "balena-register-device": ">=9.0.35",
+    "diff": ">=4.0.4",
+    "js-yaml": "^5.3.0",
+    "brace-expansion": ">=5.0.9"
   }
 }
