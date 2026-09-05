@@ -1,5 +1,14 @@
 name: Flowzone
 on:
+  # Flowzone's trust-boundary model is "pull_request + push": pull_request runs
+  # PR validation without secrets (safe for forks), and push to the default branch
+  # is what actually builds and DEPLOYS the balena release. The push trigger was
+  # missing after pull_request_target was removed, so merges bumped the version but
+  # never produced a deployable release (no push-event Flowzone runs since Apr 2026).
+  push:
+    branches:
+      - "main"
+      - "master"
   pull_request:
     types: [opened, synchronize, closed]
     branches:
