@@ -1,4 +1,55 @@
 - commits:
+    - subject: "fix(librespot): install libmpg123 for upstream mp3 support"
+      hash: fa80f35aaa9de72c2a1b65d92c7a81c49387dc7e
+      body: >
+        Real root cause of the failing librespot build (every build since the
+        Aug 6
+
+        fork->upstream switch in 15532dd; version 5.1.3 never released).
+        Upstream
+
+        devgianlu/go-librespot added a CGO `mp3` package that needs libmpg123
+        via
+
+        pkg-config:
+
+          # github.com/devgianlu/go-librespot/mp3
+          # [pkg-config --cflags -- libmpg123]
+          Package 'libmpg123' not found
+
+        The builder image installed alsa/ogg/vorbis/flac dev packages but not
+        mpg123,
+
+        so `go build ./cmd/daemon` failed at the mp3 package. This is unrelated
+        to the
+
+        Go toolchain version — golang 1.26 and 1.27 fail identically.
+
+
+        Fix, verified by a full local docker build of both stages:
+
+        - builder stage: add `mpg123-dev` (provides libmpg123.pc for the
+        compile)
+
+        - runtime stage: add `mpg123-libs` (provides libmpg123.so to link)
+
+
+        Also restores golang 1.27 on both go builders (librespot + karaoke); the
+
+        earlier 1.27->1.26 revert (5507fc6) was a wrong diagnosis — the Go
+        version was
+
+        never the cause.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 5.1.4
+  title: ""
+  date: 2026-09-05T21:35:28.908Z
+- commits:
     - subject: "chore(librespot): build go-librespot from upstream latest, drop fork"
       hash: 15532ddc52d2cc97b2fbab9c67ce6320c5517208
       body: >
