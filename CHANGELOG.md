@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.6
+## (2026-09-05)
+
+* chore(deps): annotate dependency bump as patch [github-actions[bot]]
+
 # v5.1.5
 ## (2026-09-05)
 

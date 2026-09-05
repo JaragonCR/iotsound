@@ -1,4 +1,15 @@
 - commits:
+    - subject: "chore(deps): annotate dependency bump as patch"
+      hash: 5f7ad51bc1187d4ae20bc3d6c4ae3fd1f3beab75
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: github-actions[bot]
+  version: 5.1.6
+  title: ""
+  date: 2026-09-05T23:06:29.271Z
+- commits:
     - subject: "chore(versionist): auto-maintain every release-version location"
       hash: 444252164c16bfdcc0a7597348fd816fc908b0a7
       body: >
