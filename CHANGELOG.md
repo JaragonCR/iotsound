@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.5
+## (2026-09-05)
+
+* chore(versionist): auto-maintain every release-version location [JaragonCR]
+* docs: fork-rebrand links, fix stale defaults and dead references [JaragonCR]
+* fix(deps): bump js-yaml to 5.x and modernize dep/Docker versions [JaragonCR]
+
 # v5.1.4
 ## (2026-09-05)
 

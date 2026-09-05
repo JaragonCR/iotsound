@@ -1,4 +1,161 @@
 - commits:
+    - subject: "chore(versionist): auto-maintain every release-version location"
+      hash: 444252164c16bfdcc0a7597348fd816fc908b0a7
+      body: >
+        Previously updateVersion only rewrote balena.yml and VERSION, so
+        README's
+
+        title badge and the root package.json "version" were hand-synced and
+        drifted
+
+        (package.json had been stuck at 4.7.0 while the release was 5.1.2).
+        Versionist
+
+        now owns all four locations on every bump:
+
+
+        - balena.yml (release version)
+
+        - VERSION
+
+        - README.md "# IoTSound — vX.Y.Z" title
+
+        - root package.json "version" (first occurrence only)
+
+
+        Component manifests such as core/sound-supervisor/package.json are the
+        module
+
+        version, not the release version, and are intentionally left untouched.
+        All
+
+        four replacement regexes were dry-run verified against current file
+        contents.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "docs: fork-rebrand links, fix stale defaults and dead references"
+      hash: e755ac535f61682e582fd83c8d8fa71273e3c477
+      body: >
+        Full documentation audit and cleanup across the repo.
+
+
+        Fork rebranding (docs pointed users at upstream iotsound/iotsound):
+
+        - _config.yml: repository, GitHub nav link, "Deploy to balenaCloud"
+        button,
+          and footer license now target JaragonCR/iotsound; footer license corrected
+          Apache 2.0 -> MIT (matches LICENSE); title casing IotSound -> IoTSound.
+        - 01-getting-started.md: deploy buttons + download/push links + issue
+        link
+          now point to the fork (they previously deployed/cloned upstream code).
+        - Issue-report links in 07-support.md, 08-FAQ.md, index.md now target
+        the fork.
+
+        - CONTRIBUTING.md: fixed broken [architecture][..] link syntax.
+
+        - Converted upstream raw.githubusercontent image URLs to the fork's own
+          docs/images copies (index, ARCHITECTURE, 01-getting-started, 03-customization).
+        - Fixed broken iotsound.github.io// double-slash links in
+        05-audio-interfaces
+          and the stale CLI-deploy link in 04-plugins (now relative).
+
+        Stale values / dead references corrected against code:
+
+        - SOUND_MULTIROOM_BUFFER_MS default 400 -> 600 (README,
+        03-customization,
+          MULTIROOM) to match core/multiroom/server/start.sh.
+        - SOUND_INPUT/OUTPUT_LATENCY default 200 -> 100 (auto-raised to 500 on
+          HDMI/mailbox) in README, 03-customization, Audio_Configuration.
+        - AUDIO_OUTPUT (03-customization): removed obsolete balena-audio-block
+          interface (RPI_*, Intel NUC, USB>DAC priority); documented the actual
+          AUTO/substring/number selection with DAC>USB>HDMI>built-in priority.
+        - Bluetooth (02-usage): BlueALSA -> PipeWire BlueZ backend (actual
+        routing).
+
+        - Removed SOUND_SPOTIFY_ENABLE_CACHE row (no such env var in code).
+
+        - ownership-map: ElectionManager.ts (deleted) -> index.ts play-triggered
+          promotion; snapserver.conf path -> generated /tmp/snapserver.conf.
+        - dac_request.md: docs link -> fork GitHub blob.
+
+
+        Version consistency:
+
+        - Root package.json 4.7.0 -> 5.1.2 (matched balena.yml / VERSION /
+        README;
+          versionist manages only balena.yml + VERSION, so this metadata had drifted).
+
+        Left as-is: descriptive "fork of iotsound/iotsound" text, upstream
+        historical
+
+        issue/PR citations, and dated audit/validation records (point-in-time).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(deps): bump js-yaml to 5.x and modernize dep/Docker versions"
+      hash: d08c502c110060c31c2ac89b3bfce0ef0402a5c3
+      body: >
+        Security:
+
+        - js-yaml 3.15.0 -> 5.3.0 to fix the quadratic !!omap CPU DoS
+          (CVE-2026-59870 / GHSA-5p4m-2wfm-xmqj). The fix was never backported to the
+          3.x/4.x lines that our transitive chain (balena-sdk -> balena-settings-client)
+          would otherwise resolve. balena-settings-client 6.0.3 still calls the legacy
+          jsYaml.safeLoad API removed in js-yaml 4.0, so src/jsYamlCompat.ts restores
+          safeLoad/safeLoadAll/safeDump on the single hoisted js-yaml instance before
+          balena-sdk is imported. Verified: balena-settings-client parse() works on 5.3.0.
+        - brace-expansion -> >=5.0.9 (GHSA-rgw5-rvv9-x895 DoS, devDep).
+
+        - Replaced the balena-register-device renovate build-hash override with
+        the
+          clean published release (>=9.0.35).
+
+        Dependency hygiene (sound-supervisor):
+
+        - balena-sdk 23.2.0 -> 23.2.15
+
+        - axios 1.18.1 -> 1.19.0
+
+        - @types/node 24.12.2 -> 24.13.3 (held on 24.x to match Node 24 runtime)
+
+        - typescript held at 5.9.3 (7.x is a major migration, out of scope)
+
+
+        Docker version pins:
+
+        - sound-supervisor: npm 11.13.0 -> 11.19.0 (in-major)
+
+        - librespot / karaoke builders: golang 1.26 -> 1.27 (build-time only)
+
+        - airplay: shairport-sync 5.0.1 -> 5.2.2.2 (RUNTIME change; validate on
+        device)
+
+        - snapcast left at 0.35.0 (already latest); base OS tags left on current
+        majors
+
+
+        npm audit clean (0 vulns, root + supervisor); tsc --noEmit clean; full
+        build
+
+        compiles the shim. Docker changes still need an on-device build to
+        validate.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 5.1.5
+  title: ""
+  date: 2026-09-05T21:48:51.263Z
+- commits:
     - subject: "fix(librespot): install libmpg123 for upstream mp3 support"
       hash: fa80f35aaa9de72c2a1b65d92c7a81c49387dc7e
       body: >
