@@ -17,7 +17,7 @@ Ensure that:
 - You correctly plugged an audio or HDMI cable to your device
 - You are connected to the device and streaming audio to it via any of the supported alternatives
 
-If you are using a DAC, make sure your DAC is on the supported list [here](audio-interfaces#dac-boards) and that you applied the required configuration changes. If your DAC is not on the list, please let us know by opening an [issue](https://github.com/iotsound/iotsound/issues/new). 
+If you are using a DAC, make sure your DAC is on the supported list [here](audio-interfaces#dac-boards) and that you applied the required configuration changes. If your DAC is not on the list, please let us know by opening an [issue](https://github.com/JaragonCR/iotsound/issues/new). 
 
 ### Audio cuts or is very stuttery
 
@@ -204,4 +204,4 @@ The container exits automatically when `LOG_LEVEL` is removed or set to any valu
 
 ## Contact us
 
-If you have any questions regarding IoTSound, whether it's an issue not listed in the troubleshooting section, a request for a new feature or DAC, or simply if you want to discuss about the project, feel free to open an [issue](https://github.com/iotsound/iotsound/issues/new) on our GitHub repository. Thanks for trying out IoTSound!
+If you have any questions regarding IoTSound, whether it's an issue not listed in the troubleshooting section, a request for a new feature or DAC, or simply if you want to discuss about the project, feel free to open an [issue](https://github.com/JaragonCR/iotsound/issues/new) on our GitHub repository. Thanks for trying out IoTSound!

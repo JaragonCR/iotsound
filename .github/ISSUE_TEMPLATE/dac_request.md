@@ -6,7 +6,7 @@ labels: DAC
 assignees: ""
 ---
 
-**Note: please read the [DAC section](https://iotsound.github.io/docs/05-audio-interfaces.html#dac-boards) on our official documentation site before proceeding.**
+**Note: please read the [DAC section](https://github.com/JaragonCR/iotsound/blob/master/docs/05-audio-interfaces.md#dac-boards) before proceeding.**
 
 **Do** open an issue if you:
 

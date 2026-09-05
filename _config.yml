@@ -1,5 +1,5 @@
 # Site settings
-title: "IotSound"
+title: "IoTSound"
 description: "Build a single or multi-room streamer for an existing audio device. Supports Bluetooth, Airplay and Spotify Connect"
 baseurl: "/"
 url: "https://iotsound.github.io"
@@ -8,7 +8,7 @@ url: "https://iotsound.github.io"
 remote_theme: just-the-docs/just-the-docs
 
 # Repository
-repository: "iotsound/iotsound"
+repository: "JaragonCR/iotsound"
 
 # Logo
 logo: "logo.png"
@@ -23,7 +23,7 @@ titles_from_headings:
   collections: true
 
 # Footer
-footer_content: "Distributed under the <a href=\"https://github.com/iotsound/iotsound/blob/master/LICENSE\">Apache 2.0 license.</a>"
+footer_content: "Distributed under the <a href=\"https://github.com/JaragonCR/iotsound/blob/master/LICENSE\">MIT license.</a>"
 
 # Back to top link
 back_to_top: true
@@ -39,8 +39,8 @@ color_scheme: light
 nav_sort: case_sensitive
 nav_external_links:
   - title: "GitHub Repository"
-    url: "https://github.com/iotsound/iotsound"
+    url: "https://github.com/JaragonCR/iotsound"
     hide_icon: false
   - title: "Deploy to balenaCloud"
-    url: "https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/iotsound/iotsound"
+    url: "https://dashboard.balena-cloud.com/deploy?repoUrl=https://github.com/JaragonCR/iotsound"
     hide_icon: false

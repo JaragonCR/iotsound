@@ -15,8 +15,8 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | Play/stop promotion flow | `core/sound-supervisor/src/index.ts` | `core/audio/wireplumber/balena-play-detect.lua`, `SoundAPI.ts` | Plugin code |
 | Supervisor API/UI | `core/sound-supervisor/src/SoundAPI.ts` | `core/sound-supervisor/src/ui/` | Audio service |
 | mDNS advertise/browse | `core/sound-supervisor/src/SnapserverMonitor.ts` | `AvahiAdvertiser.ts`, `AvahiBrowser.ts`, `docs/architecture/mdns.md` | `multiroom-client` unless connection target is wrong |
-| Master election | `core/sound-supervisor/src/ElectionManager.ts` | `SnapserverMonitor.ts`, `SoundConfig.ts` | Snapserver config |
-| Snapserver capture/buffer | `core/multiroom/server/start.sh` | `core/multiroom/server/snapserver.conf`, `docs/architecture/audio-flow.md` | `snapclient` unless only one client stutters |
+| Master election (play-triggered promotion) | `core/sound-supervisor/src/index.ts` | `SnapserverMonitor.ts`, `SoundConfig.ts` | Snapserver config |
+| Snapserver capture/buffer | `core/multiroom/server/start.sh` | generated `/tmp/snapserver.conf` (written by start.sh), `docs/architecture/audio-flow.md` | `snapclient` unless only one client stutters |
 | Snapclient output/latency | `core/multiroom/client/start.sh` | `core/sound-supervisor/src/SoundAPI.ts` latency endpoint | `snapserver` unless every client stutters |
 | Direct fallback routing | `core/sound-supervisor/src/index.ts` | `PulseAudioWrapper.ts` | `core/audio/balena-sound.pa` |
 | Volume control | `core/sound-supervisor/src/PulseAudioWrapper.ts` | `SnapserverMonitor.ts`, `SoundAPI.ts` | Hardware selection code |

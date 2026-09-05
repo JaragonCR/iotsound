@@ -141,7 +141,7 @@ you may touch are the **buffers** that absorb network/CPU jitter, and only if yo
 
 | Symptom | Knob | Default |
 |---|---|---|
-| All clients stutter together | `SOUND_MULTIROOM_BUFFER_MS` (snapserver buffer) | `400` |
+| All clients stutter together | `SOUND_MULTIROOM_BUFFER_MS` (snapserver buffer) | `600` |
 | The master itself stutters at capture | `SOUND_MULTIROOM_CAPTURE_MS` (pacat buffer) | `50` |
 | One client pops/crackles locally | `SOUND_MULTIROOM_PA_LATENCY_MS` (client PA buffer) | `200` |
 | Frequent Wi‑Fi dropouts | leave codec at `flac` (lower bandwidth than `pcm`) | `flac` |

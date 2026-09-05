@@ -36,19 +36,35 @@ module.exports = {
     return level;
   },
 
-  // 'updateVersion' is the correct Versionist hook for a custom function
+  // 'updateVersion' is the correct Versionist hook for a custom function.
+  // It owns EVERY place the release version appears so they never drift apart.
+  // Component manifests (e.g. core/sound-supervisor/package.json) are NOT the
+  // release version and are deliberately left untouched.
   updateVersion: (cwd, version, cb) => {
     const fs = require('fs');
     const path = require('path');
 
-    // Update balena.yml
+    // 1. balena.yml — drives the balenaCloud release version.
     const balenaYmlPath = path.join(cwd, 'balena.yml');
     let balenaYml = fs.readFileSync(balenaYmlPath, 'utf8');
     balenaYml = balenaYml.replace(/^version:.*$/m, `version: ${version}`);
     fs.writeFileSync(balenaYmlPath, balenaYml);
 
-    // Update VERSION file
+    // 2. Plain VERSION file.
     fs.writeFileSync(path.join(cwd, 'VERSION'), version + '\n');
+
+    // 3. README title badge: "# IoTSound — vX.Y.Z".
+    const readmePath = path.join(cwd, 'README.md');
+    let readme = fs.readFileSync(readmePath, 'utf8');
+    readme = readme.replace(/^# IoTSound —.*$/m, `# IoTSound — v${version}`);
+    fs.writeFileSync(readmePath, readme);
+
+    // 4. Root package.json "version" (first occurrence only, so nested
+    // component manifests are never rewritten).
+    const pkgPath = path.join(cwd, 'package.json');
+    let pkg = fs.readFileSync(pkgPath, 'utf8');
+    pkg = pkg.replace(/"version":\s*"[^"]*"/, `"version": "${version}"`);
+    fs.writeFileSync(pkgPath, pkg);
 
     cb();
   }
