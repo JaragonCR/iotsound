@@ -1,7 +1,7 @@
 # ----------------------
 # Stage 1: Build go-librespot
 # ----------------------
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 RUN apk add --no-cache \
     git \
@@ -10,7 +10,8 @@ RUN apk add --no-cache \
     alsa-lib-dev \
     libogg-dev \
     libvorbis-dev \
-    flac-dev
+    flac-dev \
+    mpg123-dev
 
 # Build go-librespot from upstream latest (devgianlu/go-librespot default branch).
 # Intentionally UNPINNED — always builds the newest upstream, which now carries the
@@ -36,7 +37,8 @@ RUN apk add --no-cache \
     alsa-lib \
     libogg \
     libvorbis \
-    flac
+    flac \
+    mpg123-libs
 
 ENV PULSE_SERVER=tcp:localhost:4317
 
