@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.7
+## (2026-09-06)
+
+* chore(ci): remove redundant workflows, leaving Flowzone as the only trigger [JaragonCR]
+* fix(ci): add push trigger to Flowzone so merges deploy releases [JaragonCR]
+
 # v5.1.6
 ## (2026-09-05)
 

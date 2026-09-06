@@ -1,4 +1,63 @@
 - commits:
+    - subject: "chore(ci): remove redundant workflows, leaving Flowzone as the only
+        trigger"
+      hash: 70c4891912e547e0c273fa901eaebe12d4ee1683
+      body: >
+        Both duplicated logic that versionist.conf.js already performs, and each
+
+        added an extra workflow run per build:
+
+
+        - annotate-dependabot.yml: added `Change-type: patch` to Dependabot PRs,
+        but
+          getIncrementLevel() already forces dependabot/build(deps) bumps to patch when
+          no Change-type is present. It was also the last `pull_request_target` in the
+          repo (the trust-boundary trigger Flowzone rejects).
+        - sync-readme-version.yml: rewrote the `# IoTSound — vX.Y.Z` README
+        badge, which
+          updateVersion() already rewrites during the version bump (since ce92523). Now
+          a no-op that only produced a second commit/run per release.
+
+        Leaves flowzone.yml (push + pull_request) as the single, clean trigger.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+    - subject: "fix(ci): add push trigger to Flowzone so merges deploy releases"
+      hash: c82c1251dcfa8d5b74b6634067ad623073ce68b3
+      body: >
+        The pull_request_target -> pull_request migration (50f2236) removed the
+
+        secrets-exposing trigger correctly, but Flowzone's model is
+        "pull_request
+
+        + push": pull_request validates PRs without secrets, and *push to the
+
+        default branch* is what builds and deploys the balena release.
+
+
+        The push trigger was never added, so there have been no push-event
+        Flowzone
+
+        runs since 2026-04-22. Merges to master ran versionist (bumping to
+        v5.1.4,
+
+        v5.1.5) but never produced a deployable balena release -- the fleet
+        stayed
+
+        on 5.1.2+rev1. Restore the push trigger to complete the migration.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+      author: JaragonCR
+  version: 5.1.7
+  title: ""
+  date: 2026-09-06T16:40:32.480Z
+- commits:
     - subject: "chore(deps): annotate dependency bump as patch"
       hash: 5f7ad51bc1187d4ae20bc3d6c4ae3fd1f3beab75
       body: ""
