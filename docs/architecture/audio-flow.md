@@ -48,7 +48,7 @@ FIFO pipe  /tmp/snapserver-audio               (kernel pipe buffer, ~64 KB)
         │
         ▼
 snapserver  (multiroom-server container)
-        │  Stream buffer: 400 ms default
+        │  Stream buffer: 600 ms default (codec: flac)
         │  Env var: SOUND_MULTIROOM_BUFFER_MS   (set per-fleet or per-device)
         │
         ├── local loopback ─────────────────────────────────────────
@@ -122,7 +122,7 @@ group straight to the newest device.
 |---|---|---|---|
 | pacat capture | 50 ms | `core/multiroom/server/start.sh` | `SOUND_MULTIROOM_CAPTURE_MS` |
 | Kernel FIFO pipe | ~64 KB | OS | — not applicable — |
-| snapserver stream buffer | 400 ms | `core/multiroom/server/start.sh` | `SOUND_MULTIROOM_BUFFER_MS` |
+| snapserver stream buffer | 600 ms (`flac`) | `core/multiroom/server/start.sh` | `SOUND_MULTIROOM_BUFFER_MS` / `SOUND_MULTIROOM_CODEC` |
 | PulseAudio sink-input (snapclient → PA) | 200 ms | `core/multiroom/client/start.sh` | `SOUND_MULTIROOM_PA_LATENCY_MS` |
 | snapclient `--latency` offset (advanced) | 0 ms | `core/multiroom/client/start.sh` | `SOUND_MULTIROOM_LATENCY` |
 | Hardware DAC | device-specific | n/a | — not configurable — |

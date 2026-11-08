@@ -41,9 +41,14 @@ async function init() {
     localIp: config.device.ip,
     isMaster: config.isElectedMaster(),
     multiroomMaster: constants.multiroomMaster,
+    initialVolume: constants.volume,
   })
-  // Lower-UUID master appeared while we were sourcing → step down (in place).
+  // Newer-epoch (or lower-UUID on tie) master appeared while we were sourcing → step down in place.
   monitor.setOnSuperseded(handleSuperseded)
+  // Keep local PipeWire sink at 100% unity gain whenever Snapcast is active so Snapcast
+  // Client.SetVolume is the sole volume authority (no double-attenuation); restore local sink
+  // volume when multiroom is inactive.
+  monitor.setOnMasterChange(() => { reconcileVolumeMode() })
   soundAPI.setMonitor(monitor)
   monitor.start()
 
@@ -54,7 +59,21 @@ async function init() {
 
   // Connect to PulseAudio in the background; the wrapper retries indefinitely so a slow
   // audio container never blocks startup or handler registration.
-  audioBlock.listen().then(() => audioBlock.setVolume(constants.volume)).catch(() => {})
+  audioBlock.listen().then(() => reconcileVolumeMode()).catch(() => {})
+}
+
+function reconcileVolumeMode(): void {
+  if (!monitor) return
+  const snapcastActive =
+    config.role !== MultiroomRole.DISABLED &&
+    !config.isSolo() &&
+    monitor.hasActiveMultiroomTarget()
+
+  if (snapcastActive) {
+    audioBlock.setHardwareUnityGain().catch(() => {})
+  } else {
+    audioBlock.setVolume(monitor.getCachedVolume()).catch(() => {})
+  }
 }
 
 // Metrics tag on first play (best-effort).
@@ -69,9 +88,8 @@ audioBlock.on('play', async (sink: any) => {
 })
 
 // POST /internal/play — a local source started.
-// AUTO: become the group master, unless a lower-UUID master already owns the group, in
-// which case play locally (SOLO) without disturbing it. Promotion is in-place and optimistic;
-// if a lower-UUID master appears slightly later, handleSuperseded() steps us down.
+// AUTO: become the group master ("newest source wins"). Promotion is in-place and optimistic;
+// if another device starts sourcing even more recently, handleSuperseded() steps us down.
 export async function handlePlayDetect(): Promise<void> {
   if (!monitor) return
   localSourceActive = true
@@ -98,6 +116,7 @@ export async function handlePlayDetect(): Promise<void> {
   console.log('[play-detect] Becoming group master (SOURCING)')
   config.promoteToSourcing()
   monitor.setMaster(true)
+  reconcileVolumeMode()
 }
 
 // POST /internal/stop — local source stopped. Arms a 30s grace; if no replay, demote in place.
@@ -120,12 +139,13 @@ export function handleStopDetect(): void {
       config.demoteFromSourcing()
       monitor.setMaster(false)
     }
+    reconcileVolumeMode()
     console.log('[stop-detect] Demoted — warm (will join a remote master if one appears)')
   }, STOP_DEMOTION_MS)
 }
 
 // SOLO recovery loop. A SOLO device is still playing a local source but yielded the group
-// to a peer that started sourcing at the same time. When that peer is gone (no reachable
+// to a peer that started sourcing more recently. When that peer is gone (no reachable
 // master left), promote: restore snapcast routing and take the group so other devices can
 // join. If our own source has stopped, stop-detect handles the exit instead.
 function reconcileSolo(): void {
@@ -140,10 +160,12 @@ function reconcileSolo(): void {
     console.log(`[solo] restore error: ${(err as Error).message}`))
   config.promoteToSourcing()
   monitor.setMaster(true)
+  reconcileVolumeMode()
 }
 
-// Monitor callback: we are SOURCING but a lower-UUID master exists, so we yield the group.
-// If we still have a local source, fall back to SOLO (play it locally); otherwise go warm.
+// Monitor callback: we are SOURCING but a newer-epoch (or lower-UUID on tie) master exists,
+// so we yield the group. If we still have a local source, fall back to SOLO (play it locally);
+// otherwise go warm.
 function handleSuperseded(_svc: SnapcastService): void {
   if (config.role !== MultiroomRole.AUTO) return // HOST never yields
   if (!config.isElectedMaster()) return
@@ -158,4 +180,5 @@ function handleSuperseded(_svc: SnapcastService): void {
   } else {
     console.log('[supersede] Yielded group → warm')
   }
+  reconcileVolumeMode()
 }

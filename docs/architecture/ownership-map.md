@@ -12,19 +12,19 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | Hardware input/mic selection | `core/audio/start.sh` | `plugins/karaoke/app/main.go` for karaoke-owned loopback | Source plugins unrelated to mic |
 | Role defaults/env parsing | `core/sound-supervisor/src/constants.ts` | `core/sound-supervisor/src/types.ts` | Shell scripts |
 | Role service lifecycle | `core/sound-supervisor/src/SoundConfig.ts` | `core/sound-supervisor/src/utils.ts` | Docker restart policies |
-| Play/stop promotion flow | `core/sound-supervisor/src/index.ts` | `core/audio/wireplumber/balena-play-detect.lua`, `SoundAPI.ts` | Plugin code |
+| Play/stop promotion flow | `core/sound-supervisor/src/index.ts` | `core/audio/start.sh` (Phase 10 `pactl subscribe`), `SoundAPI.ts` | Plugin code |
 | Supervisor API/UI | `core/sound-supervisor/src/SoundAPI.ts` | `core/sound-supervisor/src/ui/` | Audio service |
 | mDNS advertise/browse | `core/sound-supervisor/src/SnapserverMonitor.ts` | `AvahiAdvertiser.ts`, `AvahiBrowser.ts`, `docs/architecture/mdns.md` | `multiroom-client` unless connection target is wrong |
 | Master election (play-triggered promotion) | `core/sound-supervisor/src/index.ts` | `SnapserverMonitor.ts`, `SoundConfig.ts` | Snapserver config |
 | Snapserver capture/buffer | `core/multiroom/server/start.sh` | generated `/tmp/snapserver.conf` (written by start.sh), `docs/architecture/audio-flow.md` | `snapclient` unless only one client stutters |
-| Snapclient output/latency | `core/multiroom/client/start.sh` | `core/sound-supervisor/src/SoundAPI.ts` latency endpoint | `snapserver` unless every client stutters |
-| Direct fallback routing | `core/sound-supervisor/src/index.ts` | `PulseAudioWrapper.ts` | `core/audio/balena-sound.pa` |
-| Volume control | `core/sound-supervisor/src/PulseAudioWrapper.ts` | `SnapserverMonitor.ts`, `SoundAPI.ts` | Hardware selection code |
+| Snapclient output/latency | `core/multiroom/client/start.sh` | `core/sound-supervisor/src/SoundAPI.ts` (`/audio/output-sink`, `/multiroom/latency`) | `snapserver` unless every client stutters |
+| SOLO routing fallback | `core/sound-supervisor/src/index.ts` | `PulseAudioWrapper.ts` (`rerouteInputDirect` / `restoreSnapcastRouting`) | `core/audio/balena-sound.pa` |
+| Single-authority volume control | `core/sound-supervisor/src/SoundAPI.ts` | `SnapserverMonitor.ts`, `PulseAudioWrapper.ts`, `index.ts` | Hardware selection code |
 | Spotify Connect source | `plugins/librespot/start.sh` | shared D-Bus volume in `docker-compose.yml` | Audio routing unless no source reaches input |
 | AirPlay source | `plugins/airplay/start.sh` | shared D-Bus volume in `docker-compose.yml` | Multiroom services |
 | Bluetooth source | `plugins/bluetooth/` | `bluetooth-agent`, `entry.sh` | Snapcast services |
 | UPnP source | `plugins/upnp/` | `docker-compose.yml` if enabling it | Core audio unless routing fails |
-| Karaoke queue/UI | `plugins/karaoke/app/main.go` | `plugins/karaoke/app/static/`, `plugins/karaoke/fetcher/` | `sound-supervisor` except its public API |
+| Karaoke queue/UI/downloads | `plugins/karaoke/app/main.go` | `plugins/karaoke/app/static/` | `sound-supervisor` except its public API |
 | Karaoke local audio injection | `plugins/karaoke/app/main.go` | `SOUND_SUPERVISOR_URL`, `PULSE_SERVER` env in compose | Global source plugins |
 | WiFi recovery | `core/watchdog/` | `WIFI_*` env vars | Audio services |
 | Hostname | `core/hostname/` | `SOUND_DEVICE_NAME` | mDNS discovery code unless advertised names are wrong |

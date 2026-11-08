@@ -15,7 +15,7 @@ assets:
     type: blob.asset
     data:
       url: >-
-        https://raw.githubusercontent.com/iotsound/iotsound/master/logo.png
+        https://raw.githubusercontent.com/JaragonCR/iotsound/master/logo.png
 data:
   applicationEnvironmentVariables:
     - SOUND_VOLUME: 75

@@ -158,9 +158,8 @@ export class PulseAudioWrapper extends EventEmitter {
     return targets.length > 0 ? targets : ['@DEFAULT_SINK@']
   }
 
-  async setVolume(percent: number): Promise<void> {
+  private async _applySinkVolume(percent: number): Promise<void> {
     const clamped = Math.max(0, Math.min(100, Math.round(percent)))
-    this._currentVolume = clamped
     const targets = await this._getVolumeTargetSinks()
     let applied = false
 
@@ -185,6 +184,21 @@ export class PulseAudioWrapper extends EventEmitter {
     } catch (err) {
       console.warn(`[PulseAudioWrapper] setVolume failed: ${(err as Error).message}`)
     }
+  }
+
+  async setVolume(percent: number): Promise<void> {
+    const clamped = Math.max(0, Math.min(100, Math.round(percent)))
+    this._currentVolume = clamped
+    await this._applySinkVolume(clamped)
+  }
+
+  /**
+   * Lock local PipeWire output sinks to 100% (unity gain) when Snapcast is active so
+   * snapclient output is governed solely by Snapcast Client.SetVolume without double-attenuation.
+   * Does not overwrite `_currentVolume`.
+   */
+  async setHardwareUnityGain(): Promise<void> {
+    await this._applySinkVolume(100)
   }
 
   async getVolume(): Promise<number> {
@@ -266,22 +280,6 @@ export class PulseAudioWrapper extends EventEmitter {
     }
   }
 
-  async moveSinkInput(sinkInputIndex: number, sinkIndex: number): Promise<void> {
-    try {
-      await execAsync(
-        `pactl --server ${this.server} move-sink-input ${sinkInputIndex} ${sinkIndex}`
-      )
-    } catch (err) {
-      console.warn(`[PulseAudioWrapper] moveSinkInput failed: ${(err as Error).message}`)
-    }
-  }
-
-  async getSinkIndexByName(name: string): Promise<number | null> {
-    const sinks = await this.getSinks()
-    const found = sinks.find(s => s.name === name)
-    return found ? parseInt(found.index, 10) : null
-  }
-
   // The real hardware output sink (alsa_output.*, excluding the balena-sound/snapcast null
   // sinks). Used by the multiroom client to play snapcast straight to the DAC (Option C),
   // so PipeWire reports the true device latency to snapclient instead of hiding it behind
@@ -290,7 +288,8 @@ export class PulseAudioWrapper extends EventEmitter {
   // CRITICAL: this MUST pick the same sink core/audio/start.sh select_hardware_sink() chose,
   // or snapclient plays to a different device than the one the speaker is on (e.g. picking
   // USB when the audio container routed to the 3.5mm soc_sound jack) → silence. We mirror its
-  // logic: honour AUDIO_OUTPUT when set, else the same priority order, else first available.
+  // logic: honour AUDIO_OUTPUT (by 1-based number or substring) when set, else the same
+  // priority order, else first available.
   async getHardwareSink(): Promise<string | null> {
     const sinks = await this.getSinks()
     const hw = sinks
@@ -300,8 +299,12 @@ export class PulseAudioWrapper extends EventEmitter {
       )
     if (hw.length === 0) return null
 
-    const pref = process.env.AUDIO_OUTPUT
+    const pref = process.env.AUDIO_OUTPUT?.trim()
     if (pref && pref.toUpperCase() !== 'AUTO') {
+      if (/^\d+$/.test(pref)) {
+        const idx = parseInt(pref, 10) - 1
+        if (idx >= 0 && idx < hw.length) return hw[idx]
+      }
       const match = hw.find(n => n.toLowerCase().includes(pref.toLowerCase()))
       if (match) return match
     }
@@ -313,29 +316,8 @@ export class PulseAudioWrapper extends EventEmitter {
     return hw[0]
   }
 
-  async getSinkInputIndexBySource(sourceName: string): Promise<number | null> {
-    try {
-      const { stdout } = await execAsync(`pactl --server ${this.server} list sink-inputs`)
-      let currentIndex: number | null = null
-      for (const line of stdout.split('\n')) {
-        const indexMatch = line.match(/^Sink Input #(\d+)/)
-        if (indexMatch) {
-          currentIndex = parseInt(indexMatch[1], 10)
-        }
-        if (currentIndex !== null && line.includes(`Loopback from ${sourceName}`)) {
-          return currentIndex
-        }
-      }
-      console.warn(`[PulseAudioWrapper] getSinkInputIndexBySource: no sink-input found for source '${sourceName}'`)
-      return null
-    } catch (err) {
-      console.warn(`[PulseAudioWrapper] getSinkInputIndexBySource failed: ${(err as Error).message}`)
-      return null
-    }
-  }
-
   // -------------------------------------------------------------------------
-  // Module management (used for Snapcast fallback routing)
+  // Module management (used for Snapcast / standalone / SOLO routing)
   // -------------------------------------------------------------------------
 
   async listModulesShort(): Promise<Array<{ index: number; name: string; args: string }>> {
@@ -369,53 +351,58 @@ export class PulseAudioWrapper extends EventEmitter {
     }
   }
 
-  private _fallbackModuleIdx: number | null = null
-
   async rerouteInputDirect(): Promise<void> {
     const modules = await this.listModulesShort()
-    const snapcastLoopback = modules.find(m =>
-      m.name === 'module-loopback' &&
-      m.args.includes('source=balena-sound.input.monitor') &&
-      m.args.includes('sink=snapcast')
-    )
-    if (snapcastLoopback) {
-      await this._unloadModule(snapcastLoopback.index)
-      console.log(`[PulseAudioWrapper] Unloaded input→snapcast loopback (module ${snapcastLoopback.index})`)
+    for (const m of modules) {
+      if (
+        m.name === 'module-loopback' &&
+        m.args.includes('source=balena-sound.input.monitor') &&
+        m.args.includes('sink=snapcast')
+      ) {
+        await this._unloadModule(m.index)
+        console.log(`[PulseAudioWrapper] Unloaded input→snapcast loopback (module ${m.index})`)
+      }
     }
-    this._fallbackModuleIdx = await this._loadModule(
-      'module-loopback',
-      'source=balena-sound.input.monitor sink=balena-sound.output latency_msec=100'
+    const alreadyDirect = modules.some(
+      m =>
+        m.name === 'module-loopback' &&
+        m.args.includes('source=balena-sound.input.monitor') &&
+        m.args.includes('sink=balena-sound.output')
     )
-    console.log('[PulseAudioWrapper] Rerouted: balena-sound.input → balena-sound.output (Snapcast bypassed)')
+    if (!alreadyDirect) {
+      await this._loadModule(
+        'module-loopback',
+        'source=balena-sound.input.monitor sink=balena-sound.output latency_msec=100'
+      )
+      console.log('[PulseAudioWrapper] Rerouted: balena-sound.input → balena-sound.output (Snapcast bypassed)')
+    }
   }
 
   async restoreSnapcastRouting(): Promise<void> {
-    if (this._fallbackModuleIdx !== null) {
-      await this._unloadModule(this._fallbackModuleIdx)
-      this._fallbackModuleIdx = null
-      console.log('[PulseAudioWrapper] Unloaded direct fallback loopback')
+    const modules = await this.listModulesShort()
+    for (const m of modules) {
+      if (
+        m.name === 'module-loopback' &&
+        m.args.includes('source=balena-sound.input.monitor') &&
+        m.args.includes('sink=balena-sound.output')
+      ) {
+        await this._unloadModule(m.index)
+        console.log(`[PulseAudioWrapper] Unloaded direct input→output loopback (module ${m.index})`)
+      }
     }
-    await this._loadModule(
-      'module-loopback',
-      'source=balena-sound.input.monitor sink=snapcast latency_msec=100'
+    const alreadySnapcast = modules.some(
+      m =>
+        m.name === 'module-loopback' &&
+        m.args.includes('source=balena-sound.input.monitor') &&
+        m.args.includes('sink=snapcast')
     )
-    console.log('[PulseAudioWrapper] Restored: balena-sound.input → snapcast')
-  }
-
-  async moveSinkInputByName(sinkInputSourceName: string, targetSinkName: string): Promise<void> {
-    const [sinkInputIndex, sinkIndex] = await Promise.all([
-      this.getSinkInputIndexBySource(sinkInputSourceName),
-      this.getSinkIndexByName(targetSinkName)
-    ])
-    if (sinkInputIndex === null) {
-      console.warn(`[PulseAudioWrapper] moveSinkInputByName: sink-input for source '${sinkInputSourceName}' not found`)
-      return
+    if (!alreadySnapcast) {
+      await this._loadModule(
+        'module-loopback',
+        'source=balena-sound.input.monitor sink=snapcast latency_msec=100'
+      )
+      console.log('[PulseAudioWrapper] Restored: balena-sound.input → snapcast')
     }
-    if (sinkIndex === null) {
-      console.warn(`[PulseAudioWrapper] moveSinkInputByName: sink '${targetSinkName}' not found`)
-      return
-    }
-    await this.moveSinkInput(sinkInputIndex, sinkIndex)
   }
 
   // -------------------------------------------------------------------------

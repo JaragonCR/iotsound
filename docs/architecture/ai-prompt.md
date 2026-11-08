@@ -14,15 +14,15 @@ First read these docs in order before scanning broadly:
 6. docs/architecture/mdns.md only if discovery, Spotify visibility, or Snapcast master selection is involved.
 
 Important invariants:
-- audio owns PipeWire/WirePlumber, pipewire-pulse TCP 4317, virtual sinks, and hardware selection.
-- sound-supervisor owns role/service lifecycle, web/API, play/stop promotion, mDNS state, fallback routing, and Snapcast volume propagation.
-- Source plugins should send audio to balena-sound.input and must not choose hardware directly.
-- balena-sound.input is the source mix point. balena-sound.output is the final playback mix point.
+- audio owns PipeWire/WirePlumber, pipewire-pulse TCP 4317, virtual sinks, hardware selection, and the pactl subscribe play/stop detector.
+- sound-supervisor owns live role/group lifecycle, web/API, play/stop promotion, mDNS state, SOLO routing, and single-authority volume control.
+- Source plugins send audio to balena-sound.input and must not choose hardware directly.
+- balena-sound.input is the source mix point. balena-sound.output is used only for disabled standalone and SOLO fallback.
 - disabled standalone path: source -> balena-sound.input -> balena-sound.output -> hardware.
-- multiroom master path: source -> balena-sound.input -> snapcast sink -> snapserver -> local snapclient -> balena-sound.output -> hardware. The master normally plays through its own local snapclient.
-- remote client path: remote snapserver -> local snapclient -> balena-sound.output -> hardware.
-- auto direct fallback is temporary and is not the same as SOUND_MULTIROOM_ROLE=disabled.
-- SOUND_MULTIROOM_LATENCY is snapclient compensation, not snapserver buffering.
+- multiroom master path (Option C): source -> balena-sound.input -> snapcast sink -> snapserver -> local snapclient -> hardware sink directly (via GET /audio/output-sink).
+- remote client path (Option C): remote snapserver -> local snapclient -> hardware sink directly (via GET /audio/output-sink).
+- Single volume authority (Option B): when multiroom is active, local hardware sinks are locked at 100% unity gain and /audio/volume controls Snapcast Client.SetVolume on the active master; when multiroom is off/idle/SOLO, /audio/volume controls the local PipeWire sink directly.
+- SOUND_MULTIROOM_LATENCY is snapclient compensation, not snapserver buffering (SOUND_MULTIROOM_BUFFER_MS default 600ms, codec flac).
 - mDNS/Snapcast targets must be usable IPv4 LAN addresses. Do not remove IPv6/Docker/loopback filtering casually.
 - join devices stop source plugins; disabled devices keep source plugins active but do not use Snapcast.
 

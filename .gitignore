@@ -13,8 +13,9 @@ labs-docs-builder
 # Local planning/notes and Claude Code session files (not for release)
 docs/BASELINE_ISSUES.md
 MEMORY.md
-CLAUDE.md
 .claude/
+ghk.rtf
+ghk*
 
 # Inspirational/reference clones kept outside this repo.
 pitube-karaoke/

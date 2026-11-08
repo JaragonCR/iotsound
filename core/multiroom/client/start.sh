@@ -11,21 +11,24 @@ while ! curl --silent --output /dev/null "$SOUND_SUPERVISOR/ping"; do sleep 5; e
 # Get mode from sound supervisor (determines whether to start snapclient at all).
 MODE=$(curl --silent "$SOUND_SUPERVISOR/mode" || true)
 
-# Wait until PulseAudio is actually ready to serve connections.
-# pactl info speaks the PA protocol — it only succeeds once pipewire-pulse
-# is fully initialised, unlike /dev/tcp which passes on stale sockets.
-# Poll at 5s intervals so we don't hammer PA during audio container startup.
-# Log only on first wait and every 30s after to keep logs readable.
+# Wait until PulseAudio is ready AND Phase 9 routing rules (01-balenasound.pa) have
+# set the default sink to balena-sound.input. Starting snapclient earlier (during Phase 7/8,
+# while the hardware sink is still the default sink) causes WirePlumber to migrate snapclient's
+# active stream onto balena-sound.input when `pactl set-default-sink balena-sound.input` runs.
+_pa_routing_ready() {
+  PULSE_SERVER="tcp:localhost:4317" pactl info 2>/dev/null | grep -q "Default Sink: balena-sound.input"
+}
+
 _pa_waited=0
 _pa_log_interval=30
-until PULSE_SERVER="tcp:localhost:4317" pactl info >/dev/null 2>&1; do
+until _pa_routing_ready; do
   if [ $_pa_waited -eq 0 ] || [ $(( _pa_waited % _pa_log_interval )) -eq 0 ]; then
-    echo "[snapclient] Waiting for PulseAudio at tcp:localhost:4317... (${_pa_waited}s)"
+    echo "[snapclient] Waiting for PulseAudio routing (Default Sink: balena-sound.input) at tcp:localhost:4317... (${_pa_waited}s)"
   fi
-  sleep 5
-  _pa_waited=$(( _pa_waited + 5 ))
+  sleep 2
+  _pa_waited=$(( _pa_waited + 2 ))
 done
-echo "[snapclient] PulseAudio ready (waited ${_pa_waited}s)"
+echo "[snapclient] PulseAudio routing ready (waited ${_pa_waited}s)"
 
 # Snapcast hostID is identity, not display name. It must be unique per device;
 # using SOUND_DEVICE_NAME here breaks fleets where the name is set globally.
@@ -94,6 +97,11 @@ echo "Starting multi-room client (mode: $MODE)..."
 # no container restart. If snapclient dies, we re-evaluate and respawn in place too.
 while true; do
   SNAPSERVER=$(_wait_for_target)
+  if ! _pa_routing_ready; then
+    echo "[snapclient] Target $SNAPSERVER ready but PulseAudio routing (balena-sound.input) not ready yet — waiting"
+    sleep 2
+    continue
+  fi
   # Resolve the hardware sink BEFORE spawning. If the supervisor cannot report one yet,
   # wait — do not fall back to the default sink (balena-sound.input null sink → segfault).
   HW_SINK=$(curl -sf "$SOUND_SUPERVISOR/audio/output-sink" 2>/dev/null || true)

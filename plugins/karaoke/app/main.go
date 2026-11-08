@@ -28,7 +28,6 @@ import (
 const (
 	downloadPath = "/data/media"
 	dataPath     = "/data/app"
-	fetcherBase  = "http://karaoke-fetcher:8081"
 
 	karaokeMicLoopbackName = "karaoke-mic-loopback"
 )
@@ -175,6 +174,7 @@ func main() {
 
 	go downloadWorker()
 	go playerWorker()
+	go ytdlpUpdateWorker()
 
 	mux := http.NewServeMux()
 	registerRoutes(mux)
@@ -188,6 +188,23 @@ func cleanupIdleMicLoopback() {
 	time.Sleep(5 * time.Second)
 	if err := disableMicLoopback(); err != nil {
 		logDebugf("[mic] idle loopback cleanup skipped: %v", err)
+	}
+}
+
+func ytdlpUpdateWorker() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		logInfof("[yt-dlp] running daily upgrade check...")
+		cmd := exec.Command(
+			"pip3", "install", "--no-cache-dir", "--disable-pip-version-check",
+			"--root-user-action=ignore", "--break-system-packages", "--upgrade", "-q", "yt-dlp",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			logWarnf("[yt-dlp] upgrade failed: %v (%s)", err, strings.TrimSpace(string(out)))
+		} else {
+			logInfof("[yt-dlp] upgrade check completed")
+		}
 	}
 }
 
@@ -1070,7 +1087,9 @@ func play(filename string, semitones int) {
 		if err := disableMicLoopback(); err != nil {
 			logWarnf("[mic] loopback disable failed: %v", err)
 		}
-		notifyPlayback(false)
+		// Do not POST /internal/stop directly here: core/audio/start.sh's pactl subscribe
+		// watcher fires /internal/stop only once zero sink-inputs remain on balena-sound.input,
+		// preventing karaoke mode switches from demoting a device while another plugin plays.
 	}
 
 	startLocalAudio := func() {

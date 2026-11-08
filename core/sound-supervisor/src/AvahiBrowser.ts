@@ -35,7 +35,11 @@ function isUsableResolution(iface: string, address: string): boolean {
 
 // Parse a single avahi-browse -p resolved line into a SnapcastService.
 // Format: =;iface;proto;name;type;domain;hostname;address;port;txt...
-function parseLine(line: string, groupName?: string): SnapcastService | null {
+function parseLine(
+  line: string,
+  groupName?: string,
+  onGroupSeen?: (group: string) => void
+): SnapcastService | null {
   const parts = line.split(';')
   if (parts.length < 9) return null
   const [, iface, , name, , , , address, portStr, ...txtParts] = parts
@@ -48,48 +52,11 @@ function parseLine(line: string, groupName?: string): SnapcastService | null {
     const eq = m[1].indexOf('=')
     if (eq > 0) txt[m[1].slice(0, eq)] = m[1].slice(eq + 1)
   }
-  if (groupName && txt['group'] !== groupName) return null
+  const advertisedGroup = txt['group'] || 'default'
+  onGroupSeen?.(advertisedGroup)
+  const expectedGroup = groupName || 'default'
+  if (advertisedGroup !== expectedGroup) return null
   return { name, ip: address, port: parseInt(portStr, 10), txt }
-}
-
-// One-shot browse for election: terminate after initial scan with -t.
-export function browseSnapcast(
-  groupName?: string,
-  timeoutMs = 5000,
-  _localIp?: string
-): Promise<SnapcastService[]> {
-  return new Promise((resolve) => {
-    // Keyed by service name so multiple resolutions (Docker IPs + real LAN IP)
-    // collapse to one entry — last resolution wins (avahi emits them in order,
-    // LAN address arrives last).
-    const found = new Map<string, SnapcastService>()
-    const proc = spawn('avahi-browse', ['-r', '-p', '-t', '_snapcast._tcp'], { stdio: ['ignore', 'pipe', 'ignore'] })
-    let buf = ''
-
-    proc.stdout.on('data', (chunk: Buffer) => {
-      buf += chunk.toString()
-      const lines = buf.split('\n')
-      buf = lines.pop()!
-      for (const line of lines) {
-        if (!line.startsWith('=')) continue
-        const svc = parseLine(line, groupName)
-        if (svc) found.set(svc.name, svc)
-      }
-    })
-
-    const done = () => resolve([...found.values()])
-    proc.on('exit', done)
-    proc.on('error', done)
-
-    // Fallback: resolve after timeout in case -t doesn't terminate promptly
-    const timer = setTimeout(() => {
-      proc.removeAllListeners()
-      try { proc.kill() } catch { /* ignore */ }
-      resolve([...found.values()])
-    }, timeoutMs)
-
-    proc.on('exit', () => clearTimeout(timer))
-  })
 }
 
 // Persistent browser using avahi-browse (no raw UDP socket — avahi-daemon owns 5353).
@@ -105,7 +72,8 @@ export class SnapcastBrowser {
   constructor(
     private readonly onUp: (svc: SnapcastService) => void,
     private readonly onDown: (svc: SnapcastService) => void,
-    private readonly groupName?: string
+    private groupName?: string,
+    private readonly onGroupSeen?: (group: string) => void
   ) {}
 
   start(): void {
@@ -124,6 +92,15 @@ export class SnapcastBrowser {
       this.process = null
     }
     this.knownServices.clear()
+  }
+
+  setGroupName(groupName?: string): void {
+    if (this.groupName === groupName) return
+    this.groupName = groupName
+    if (this.running) {
+      this.stop()
+      this.start()
+    }
   }
 
   private spawn(): void {
@@ -148,7 +125,7 @@ export class SnapcastBrowser {
     const name = parts[3]
 
     if (type === '=') {
-      const svc = parseLine(line, this.groupName)
+      const svc = parseLine(line, this.groupName, this.onGroupSeen)
       if (!svc) return
       // avahi-browse -r emits one '=' per interface per address, so Docker
       // bridge IPs arrive ~100ms before the real LAN IP for the same service.

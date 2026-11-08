@@ -1,7 +1,6 @@
 # Multiroom Master-Logic Redesign — transient source-master
 
-Status: **design, not yet implemented.** Agreed 2026-06-07. Higher-risk rewrite; needs
-hardware validation. Pairs with the sync fix in `multiroom-audit-2026-06.md` (Option C).
+Status: **implemented in `v5.1.7+`.** Pairs with the direct-to-sink sync fix in `multiroom-audit-2026-06.md` (Option C) and Single Volume Authority (Option B).
 
 ## Principle
 **Master = whoever is currently playing a local source.** A device advertises
@@ -29,18 +28,10 @@ promote in well under a second. No container restarts on any transition.
 - **any SOURCING/SOLO → WARM**: local source stops (30 s); then re-evaluate (may become SLAVE).
 
 ## Conflict resolution (two sources at once, same group)
-Tiebreaker key: **`master_uuid`** (already in the TXT record; stable balena identity).
-**Lowest UUID keeps the group.**
-- On entering SOURCING, publish advert, then browse for other group masters.
-- If another master has a **lower** UUID → I lose: go **SOLO** (play my own source locally
-  via input→output direct, do not advertise, do not join). When my source stops → WARM, then
-  join the surviving master as SLAVE.
-- If every other master has a **higher** UUID → I keep the group; they will detect me and step
-  down to SOLO/SLAVE themselves.
-- Normal source-switching (previous source already stopped) is **not** a conflict — only
-  simultaneous play triggers this.
-- Toggle point: to switch to "newest source steals the group," invert the comparison (new
-  source always wins, old master drops to SLAVE). Single-line change, kept as an option.
+Tiebreaker key: **`epoch`** (Unix seconds when sourcing started, carried in the mDNS TXT record), with **`master_uuid`** (lowest UUID) breaking ties when two devices start in the same second.
+**Newest source (`epoch`) takes the group.**
+- On entering SOURCING, stamp `epoch = floor(Date.now()/1000)` and publish `_snapcast._tcp` advert, while continuing to browse for other group masters.
+- Both `onMasterUp()` and `selectedMaster()` rank discovered masters by highest `epoch`, then lowest `master_uuid`.
 
 ## File-level change map
 - **`SnapserverMonitor.ts`**

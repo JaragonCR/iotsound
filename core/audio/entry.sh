@@ -41,7 +41,7 @@ function pa_read_cookie () {
 }
 
 function init_audio_hardware () {
-  sleep 10
+  sleep "${AUDIO_INIT_SLEEP:-10}"
   HDA_CARD=$(cat /proc/asound/cards | mawk -F '\[|\]:' '/hda-intel/ && NR%2==1 {gsub(/ /, "", $0); print $2}')
   if [[ -n "$HDA_CARD" ]]; then
     amixer --card hda-intel --quiet cset numid=2 on,on
@@ -66,7 +66,10 @@ LOG_LEVEL="${AUDIO_LOG_LEVEL:-${LOG_LEVEL:-NOTICE}}"
 LOG_LEVEL=$(echo "$LOG_LEVEL" | tr '[:lower:]' '[:upper:]')
 COOKIE="${AUDIO_PULSE_COOKIE}"
 DEFAULT_OUTPUT="${AUDIO_OUTPUT:-AUTO}"
-DEFAULT_VOLUME="${AUDIO_VOLUME:-75}"
+DEFAULT_VOLUME="${SOUND_VOLUME:-${AUDIO_VOLUME:-75}}"
+
+# Initialize hardware first (settle delay for slow USB/I2S enumeration + HDA amixer settings)
+init_audio_hardware
 
 if [[ "$INIT_LOG" != "false" ]]; then
   echo "--- Audio ---"
@@ -92,9 +95,6 @@ mkdir -p /run/pulse
 echo "$DEFAULT_OUTPUT" > /run/pulse/audio-output-preference
 VOLUME_ABSOLUTE=$(( $(sanitize_volume "$DEFAULT_VOLUME") * 65536 / 100 ))
 echo "$VOLUME_ABSOLUTE" > /run/pulse/audio-default-volume
-
-# Initialize hardware (HDA amixer settings only, no sink selection)
-init_audio_hardware
 
 # Disable unused PulseAudio modules (safe no-ops if default.pa absent)
 pa_disable_module module-console-kit

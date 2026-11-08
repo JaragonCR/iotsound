@@ -1,7 +1,6 @@
 version: "2.1"
 
 volumes:
-  spotifycache:
   librespot-config:
   karaoke-media:
   karaoke-data:
@@ -49,15 +48,10 @@ services:
     build:
       context: ./core/watchdog/
       dockerfile: Dockerfile.template
-    container_name: iotsound-wifi-watchdog
     privileged: true
     network_mode: host
+    pid: host
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   # Plugins
   # -- Additional plugins can be added.
@@ -115,15 +109,6 @@ services:
     entrypoint: ["sh", "-c", "if [ \"$LOG_LEVEL\" = \"debug\" ]; then exec sleep infinity; else exit 0; fi"]
 
   # Karaoke plugin
-  karaoke-fetcher:
-    build: ./plugins/karaoke/fetcher
-    restart: on-failure
-    environment:
-      - MEDIA_PATH=/data/media
-      - KARAOKE_QUALITY=720
-    volumes:
-      - karaoke-media:/data/media
-
   karaoke:
     build: ./plugins/karaoke/app
     restart: on-failure
@@ -140,4 +125,3 @@ services:
     depends_on:
       - audio
       - sound-supervisor
-      - karaoke-fetcher

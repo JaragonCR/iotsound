@@ -13,18 +13,19 @@ This folder is the fast path for AI-assisted debugging and feature work. Prefer 
 
 ## High-value invariants
 
-- `audio` owns PipeWire, WirePlumber, the PulseAudio-compatible server on TCP `4317`, and the virtual sinks.
-- `sound-supervisor` owns orchestration, role changes, service start/stop calls, web/API endpoints, mDNS advertisement/discovery state, and Snapcast volume propagation.
-- Plugins are source producers. They should send audio to `balena-sound.input` and should not pick hardware devices directly.
-- `balena-sound.input` is the source mix point. `balena-sound.output` is the final playback mix point.
-- In `SOUND_MULTIROOM_ROLE=disabled`, audio goes directly from `balena-sound.input` to `balena-sound.output`.
-- In multiroom master playback, the local speaker normally plays through the local `snapclient`: input -> `snapcast` sink -> `snapserver` -> local `snapclient` -> output.
-- Remote speakers always play through `snapclient` into `balena-sound.output`.
-- `auto` is a configured role, not a single runtime state. An `auto` device can be idle, elected master, remote client, or in direct fallback.
-- `SOUND_MULTIROOM_LATENCY` is a snapclient compensation value. Do not treat it as the snapserver stream buffer.
-- mDNS discovery must resolve usable IPv4 LAN addresses only. Loopback, link-local, Docker bridge, veth, and IPv6 targets are intentionally rejected.
-- `join` devices stop source plugins and should not become visible as Spotify/AirPlay/Bluetooth targets.
+- `audio` owns PipeWire, WirePlumber, the PulseAudio-compatible server on TCP `4317`, the `pactl subscribe` play/stop detector (Phase 10 of `core/audio/start.sh`), and the virtual sinks.
+- `sound-supervisor` owns orchestration, live role/group changes, service start/stop calls, web/API endpoints, mDNS advertisement/discovery state, and single-authority volume control.
+- Plugins are source producers. They send audio to `balena-sound.input` and do not pick hardware devices directly.
+- `balena-sound.input` is the source mix point. `balena-sound.output` is used for `disabled` standalone and `SOLO` fallback only.
+- In `SOUND_MULTIROOM_ROLE=disabled` (and `SOLO`), audio goes from `balena-sound.input` to `balena-sound.output` to the hardware sink.
+- **Direct-to-Hardware Multiroom Output (Option C):** Both local and remote `snapclient` instances query `GET /audio/output-sink` and output **directly to the hardware sink** (`PULSE_SINK=<HW_SINK>`), bypassing `balena-sound.output` so PipeWire reports true DAC latency to Snapcast.
+- **Single Volume Authority (Option B):** When multiroom is active (`snapclient`/`snapserver` active), local hardware sinks are locked at `100%` (unity gain) and `GET`/`POST /audio/volume` controls Snapcast `Client.SetVolume` on the active master (`localhost` or `discoveredMasterIp`). When multiroom is off/idle/SOLO, `GET`/`POST /audio/volume` controls the local PipeWire sink directly.
+- **Transient Source-Master (`WARM` / `SOURCING` / `SLAVE` / `SOLO`):** All transitions happen **in place** without restarting containers. Conflict resolution uses **newest-`epoch` wins** (`master_uuid` lowest breaks ties).
+- `SOUND_MULTIROOM_LATENCY` is a snapclient compensation offset (default `0`), not the snapserver stream buffer (`SOUND_MULTIROOM_BUFFER_MS`, default `600` ms, codec `flac`).
+- mDNS discovery resolves usable IPv4 LAN addresses only. Loopback, link-local, Docker bridge, veth, and IPv6 targets are rejected.
+- `join` devices stop source plugins and are not visible as Spotify/AirPlay/Bluetooth targets.
 - `disabled` devices keep source plugins active and do not participate in Snapcast.
+- `karaoke` is a single Go container (`plugins/karaoke/app`) with built-in `ffmpeg` and `yt-dlp`.
 
 ## Minimal debugging context
 
