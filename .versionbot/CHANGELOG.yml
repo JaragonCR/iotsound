@@ -1,4 +1,88 @@
 - commits:
+    - subject: "fix(multiroom,audio,librespot): prevent snapclient boot race onto
+        balena-sound.input and refresh go-librespot"
+      hash: 6d9fbb3990cfe5b1530a4eebff23e54b122b034e
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(supervisor): use Snapcast Client.SetVolume and keep-alive RPC
+        agent for group volume"
+      hash: 31f79349d82a3f9a595742c1517e147ba53751de
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(compose): remove unsupported service.logging and container_name
+        from wifi-watchdog"
+      hash: a3625c740cdc778a2361db0957943ccc3116e561
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "chore(deps): bump handlebars, follow-redirects, body-parser, and zod
+        to resolve Dependabot alerts"
+      hash: 7219b1557ec71c96fdbb3be962370bdac71264aa
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "docs: add AGENTS.md/CLAUDE.md and sync architecture docs and Mermaid
+        graphs"
+      hash: 8f3a109997ccd67fc227813145a9f17cf03b65c6
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "chore: remove dead scripts/wireplumber stubs, clean Dockerfiles and
+        repo URLs"
+      hash: 2764f2b81e83220c64c3cbee86c41ad39b0d67ce
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "audio: support numeric AUDIO_OUTPUT/AUDIO_INPUT, SOUND_VOLUME, and
+        configurable settle sleep"
+      hash: 7b5c97485fc09e499dcb1e18b5887c54da07c63d
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(supervisor): align master tiebreak, unify Snapcast/PA volume
+        authority, and support live role/group updates"
+      hash: cae05dfba366893f2d1f65dad94b07069b35f07c
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(karaoke): remove unused karaoke-fetcher sidecar and avoid spurious
+        stop signal"
+      hash: a1707efdc276dbb975f3920419eaa55bebf61cca
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+    - subject: "fix(watchdog): honor WIFI_* env vars, check host PIDs, and skip
+        recovery on Ethernet"
+      hash: d52d64650375b29aa18e34334b0b9c817af7fbf2
+      body: ""
+      footer:
+        Change-type: patch
+        change-type: patch
+      author: JaragonCR
+  version: 5.1.8
+  title: ""
+  date: 2026-11-08T21:26:09.487Z
+- commits:
     - subject: "chore(ci): remove redundant workflows, leaving Flowzone as the only
         trigger"
       hash: 70c4891912e547e0c273fa901eaebe12d4ee1683

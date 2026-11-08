@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.8
+## (2026-11-08)
+
+* fix(multiroom,audio,librespot): prevent snapclient boot race onto balena-sound.input and refresh go-librespot [JaragonCR]
+* fix(supervisor): use Snapcast Client.SetVolume and keep-alive RPC agent for group volume [JaragonCR]
+* fix(compose): remove unsupported service.logging and container_name from wifi-watchdog [JaragonCR]
+* chore(deps): bump handlebars, follow-redirects, body-parser, and zod to resolve Dependabot alerts [JaragonCR]
+* docs: add AGENTS.md/CLAUDE.md and sync architecture docs and Mermaid graphs [JaragonCR]
+* chore: remove dead scripts/wireplumber stubs, clean Dockerfiles and repo URLs [JaragonCR]
+* audio: support numeric AUDIO_OUTPUT/AUDIO_INPUT, SOUND_VOLUME, and configurable settle sleep [JaragonCR]
+* fix(supervisor): align master tiebreak, unify Snapcast/PA volume authority, and support live role/group updates [JaragonCR]
+* fix(karaoke): remove unused karaoke-fetcher sidecar and avoid spurious stop signal [JaragonCR]
+* fix(watchdog): honor WIFI_* env vars, check host PIDs, and skip recovery on Ethernet [JaragonCR]
+
 # v5.1.7
 ## (2026-09-06)
 
