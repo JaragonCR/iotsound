@@ -151,9 +151,13 @@ function select_hardware_sink() {
   local audio_output_pref="$2"
   local selected_sink=""
 
-  # If explicit preference (not AUTO), try to match it first
+  # If explicit preference (not AUTO), try to match it first (1-based index or substring)
   if [ -n "$audio_output_pref" ] && [ "$audio_output_pref" != "AUTO" ]; then
-    selected_sink=$(echo "$hw_sinks" | grep -i "$audio_output_pref" | head -n 1 || true)
+    if [[ "$audio_output_pref" =~ ^[0-9]+$ ]]; then
+      selected_sink=$(echo "$hw_sinks" | sed -n "${audio_output_pref}p" || true)
+    else
+      selected_sink=$(echo "$hw_sinks" | grep -i "$audio_output_pref" | head -n 1 || true)
+    fi
     if [ -n "$selected_sink" ]; then
       log_ok "Selected sink matching preference '$audio_output_pref': $selected_sink"
       echo "$selected_sink"
@@ -502,7 +506,7 @@ log "  /usr/share/wireplumber: $(ls /usr/share/wireplumber/ 2>/dev/null | tr '\n
 log "  /etc/wireplumber:       $(ls -R /etc/wireplumber/ 2>/dev/null | tr '\n' ' ')"
 log "  /usr/share/wireplumber/scripts: $(ls /usr/share/wireplumber/scripts/ 2>/dev/null | tr '\n' ' ')"
 
-# Expose supervisor URL so 99-balena-play-detect.lua can call back for play events
+# Expose supervisor URL so the pactl subscribe play-detector in Phase 10 can call back for play events
 export SOUND_SUPERVISOR_URL="http://$(ip route | awk '/default / { print $3 }'):$SOUND_SUPERVISOR_PORT"
 log "SOUND_SUPERVISOR_URL=$SOUND_SUPERVISOR_URL"
 
@@ -548,10 +552,14 @@ fi
 
 HW_SINK=""
 
-# If AUDIO_OUTPUT is explicitly set and not AUTO, force that device
+# If AUDIO_OUTPUT is explicitly set and not AUTO, force that device (1-based index or substring)
 if [ "$AUDIO_OUTPUT" != "AUTO" ]; then
   log_step "Forcing output device: $AUDIO_OUTPUT"
-  HW_SINK=$(echo "$HW_SINKS" | grep -i "$AUDIO_OUTPUT" | head -n 1 || true)
+  if [[ "$AUDIO_OUTPUT" =~ ^[0-9]+$ ]]; then
+    HW_SINK=$(echo "$HW_SINKS" | sed -n "${AUDIO_OUTPUT}p" || true)
+  else
+    HW_SINK=$(echo "$HW_SINKS" | grep -i "$AUDIO_OUTPUT" | head -n 1 || true)
+  fi
   
   if [ -n "$HW_SINK" ]; then
     log_ok "Found matching device: $HW_SINK"
@@ -642,10 +650,14 @@ if [ -n "$HW_SOURCES" ]; then
   
   HW_SOURCE=""
   
-  # If AUDIO_INPUT is explicitly set and not AUTO, force that device
+  # If AUDIO_INPUT is explicitly set and not AUTO, force that device (1-based index or substring)
   if [ "$AUDIO_INPUT" != "AUTO" ]; then
     log_step "Forcing input device: $AUDIO_INPUT"
-    HW_SOURCE=$(echo "$HW_SOURCES" | grep -i "$AUDIO_INPUT" | head -n 1 || true)
+    if [[ "$AUDIO_INPUT" =~ ^[0-9]+$ ]]; then
+      HW_SOURCE=$(echo "$HW_SOURCES" | sed -n "${AUDIO_INPUT}p" || true)
+    else
+      HW_SOURCE=$(echo "$HW_SOURCES" | grep -i "$AUDIO_INPUT" | head -n 1 || true)
+    fi
     
     if [ -n "$HW_SOURCE" ]; then
       log_ok "Found matching device: $HW_SOURCE"
