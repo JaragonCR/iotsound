@@ -1,7 +1,6 @@
 version: "2.1"
 
 volumes:
-  spotifycache:
   librespot-config:
   karaoke-media:
   karaoke-data:
