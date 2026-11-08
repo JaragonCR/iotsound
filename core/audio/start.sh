@@ -782,6 +782,28 @@ done
 
 log_ok "Applied $CONFIG_COUNT routing rules ($FAILED_COUNT warnings)"
 
+# Guard against boot race: if snapclient connected to $HW_SINK during Phase 7/8 (while
+# $HW_SINK was still the default sink), `pactl set-default-sink balena-sound.input` in
+# Phase 9 causes WirePlumber to migrate snapclient onto balena-sound.input. Rescue any
+# snapclient sink-input back to $HW_SINK immediately.
+rescue_snapclient_sink_inputs() {
+  local idx="$1"
+  [ -z "$idx" ] || [ -z "$HW_SINK" ] && return 0
+  pactl list sink-inputs 2>/dev/null | awk -v sink_idx="$idx" '
+    /^Sink Input #[0-9]+/ { id = substr($3, 2); on_input = 0; is_snap = 0 }
+    $1 == "Sink:" && $2 == sink_idx { on_input = 1 }
+    /application\.process\.binary = "snapclient"/ || /application\.name = "Snapcast"/ { is_snap = 1 }
+    on_input && is_snap && id != "" { print id; id = "" }
+  ' | while IFS= read -r si_id; do
+    [ -n "$si_id" ] || continue
+    echo "[audio] Rescuing snapclient sink-input #$si_id from balena-sound.input -> $HW_SINK"
+    pactl move-sink-input "$si_id" "$HW_SINK" 2>/dev/null || true
+  done
+}
+
+_init_input_idx=$(pactl list short sinks 2>/dev/null | awk '/balena-sound\.input[[:space:]]/{print $1; exit}')
+rescue_snapclient_sink_inputs "$_init_input_idx"
+
 # ============================================================================
 # PHASE 10: STARTUP COMPLETE
 # ============================================================================
@@ -809,7 +831,20 @@ if [ -n "$SOUND_SUPERVISOR_URL" ]; then
     }
     has_plugin_playing() {
       local idx; idx=$(get_input_sink_idx)
-      [ -n "$idx" ] && pactl list sink-inputs 2>/dev/null | grep -q "Sink: ${idx}$"
+      [ -z "$idx" ] && return 1
+      rescue_snapclient_sink_inputs "$idx"
+      pactl list sink-inputs 2>/dev/null | awk -v sink_idx="$idx" '
+        /^Sink Input #[0-9]+/ {
+          if (on_input && !is_snap) { found = 1; exit }
+          on_input = 0; is_snap = 0
+        }
+        $1 == "Sink:" && $2 == sink_idx { on_input = 1 }
+        /application\.process\.binary = "snapclient"/ || /application\.name = "Snapcast"/ { is_snap = 1 }
+        END {
+          if (on_input && !is_snap) found = 1
+          exit(found ? 0 : 1)
+        }
+      '
     }
     _last_state=""
     pactl subscribe 2>/dev/null | while IFS= read -r _ev; do

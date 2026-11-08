@@ -18,6 +18,7 @@ RUN apk add --no-cache \
 # clean DJ support (PR #352, incl. narration/TTS) and our upstreamed audio-key-skip
 # fix. Reproducibility is traded for always-current DJ/Spotify compatibility (same
 # rationale as the unpinned yt-dlp in the karaoke container).
+ARG GO_LIBRESPOT_CACHEBUST=2026-11-08
 RUN git clone --depth 1 https://github.com/devgianlu/go-librespot.git /go-librespot
 WORKDIR /go-librespot
 RUN go mod download
