@@ -35,7 +35,7 @@ export default class SoundAPI {
   }
 
   // True when Snapcast (client or server) is the active playback path for this device.
-  // When true, volume control goes to Snapcast Group.SetVolume and local PipeWire sinks
+  // When true, volume control goes to Snapcast Client.SetVolume and local PipeWire sinks
   // stay at 100% unity gain; otherwise volume control goes directly to the local PipeWire sink.
   private isSnapcastVolumeActive(): boolean {
     if (this.config.role === MultiroomRole.DISABLED || this.config.isSolo()) {
@@ -259,7 +259,7 @@ export default class SoundAPI {
       this.monitor?.setCachedVolume(clamped)
 
       if (this.isSnapcastVolumeActive() && this.monitor) {
-        // Multiroom active: Snapcast Group.SetVolume is the single volume authority;
+        // Multiroom active: Snapcast Client.SetVolume is the single volume authority;
         // keep the local PipeWire hardware sink at 100% unity gain to avoid double-attenuation.
         await this.audioBlock.setHardwareUnityGain().catch(() => {})
         const applied = await this.monitor.setGroupVolume(clamped)

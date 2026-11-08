@@ -21,7 +21,7 @@ Important invariants:
 - disabled standalone path: source -> balena-sound.input -> balena-sound.output -> hardware.
 - multiroom master path (Option C): source -> balena-sound.input -> snapcast sink -> snapserver -> local snapclient -> hardware sink directly (via GET /audio/output-sink).
 - remote client path (Option C): remote snapserver -> local snapclient -> hardware sink directly (via GET /audio/output-sink).
-- Single volume authority (Option B): when multiroom is active, local hardware sinks are locked at 100% unity gain and /audio/volume controls Snapcast Group.SetVolume on the active master; when multiroom is off/idle/SOLO, /audio/volume controls the local PipeWire sink directly.
+- Single volume authority (Option B): when multiroom is active, local hardware sinks are locked at 100% unity gain and /audio/volume controls Snapcast Client.SetVolume on the active master; when multiroom is off/idle/SOLO, /audio/volume controls the local PipeWire sink directly.
 - SOUND_MULTIROOM_LATENCY is snapclient compensation, not snapserver buffering (SOUND_MULTIROOM_BUFFER_MS default 600ms, codec flac).
 - mDNS/Snapcast targets must be usable IPv4 LAN addresses. Do not remove IPv6/Docker/loopback filtering casually.
 - join devices stop source plugins; disabled devices keep source plugins active but do not use Snapcast.

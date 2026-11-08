@@ -194,7 +194,7 @@ export class PulseAudioWrapper extends EventEmitter {
 
   /**
    * Lock local PipeWire output sinks to 100% (unity gain) when Snapcast is active so
-   * snapclient output is governed solely by Snapcast Group.SetVolume without double-attenuation.
+   * snapclient output is governed solely by Snapcast Client.SetVolume without double-attenuation.
    * Does not overwrite `_currentVolume`.
    */
   async setHardwareUnityGain(): Promise<void> {

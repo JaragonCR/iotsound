@@ -46,7 +46,7 @@ async function init() {
   // Newer-epoch (or lower-UUID on tie) master appeared while we were sourcing → step down in place.
   monitor.setOnSuperseded(handleSuperseded)
   // Keep local PipeWire sink at 100% unity gain whenever Snapcast is active so Snapcast
-  // Group.SetVolume is the sole volume authority (no double-attenuation); restore local sink
+  // Client.SetVolume is the sole volume authority (no double-attenuation); restore local sink
   // volume when multiroom is inactive.
   monitor.setOnMasterChange(() => { reconcileVolumeMode() })
   soundAPI.setMonitor(monitor)

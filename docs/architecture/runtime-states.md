@@ -42,7 +42,7 @@ flowchart LR
 
 Owner notes:
 
-- The master hears itself through its own local `snapclient`, which outputs directly to the detected hardware sink (`GET /audio/output-sink`) with the local hardware sink locked at `100%` unity gain and volume controlled via Snapcast `Group.SetVolume`.
+- The master hears itself through its own local `snapclient`, which outputs directly to the detected hardware sink (`GET /audio/output-sink`) with the local hardware sink locked at `100%` unity gain and volume controlled via Snapcast `Client.SetVolume`.
 - `multiroom-server` polls `/multiroom/active` and starts/stops `pacat` in place while keeping `snapserver` and `/tmp/snapserver-audio` warm.
 - `multiroom-client` polls `/multiroom/client-ready`, fetches `/multiroom/master`, and respawns `snapclient` in place if the master IP changes.
 
@@ -59,7 +59,7 @@ Owner notes:
 - `join` devices live here all the time.
 - `auto` devices live here when another device in the group is sourcing.
 - Source plugins are stopped for `join`, but remain active for `auto`.
-- Local hardware sink is locked at `100%` unity gain; `GET`/`POST /audio/volume` proxies to the remote master's Snapcast `Group.SetVolume` on `:1780`.
+- Local hardware sink is locked at `100%` unity gain; `GET`/`POST /audio/volume` proxies to the remote master's Snapcast `Client.SetVolume` on `:1780`.
 
 ### Simultaneous-source conflict fallback (`SOLO`)
 

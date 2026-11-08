@@ -1,5 +1,5 @@
+import * as http from 'http'
 import * as net from 'net'
-import axios from 'axios'
 import AvahiAdvertiser from './AvahiAdvertiser'
 import { SnapcastBrowser, type SnapcastService } from './AvahiBrowser'
 import { constants } from './constants'
@@ -51,7 +51,6 @@ export default class SnapserverMonitor {
   private ttlTimer: NodeJS.Timeout | null = null
   private serverWasUp = false
   private lastClientCount = 0
-  private cachedGroupId: string | null = null
   private advertising = false
   private groupVolume: number
 
@@ -202,19 +201,18 @@ export default class SnapserverMonitor {
       return
     }
     try {
-      const resp = await axios.post(this.rpcUrl(masterIp), {
-        id: 4, jsonrpc: '2.0', method: 'Client.SetLatency',
-        params: { id: this.deviceUuid, latency: Math.round(latencyMs) }
-      }, { timeout: 3000 })
-      if (resp.data?.error) throw new Error(resp.data.error.message ?? JSON.stringify(resp.data.error))
+      await this.rpcCall(masterIp, 'Client.SetLatency', {
+        id: this.deviceUuid,
+        latency: Math.round(latencyMs)
+      }, 4)
       console.log(`[snapserver-monitor] Client.SetLatency ${Math.round(latencyMs)}ms (${this.deviceUuid})`)
     } catch (err) {
       console.log(`[snapserver-monitor] setClientLatency failed: ${(err as Error).message}`)
     }
   }
 
-  // Set volume for all snapcast clients in the active master's group(s) via JSON-RPC.
-  // Works whether invoked on the sourcing master (localhost) or on a client device.
+  // Set volume for all snapcast clients in the active master's group(s) via JSON-RPC
+  // Client.SetVolume. Works whether invoked on the sourcing master (localhost) or on a client.
   async setGroupVolume(percent: number): Promise<number> {
     const clamped = Math.max(0, Math.min(100, Math.round(percent)))
     this.groupVolume = clamped
@@ -223,20 +221,24 @@ export default class SnapserverMonitor {
 
     try {
       const status = await this.fetchServerStatus(host)
-      const groups: Array<{ id?: string }> = status?.server?.groups ?? []
-      const groupIds = groups.map(g => g?.id).filter((id): id is string => Boolean(id))
-      if (groupIds.length === 0 && host === 'localhost' && this.cachedGroupId) {
-        groupIds.push(this.cachedGroupId)
+      const groups: Array<{ id?: string; clients?: Array<{ id?: string }> }> = status?.server?.groups ?? []
+      const clientIds = new Set<string>()
+      for (const g of groups) {
+        for (const c of g?.clients ?? []) {
+          if (c?.id) clientIds.add(c.id)
+        }
       }
-      for (const id of groupIds) {
-        const resp = await axios.post(this.rpcUrl(host), {
-          id: 3, jsonrpc: '2.0', method: 'Group.SetVolume',
-          params: { id, volume: { percent: clamped, muted: false } }
-        }, { timeout: 3000 })
-        if (resp.data?.error) throw new Error(resp.data.error.message ?? JSON.stringify(resp.data.error))
+      if (clientIds.size === 0 && this.deviceUuid) {
+        clientIds.add(this.deviceUuid)
       }
-      if (groupIds.length > 0) {
-        console.log(`[snapserver-monitor] Group volume set to ${clamped}% on ${host}`)
+      for (const id of clientIds) {
+        await this.rpcCall(host, 'Client.SetVolume', {
+          id,
+          volume: { percent: clamped, muted: false }
+        }, 3)
+      }
+      if (clientIds.size > 0) {
+        console.log(`[snapserver-monitor] Group volume set to ${clamped}% across ${clientIds.size} client(s) on ${host}`)
       }
     } catch (err) {
       console.log(`[snapserver-monitor] Failed to set group volume on ${host}: ${(err as Error).message}`)
@@ -252,15 +254,13 @@ export default class SnapserverMonitor {
       const status = await this.fetchServerStatus(host)
       const groups: Array<{ clients?: Array<{ id?: string; config?: { volume?: { percent?: number } } }> }> =
         status?.server?.groups ?? []
-      for (const g of groups) {
-        const clients = g?.clients ?? []
-        const own = clients.find(c => c?.id === this.deviceUuid)
-        const target = own ?? clients[0]
-        const pct = target?.config?.volume?.percent
-        if (typeof pct === 'number') {
-          this.groupVolume = Math.max(0, Math.min(100, Math.round(pct)))
-          return this.groupVolume
-        }
+      const allClients = groups.flatMap(g => g?.clients ?? [])
+      const own = allClients.find(c => c?.id === this.deviceUuid)
+      const target = own ?? allClients[0]
+      const pct = target?.config?.volume?.percent
+      if (typeof pct === 'number') {
+        this.groupVolume = Math.max(0, Math.min(100, Math.round(pct)))
+        return this.groupVolume
       }
     } catch {
       // Fall back to cached groupVolume
@@ -411,7 +411,7 @@ export default class SnapserverMonitor {
     })
   }
 
-  // --- Polling (only while sourcing: caches group id and syncs group volume on new clients) ---
+  // --- Polling (only while sourcing: syncs group volume on new clients) ---
 
   private startPolling(): void {
     if (this.pollInterval) return
@@ -421,7 +421,6 @@ export default class SnapserverMonitor {
 
   private stopPolling(): void {
     if (this.pollInterval) { clearInterval(this.pollInterval); this.pollInterval = null }
-    this.cachedGroupId = null
     this.lastClientCount = 0
   }
 
@@ -430,7 +429,6 @@ export default class SnapserverMonitor {
       const status = await this.fetchServerStatus('localhost')
       const groups: Array<{ id?: string; clients?: Array<{ connected?: boolean }> }> =
         status?.server?.groups ?? []
-      this.cachedGroupId = groups[0]?.id ?? null
       const connectedCount = groups.reduce(
         (acc, g) => acc + (g?.clients?.filter(c => c?.connected !== false).length ?? 0),
         0
@@ -443,7 +441,6 @@ export default class SnapserverMonitor {
     } catch {
       if (this.serverWasUp) {
         this.serverWasUp = false
-        this.cachedGroupId = null
         this.lastClientCount = 0
         console.log('[snapserver-monitor] Snapserver status unavailable')
       }
@@ -451,15 +448,50 @@ export default class SnapserverMonitor {
   }
 
   private async fetchServerStatus(host = 'localhost'): Promise<any> {
-    const resp = await axios.post(
-      this.rpcUrl(host),
-      { id: 1, jsonrpc: '2.0', method: 'Server.GetStatus' },
-      { timeout: 3000 }
-    )
-    return resp.data.result
+    return this.rpcCall(host, 'Server.GetStatus', undefined, 1)
   }
 
-  private rpcUrl(ip: string): string {
-    return `http://${ip}:${RPC_PORT}/jsonrpc`
+  // Execute a single JSON-RPC 2.0 request against Snapserver (:1780/jsonrpc).
+  // Uses a dedicated one-shot keep-alive agent per call because Snapserver 0.35's Beast HTTP
+  // server triggers Node 24 llhttp "Data after Connection: close" when sent Connection: close,
+  // and drops sequential pipelined requests on reused sockets.
+  private rpcCall(host: string, method: string, params?: Record<string, unknown>, id = 1): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ id, jsonrpc: '2.0', method, ...(params ? { params } : {}) })
+      const agent = new http.Agent({ keepAlive: true })
+      const req = http.request({
+        host,
+        port: RPC_PORT,
+        path: '/jsonrpc',
+        method: 'POST',
+        agent,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'Connection': 'keep-alive',
+        },
+        timeout: 3000,
+      }, (res) => {
+        let data = ''
+        res.on('data', chunk => { data += chunk })
+        res.on('end', () => {
+          agent.destroy()
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed?.error) {
+              reject(new Error(parsed.error.message ?? JSON.stringify(parsed.error)))
+            } else {
+              resolve(parsed?.result)
+            }
+          } catch (err) {
+            reject(err)
+          }
+        })
+      })
+      req.on('error', (err) => { agent.destroy(); reject(err) })
+      req.on('timeout', () => { req.destroy(); agent.destroy(); reject(new Error('Snapserver RPC timeout')) })
+      req.write(payload)
+      req.end()
+    })
   }
 }

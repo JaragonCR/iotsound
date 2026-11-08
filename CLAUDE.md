@@ -36,7 +36,7 @@ Before scanning the entire repository, read these compact architecture documents
    - Master conflict resolution uses **newest-`epoch` wins** (`master_uuid` lexicographical tie-breaker) in both `onMasterUp()` and `selectedMaster()`.
 
 4. **Single Volume Authority (Option B):**
-   - **When multiroom is active** (`role !== 'disabled' && !isSolo() && monitor.hasActiveMultiroomTarget()`): local hardware sinks are locked to **`100%` (unity gain)** via `setHardwareUnityGain()`, and `GET`/`POST /audio/volume` reads and writes Snapcast `Group.SetVolume` (JSON-RPC `:1780`) on the active master (`localhost` when sourcing, `discoveredMasterIp` when slave).
+   - **When multiroom is active** (`role !== 'disabled' && !isSolo() && monitor.hasActiveMultiroomTarget()`): local hardware sinks are locked to **`100%` (unity gain)** via `setHardwareUnityGain()`, and `GET`/`POST /audio/volume` reads and writes Snapcast `Client.SetVolume` (JSON-RPC `:1780`) on the active master (`localhost` when sourcing, `discoveredMasterIp` when slave).
    - **When multiroom is off / idle / SOLO:** `GET`/`POST /audio/volume` controls the local PipeWire sink (`audioBlock.setVolume()` / `getVolume()`) directly.
 
 5. **Single-Container Karaoke (`plugins/karaoke/app/`):**
