@@ -140,12 +140,12 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 
 | Variable | Description | Default |
 |---|---|---|
-| `SOUND_DISABLE_KARAOKE` | Disable Karaoke entirely, including the player and fetcher containers (set to any value) | unset |
+| `SOUND_DISABLE_KARAOKE` | Disable Karaoke entirely (set to any value) | unset |
 | `KARAOKE_QUALITY` | Maximum downloaded video height | `720` |
 | `KARAOKE_MAX_QUEUE_PER_SINGER` | Maximum queued songs per singer | `3` |
 | `KARAOKE_SYNC_OFFSET_MS` | Default local speaker A/V sync offset in ms, from `-2000` to `2000` | `0` |
 | `KARAOKE_MIC_GAIN` | Default karaoke mic gain 0–100 | `AUDIO_MIC_INPUT_VOLUME` or `35` |
-| `KARAOKE_LOG_LEVEL` | Override karaoke app and fetcher verbosity | `LOG_LEVEL` or `info` |
+| `KARAOKE_LOG_LEVEL` | Override karaoke app verbosity | `LOG_LEVEL` or `info` |
 
 #### WiFi watchdog
 

@@ -23,7 +23,7 @@ export default class SoundConfig {
   // /multiroom/active + /multiroom/master endpoints. Nothing here restarts a container.
   private sourcing = false
   private solo = false
-  private readonly sourcePlugins = ['airplay', 'librespot', 'bluetooth', 'karaoke', 'karaoke-fetcher']
+  private readonly sourcePlugins = ['airplay', 'librespot', 'bluetooth', 'karaoke']
 
   private safeService(fn: (s: string) => Promise<unknown>, service: string, attempt = 1): void {
     fn(service).catch((err: unknown) => {

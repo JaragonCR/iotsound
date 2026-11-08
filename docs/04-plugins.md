@@ -28,12 +28,11 @@ Manual authentication will let you stream audio over the internet from a client 
 
 ### Karaoke
 
-Karaoke is shipped as a plugin under `plugins/karaoke` with two services:
+Karaoke is shipped as a plugin under `plugins/karaoke/app`:
 
-- `karaoke`: Go audience/singer UI and local playback controller on port 8080.
-- `karaoke-fetcher`: Python/Waitress sidecar on port 8081 that runs `yt-dlp` downloads into the shared `karaoke-media` volume.
+- `karaoke`: Go audience/singer UI, `yt-dlp` downloader, and local playback controller on port 8080.
 
-Set `SOUND_DISABLE_KARAOKE` to disable both services. In local speaker mode, karaoke sends audio and mic loopback into `balena-sound.input` only while a song is actively playing; in stream mode, the browser decodes the MP4 directly.
+Set `SOUND_DISABLE_KARAOKE` to disable the service. In local speaker mode, karaoke sends audio and mic loopback into `balena-sound.input` only while a song is actively playing; in stream mode, the browser decodes the MP4 directly.
 
 ## Development checklist
 
@@ -45,8 +44,6 @@ When adding or renaming a plugin service, keep the service name consistent acros
 - the configuration tables in `README.md` and `docs/03-customization.md`
 
 Source plugins that can create audio must be listed in `SoundConfig.ts` so role switching can start them in `auto`, `host`, and `disabled`, and stop them in `join`. A `join` device should act as a passive Snapcast receiver; leaving a source plugin running there can expose a local UI or stream endpoint that injects audio outside the elected master path.
-
-Plugins with sidecar services should include every sidecar that needs to follow the same role visibility. For karaoke, both `karaoke` and `karaoke-fetcher` are managed together because the UI and downloader should disappear together on passive client devices, and `SOUND_DISABLE_KARAOKE` disables both containers.
 
 ## Installable
 
