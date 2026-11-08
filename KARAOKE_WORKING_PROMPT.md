@@ -53,7 +53,7 @@ Architecture summary:
 - Core services: `audio`, `sound-supervisor`, `wifi-watchdog`, `hostname`.
 - Multiroom services: `multiroom-server`, `multiroom-client`.
 - Plugins: `bluetooth`, `airplay`, `librespot`.
-- Karaoke branch adds the `plugins/karaoke` plugin with `karaoke` and `karaoke-fetcher` services, plus volumes `karaoke-media` and `karaoke-data`.
+- Karaoke adds the `plugins/karaoke/app` single-container Go service (`karaoke`), plus volumes `karaoke-media` and `karaoke-data` (the legacy `karaoke-fetcher` sidecar was removed; `yt-dlp` and `ffmpeg` run directly inside `karaoke` with a daily `yt-dlp -U` background updater).
 - Audio stack is PipeWire + WirePlumber + `pipewire-pulse` exposing PulseAudio TCP on port `4317`.
 - `audio` creates virtual routing layers:
   - `balena-sound.input`: default plugin/input mix.
@@ -76,12 +76,11 @@ Multiroom model:
 
 Karaoke branch architecture:
 
-- `plugins/karaoke/app/main.go`: Go HTTP server on port 8080. Owns SQLite state, queue, singer profiles/history/favorites, playback, volume proxy, QR, audio mode.
-- `plugins/karaoke/fetcher/fetcher.py`: Python Flask-compatible API served by Waitress on port 8081. Runs `yt-dlp` downloads so the Go server does not block. Uses `/data/media`.
-- `SOUND_DISABLE_KARAOKE`: disables both karaoke containers by making their plugin entrypoints exit cleanly.
-- `LOG_LEVEL` controls shared service verbosity where supported. Karaoke app/fetcher can be overridden with `KARAOKE_LOG_LEVEL`.
+- `plugins/karaoke/app/main.go`: Go HTTP server on port 8080. Owns SQLite state, queue, `yt-dlp` search/download worker (with 24h `yt-dlp -U` auto-upgrade), singer profiles/history/favorites, playback, volume proxy, QR, audio mode.
+- `SOUND_DISABLE_KARAOKE`: disables the karaoke container by making its plugin entrypoint exit cleanly.
+- `LOG_LEVEL` controls shared service verbosity where supported. Karaoke app can be overridden with `KARAOKE_LOG_LEVEL`.
 - Volumes:
-  - `karaoke-media`: downloaded songs shared by karaoke and fetcher.
+  - `karaoke-media`: downloaded songs managed by `karaoke`.
   - `karaoke-data`: SQLite app DB.
 - Current intended design as of 2026-05-03:
   - HLS was removed for pre-downloaded MP4 playback. Do not reintroduce HLS unless the requirements change to true live/remote transcoding.
