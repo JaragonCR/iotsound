@@ -52,6 +52,7 @@ services:
     container_name: iotsound-wifi-watchdog
     privileged: true
     network_mode: host
+    pid: host
     restart: unless-stopped
     logging:
       driver: "json-file"
