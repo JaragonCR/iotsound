@@ -1,7 +1,6 @@
-import { getIPAddress } from './utils'
+import { getIPAddress, startBalenaService, stopBalenaService } from './utils'
 import { MultiroomRole, SoundModes } from './types'
 import { constants } from './constants'
-import { startBalenaService, stopBalenaService } from './utils'
 
 interface DeviceConfig {
   ip: string
@@ -17,8 +16,8 @@ export default class SoundConfig {
   }
   // Transient source-master state (role=auto). HOST is always sourcing; JOIN/DISABLED never.
   // sourcing → we are the group master (advertising, pacat running).
-  // solo     → we lost the UUID tiebreak but have a local source, so we play locally
-  //            (input→output direct) without advertising or joining anyone.
+  // solo     → we yielded the group to a newer-epoch peer while still playing a local source,
+  //            so we play locally (input→output direct) without advertising or joining anyone.
   // Both transitions are in-place: the multiroom containers stay running and react to the
   // /multiroom/active + /multiroom/master endpoints. Nothing here restarts a container.
   private sourcing = false
@@ -94,19 +93,19 @@ export default class SoundConfig {
     console.log('[state] → SOURCING (group master)')
   }
 
-  // Stop sourcing (30s idle, or superseded by a lower-UUID master with no local source).
+  // Stop sourcing (30s idle, or superseded by a newer-epoch master with no local source).
   // /multiroom/active flips false → server stops pacat in place, advertisement is pulled.
   demoteFromSourcing(): void {
     this.sourcing = false
     console.log('[state] → not sourcing')
   }
 
-  // We have a local source but lost the UUID tiebreak: play locally, do not advertise,
-  // do not join. The orchestrator reroutes input→output direct for this state.
+  // We have a local source but yielded the group to a newer-epoch peer: play locally,
+  // do not advertise, do not join. The orchestrator reroutes input→output direct.
   enterSolo(): void {
     this.sourcing = false
     this.solo = true
-    console.log('[state] → SOLO (local source, lost tiebreak)')
+    console.log('[state] → SOLO (local source, yielded group)')
   }
 
   exitSolo(): void {
@@ -133,6 +132,12 @@ export default class SoundConfig {
     const changed = role !== this.role
     this.role = role
     if (changed) {
+      if (role === MultiroomRole.HOST) {
+        this.promoteToSourcing()
+      } else if (role === MultiroomRole.JOIN || role === MultiroomRole.DISABLED) {
+        this.sourcing = false
+        this.solo = false
+      }
       this.applyRoleServices()
     }
     return changed

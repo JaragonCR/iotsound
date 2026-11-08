@@ -2,11 +2,13 @@ import * as net from 'net'
 import axios from 'axios'
 import AvahiAdvertiser from './AvahiAdvertiser'
 import { SnapcastBrowser, type SnapcastService } from './AvahiBrowser'
+import { constants } from './constants'
 
 const RPC_PORT = 1780
 const SNAPCAST_TCP_PORT = 1704
 const POLL_INTERVAL_MS = 5000
 const REACHABILITY_CHECK_INTERVAL_MS = 10000
+const GROUP_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 export interface MonitorConfig {
   groupName: string | undefined
@@ -14,6 +16,12 @@ export interface MonitorConfig {
   localIp: string
   isMaster: boolean
   multiroomMaster?: string
+  initialVolume?: number
+}
+
+export interface SeenGroup {
+  name: string
+  last_seen_epoch: number
 }
 
 interface TrackedMaster {
@@ -26,11 +34,11 @@ interface TrackedMaster {
 }
 
 /**
- * Owns mDNS discovery + advertisement for the multiroom group.
+ * Owns mDNS discovery + advertisement and Snapcast JSON-RPC volume/latency for the group.
  *
  * Transient source-master model:
  *  - Browses ALWAYS (warm / sourcing / slave) so it always knows the current group
- *    masters, and so a sourcing device can detect a lower-UUID master and step down.
+ *    masters, and so a sourcing device can detect a newer-epoch master and step down.
  *  - Advertises only while this device is the SOURCING master (advertise()/unadvertise()
  *    are driven by the orchestrator, not by snapserver coming up).
  *  - Never restarts containers. Master changes propagate through getMasterIp(), which the
@@ -42,13 +50,17 @@ export default class SnapserverMonitor {
   private browser: SnapcastBrowser | null = null
   private ttlTimer: NodeJS.Timeout | null = null
   private serverWasUp = false
+  private lastClientCount = 0
   private cachedGroupId: string | null = null
   private advertising = false
+  private groupVolume: number
 
   // Remote group masters only (own advertisement is filtered out by UUID).
   private masters = new Map<string, TrackedMaster>()
+  // Discovered group names on the LAN (name -> last_seen_epoch ms).
+  private seenGroups = new Map<string, number>()
 
-  private readonly groupName: string | undefined
+  private groupName: string | undefined
   private readonly deviceUuid: string
   private readonly localIp: string | undefined
   private readonly multiroomMaster: string | undefined
@@ -57,9 +69,10 @@ export default class SnapserverMonitor {
   // apply "newest source wins": a device that started sourcing more recently owns the group.
   private sourcingEpoch = 0
 
-  // Invoked when this device is SOURCING but a master with a lower UUID appears,
-  // i.e. we lost the tiebreak and must demote. The orchestrator decides SLAVE vs SOLO.
+  // Invoked when this device is SOURCING but a master with a newer epoch (or lower UUID on tie)
+  // appears, i.e. we lost the tiebreak and must demote. The orchestrator decides SLAVE vs SOLO.
   private onSuperseded: ((svc: SnapcastService) => void) | null = null
+  private onMasterChange: ((hasMaster: boolean) => void) | null = null
 
   constructor(cfg: MonitorConfig) {
     this.groupName = cfg.groupName
@@ -67,6 +80,10 @@ export default class SnapserverMonitor {
     this.localIp = cfg.localIp === 'localhost' ? undefined : cfg.localIp
     this.multiroomMaster = cfg.multiroomMaster
     this.isMaster = cfg.isMaster
+    this.groupVolume = Math.max(0, Math.min(100, Math.round(cfg.initialVolume ?? constants.volume)))
+    if (this.groupName) {
+      this.seenGroups.set(this.groupName, Date.now())
+    }
   }
 
   // --- Public API ---
@@ -75,26 +92,46 @@ export default class SnapserverMonitor {
     this.onSuperseded = cb
   }
 
+  setOnMasterChange(cb: (hasMaster: boolean) => void): void {
+    this.onMasterChange = cb
+  }
+
   // True if any advertised, reachable remote master exists. Used for SOLO recovery: when
   // this goes false, a SOLO device (still playing locally) can take the group.
   hasReachableMaster(): boolean {
     return this.selectedMaster() !== null
   }
 
-  // Lowest-UUID REACHABLE remote master service, or null. Deterministic group authority.
+  // True when this device is actively participating in Snapcast (either as sourcing master
+  // or connected/targeting a reachable remote/explicit master).
+  hasActiveMultiroomTarget(): boolean {
+    return this.isMaster || Boolean(this.getDiscoveredMasterIp())
+  }
+
+  // Newest-epoch REACHABLE remote master service (lowest UUID breaks ties), or null.
+  // Matches onMasterUp() tie-breaking so all devices agree on group authority.
   private selectedMaster(): SnapcastService | null {
     let best: SnapcastService | null = null
     for (const m of this.masters.values()) {
       if (!m.reachable) continue
+      if (!best) {
+        best = m.svc
+        continue
+      }
+      const epoch = parseInt(m.svc.txt['epoch'] ?? '0', 10)
+      const bestEpoch = parseInt(best.txt['epoch'] ?? '0', 10)
       const uuid = m.svc.txt['master_uuid'] ?? ''
-      if (!best || uuid < (best.txt['master_uuid'] ?? '')) best = m.svc
+      const bestUuid = best.txt['master_uuid'] ?? ''
+      if (epoch > bestEpoch || (epoch === bestEpoch && uuid < bestUuid)) {
+        best = m.svc
+      }
     }
     return best
   }
 
   // Master IP for THIS device's snapclient to target.
   // Sourcing → our own snapserver (env override wins for manual setups).
-  // Otherwise → explicit override, else the discovered lowest-UUID remote master.
+  // Otherwise → explicit override, else the discovered remote master.
   getMasterIp(): string {
     if (this.isMaster) return this.multiroomMaster ?? this.localIp ?? 'localhost'
     return this.multiroomMaster ?? this.selectedMaster()?.ip ?? this.localIp ?? 'localhost'
@@ -106,11 +143,60 @@ export default class SnapserverMonitor {
     return this.multiroomMaster ?? this.selectedMaster()?.ip ?? null
   }
 
+  private activeMasterRpcHost(): string | null {
+    return this.isMaster ? 'localhost' : this.getDiscoveredMasterIp()
+  }
+
+  // Update group name live without restarting sound-supervisor.
+  setGroupName(name: string | undefined): void {
+    const normalized = name || undefined
+    if (this.groupName === normalized) return
+    this.groupName = normalized
+    if (normalized) {
+      this.seenGroups.set(normalized, Date.now())
+    }
+    this.masters.clear()
+    this.browser?.setGroupName(this.groupName)
+    if (this.advertising) {
+      this.unadvertise()
+      this.advertise()
+    }
+    this.onMasterChange?.(this.hasActiveMultiroomTarget())
+  }
+
+  getSeenGroups(): SeenGroup[] {
+    const cutoff = Date.now() - GROUP_TTL_MS
+    const out: SeenGroup[] = []
+    for (const [name, epoch] of this.seenGroups.entries()) {
+      if (epoch >= cutoff) {
+        out.push({ name, last_seen_epoch: epoch })
+      } else {
+        this.seenGroups.delete(name)
+      }
+    }
+    return out
+  }
+
+  clearSeenGroups(): void {
+    this.seenGroups.clear()
+    if (this.groupName) {
+      this.seenGroups.set(this.groupName, Date.now())
+    }
+  }
+
+  getCachedVolume(): number {
+    return this.groupVolume
+  }
+
+  setCachedVolume(percent: number): void {
+    this.groupVolume = Math.max(0, Math.min(100, Math.round(percent)))
+  }
+
   // Push this device's snapclient latency live via the snapserver JSON-RPC, so a latency
   // change needs no container restart. Targets the master's RPC (localhost when sourcing,
   // the remote master otherwise); the client id is this device's UUID (snapclient hostID).
   async setClientLatency(latencyMs: number): Promise<void> {
-    const masterIp = this.isMaster ? 'localhost' : this.getDiscoveredMasterIp()
+    const masterIp = this.activeMasterRpcHost()
     if (!masterIp) {
       console.log('[snapserver-monitor] setClientLatency: no master yet — value applies on next connect')
       return
@@ -127,19 +213,59 @@ export default class SnapserverMonitor {
     }
   }
 
-  // Propagate volume to all snapcast clients in the group via JSON-RPC.
-  async setGroupVolume(percent: number): Promise<void> {
-    if (!this.cachedGroupId) return
+  // Set volume for all snapcast clients in the active master's group(s) via JSON-RPC.
+  // Works whether invoked on the sourcing master (localhost) or on a client device.
+  async setGroupVolume(percent: number): Promise<number> {
+    const clamped = Math.max(0, Math.min(100, Math.round(percent)))
+    this.groupVolume = clamped
+    const host = this.activeMasterRpcHost()
+    if (!host) return clamped
+
     try {
-      const resp = await axios.post(this.rpcUrl('localhost'), {
-        id: 3, jsonrpc: '2.0', method: 'Group.SetVolume',
-        params: { id: this.cachedGroupId, volume: { percent: Math.round(percent), muted: false } }
-      }, { timeout: 3000 })
-      if (resp.data?.error) throw new Error(resp.data.error.message ?? JSON.stringify(resp.data.error))
-      console.log(`[snapserver-monitor] Group volume set to ${Math.round(percent)}%`)
+      const status = await this.fetchServerStatus(host)
+      const groups: Array<{ id?: string }> = status?.server?.groups ?? []
+      const groupIds = groups.map(g => g?.id).filter((id): id is string => Boolean(id))
+      if (groupIds.length === 0 && host === 'localhost' && this.cachedGroupId) {
+        groupIds.push(this.cachedGroupId)
+      }
+      for (const id of groupIds) {
+        const resp = await axios.post(this.rpcUrl(host), {
+          id: 3, jsonrpc: '2.0', method: 'Group.SetVolume',
+          params: { id, volume: { percent: clamped, muted: false } }
+        }, { timeout: 3000 })
+        if (resp.data?.error) throw new Error(resp.data.error.message ?? JSON.stringify(resp.data.error))
+      }
+      if (groupIds.length > 0) {
+        console.log(`[snapserver-monitor] Group volume set to ${clamped}% on ${host}`)
+      }
     } catch (err) {
-      console.log(`[snapserver-monitor] Failed to set group volume: ${(err as Error).message}`)
+      console.log(`[snapserver-monitor] Failed to set group volume on ${host}: ${(err as Error).message}`)
     }
+    return clamped
+  }
+
+  // Query current group volume from the active master's Snapserver, falling back to cached groupVolume.
+  async getGroupVolume(): Promise<number> {
+    const host = this.activeMasterRpcHost()
+    if (!host) return this.groupVolume
+    try {
+      const status = await this.fetchServerStatus(host)
+      const groups: Array<{ clients?: Array<{ id?: string; config?: { volume?: { percent?: number } } }> }> =
+        status?.server?.groups ?? []
+      for (const g of groups) {
+        const clients = g?.clients ?? []
+        const own = clients.find(c => c?.id === this.deviceUuid)
+        const target = own ?? clients[0]
+        const pct = target?.config?.volume?.percent
+        if (typeof pct === 'number') {
+          this.groupVolume = Math.max(0, Math.min(100, Math.round(pct)))
+          return this.groupVolume
+        }
+      }
+    } catch {
+      // Fall back to cached groupVolume
+    }
+    return this.groupVolume
   }
 
   start(): void {
@@ -171,7 +297,9 @@ export default class SnapserverMonitor {
       this.stopPolling()
       this.unadvertise()
       this.serverWasUp = false
+      this.lastClientCount = 0
     }
+    this.onMasterChange?.(this.hasActiveMultiroomTarget())
   }
 
   // --- Advertisement ---
@@ -180,6 +308,7 @@ export default class SnapserverMonitor {
     if (this.advertising) return
     this.advertising = true
     const name = this.groupName ?? 'default'
+    this.seenGroups.set(name, Date.now())
     this.advertiser.advertise(name, SNAPCAST_TCP_PORT, {
       group: name,
       role: 'host',
@@ -187,9 +316,6 @@ export default class SnapserverMonitor {
       epoch: String(this.sourcingEpoch),
       master_uuid: this.deviceUuid,
     })
-    // group_latency/hw_latency intentionally not advertised: the per-device hardware-latency
-    // reconciliation they were meant to feed was never implemented and is unnecessary under
-    // Option C (snapclient plays direct to the DAC; PipeWire reports real latency).
   }
 
   unadvertise(): void {
@@ -205,7 +331,8 @@ export default class SnapserverMonitor {
     this.browser = new SnapcastBrowser(
       (svc) => this.onMasterUp(svc),
       (svc) => this.onMasterDown(svc),
-      this.groupName
+      this.groupName,
+      (group) => this.seenGroups.set(group, Date.now())
     )
     this.browser.start()
     this.ttlTimer = setInterval(() => this.checkReachability(), REACHABILITY_CHECK_INTERVAL_MS)
@@ -221,6 +348,7 @@ export default class SnapserverMonitor {
     // Filter our own advertisement — we discover it too once browsing is always-on.
     if ((svc.txt['master_uuid'] ?? '') === this.deviceUuid) return
 
+    const hadTarget = this.hasActiveMultiroomTarget()
     const known = this.masters.has(svc.name)
     // Optimistic reachable: it just announced. checkReachability() corrects it within 10s.
     this.masters.set(svc.name, { svc, reachable: true })
@@ -239,13 +367,19 @@ export default class SnapserverMonitor {
       if (otherIsNewer) {
         console.log(`[snapserver-monitor] Newer master ${svc.ip} (epoch ${otherEpoch} > ${this.sourcingEpoch}) — superseded`)
         this.onSuperseded?.(svc)
+        return
       }
+    }
+
+    if (!hadTarget && this.hasActiveMultiroomTarget()) {
+      this.onMasterChange?.(true)
     }
   }
 
   private onMasterDown(svc: SnapcastService): void {
     if (this.masters.delete(svc.name)) {
       console.log(`[snapserver-monitor] Master gone (goodbye): ${svc.name} @ ${svc.ip}`)
+      this.onMasterChange?.(this.hasActiveMultiroomTarget())
     }
   }
 
@@ -254,12 +388,17 @@ export default class SnapserverMonitor {
   // wedged/restarting master out of and back into selection as its port stops/starts
   // answering, so recovery needs no fresh mDNS announcement.
   private async checkReachability(): Promise<void> {
+    let changed = false
     for (const m of this.masters.values()) {
       const alive = await this.probe(m.svc.ip, SNAPCAST_TCP_PORT)
       if (alive !== m.reachable) {
         console.log(`[snapserver-monitor] Master ${m.svc.ip} ${alive ? 'reachable' : 'unreachable'}`)
+        changed = true
       }
       m.reachable = alive
+    }
+    if (changed) {
+      this.onMasterChange?.(this.hasActiveMultiroomTarget())
     }
   }
 
@@ -272,36 +411,48 @@ export default class SnapserverMonitor {
     })
   }
 
-  // --- Polling (only while sourcing: caches group id for volume) ---
+  // --- Polling (only while sourcing: caches group id and syncs group volume on new clients) ---
 
   private startPolling(): void {
     if (this.pollInterval) return
+    this.poll()
     this.pollInterval = setInterval(() => this.poll(), POLL_INTERVAL_MS)
   }
 
   private stopPolling(): void {
     if (this.pollInterval) { clearInterval(this.pollInterval); this.pollInterval = null }
     this.cachedGroupId = null
+    this.lastClientCount = 0
   }
 
   private async poll(): Promise<void> {
     try {
-      const status = await this.fetchServerStatus()
-      // Guard every hop: a malformed-but-responding reply must not throw into the catch.
-      this.cachedGroupId = status?.server?.groups?.[0]?.id ?? null
+      const status = await this.fetchServerStatus('localhost')
+      const groups: Array<{ id?: string; clients?: Array<{ connected?: boolean }> }> =
+        status?.server?.groups ?? []
+      this.cachedGroupId = groups[0]?.id ?? null
+      const connectedCount = groups.reduce(
+        (acc, g) => acc + (g?.clients?.filter(c => c?.connected !== false).length ?? 0),
+        0
+      )
+      if (!this.serverWasUp || connectedCount > this.lastClientCount) {
+        this.setGroupVolume(this.groupVolume).catch(() => {})
+      }
+      this.lastClientCount = connectedCount
       this.serverWasUp = true
     } catch {
       if (this.serverWasUp) {
         this.serverWasUp = false
         this.cachedGroupId = null
+        this.lastClientCount = 0
         console.log('[snapserver-monitor] Snapserver status unavailable')
       }
     }
   }
 
-  private async fetchServerStatus(): Promise<any> {
+  private async fetchServerStatus(host = 'localhost'): Promise<any> {
     const resp = await axios.post(
-      this.rpcUrl('localhost'),
+      this.rpcUrl(host),
       { id: 1, jsonrpc: '2.0', method: 'Server.GetStatus' },
       { timeout: 3000 }
     )

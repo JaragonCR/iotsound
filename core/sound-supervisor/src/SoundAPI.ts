@@ -3,7 +3,7 @@ import * as express from 'express'
 import { Application } from 'express'
 import SoundConfig from './SoundConfig'
 import PulseAudioWrapper from './PulseAudioWrapper'
-import SnapserverMonitor from './SnapserverMonitor'
+import SnapserverMonitor, { SeenGroup } from './SnapserverMonitor'
 import { constants } from './constants'
 import { restartDevice, rebootDevice, shutdownDevice } from './utils'
 import { MultiroomRole, SoundModes } from './types'
@@ -14,11 +14,6 @@ import * as fs from 'fs'
 const VERSION = fs.existsSync('VERSION')
   ? fs.readFileSync('VERSION', 'utf8').trim()
   : '3.11.0'
-
-interface KnownGroup {
-  name: string
-  last_seen_epoch: number
-}
 
 export default class SoundAPI {
   private api: Application
@@ -37,6 +32,33 @@ export default class SoundAPI {
 
   setStopHandler(fn: () => void): void {
     this.stopHandler = fn
+  }
+
+  // True when Snapcast (client or server) is the active playback path for this device.
+  // When true, volume control goes to Snapcast Group.SetVolume and local PipeWire sinks
+  // stay at 100% unity gain; otherwise volume control goes directly to the local PipeWire sink.
+  private isSnapcastVolumeActive(): boolean {
+    if (this.config.role === MultiroomRole.DISABLED || this.config.isSolo()) {
+      return false
+    }
+    return Boolean(this.monitor?.hasActiveMultiroomTarget())
+  }
+
+  private async applyLiveRoleSideEffects(role: MultiroomRole): Promise<void> {
+    if (role === MultiroomRole.DISABLED) {
+      this.monitor?.setMaster(false)
+      await this.audioBlock.rerouteInputDirect().catch(() => {})
+      await this.audioBlock.setVolume(this.monitor?.getCachedVolume() ?? constants.volume).catch(() => {})
+      return
+    }
+
+    await this.audioBlock.restoreSnapcastRouting().catch(() => {})
+    this.monitor?.setMaster(this.config.isElectedMaster())
+    if (this.isSnapcastVolumeActive()) {
+      await this.audioBlock.setHardwareUnityGain().catch(() => {})
+    } else {
+      await this.audioBlock.setVolume(this.monitor?.getCachedVolume() ?? constants.volume).catch(() => {})
+    }
   }
 
   constructor(public config: SoundConfig, public audioBlock: PulseAudioWrapper) {
@@ -65,7 +87,7 @@ export default class SoundAPI {
 
     // --- Multiroom 2.0 API ---
 
-    // GET /multiroom — role, group, device IP, latency config
+    // GET /multiroom — role, group, device IP
     this.api.get('/multiroom', (_req, res) => {
       res.json(this.config.getMultiroomStatus())
     })
@@ -82,7 +104,10 @@ export default class SoundAPI {
     // master in their group. SOLO devices play locally (input→output direct) and must NOT
     // join anyone, so they report not-ready.
     this.api.get('/multiroom/client-ready', (_req, res) => {
-      if (this.config.isSolo()) { res.json({ active: false }); return }
+      if (this.config.isSolo() || this.config.role === MultiroomRole.DISABLED) {
+        res.json({ active: false })
+        return
+      }
       const hasTarget = this.config.isElectedMaster() || Boolean(this.monitor?.getDiscoveredMasterIp())
       res.json({ active: hasTarget })
     })
@@ -91,14 +116,17 @@ export default class SoundAPI {
     // Sourcing masters return themselves; warm devices return a discovered/explicit master;
     // SOLO returns empty (no target — it plays locally).
     this.api.get('/multiroom/master', (_req, res) => {
-      if (this.config.isSolo()) { res.send(''); return }
+      if (this.config.isSolo() || this.config.role === MultiroomRole.DISABLED) {
+        res.send('')
+        return
+      }
       const masterIp = this.config.isElectedMaster()
         ? (this.monitor?.getMasterIp() ?? this.config.getMultiroomStatus().deviceIp)
         : (this.monitor?.getDiscoveredMasterIp() ?? '')
       res.send(masterIp)
     })
 
-    // POST /multiroom/role — change role, persist to device env var
+    // POST /multiroom/role — change role live and persist to device env var
     this.api.post('/multiroom/role', async (req, res) => {
       const { role } = req.body
       if (!role || !Object.values(MultiroomRole).includes(role)) {
@@ -107,6 +135,7 @@ export default class SoundAPI {
       }
       const changed = this.config.setRole(role as MultiroomRole)
       if (changed) {
+        await this.applyLiveRoleSideEffects(this.config.role)
         try {
           await this.sdk.models.device.envVar.set(process.env.BALENA_DEVICE_UUID!, 'SOUND_MULTIROOM_ROLE', role)
           console.log(`SOUND_MULTIROOM_ROLE persisted: ${role}`)
@@ -117,7 +146,7 @@ export default class SoundAPI {
       res.json({ role: this.config.role, changed })
     })
 
-    // POST /multiroom/group — change group name, persist to device env var
+    // POST /multiroom/group — change group name live and persist to device env var
     this.api.post('/multiroom/group', async (req, res) => {
       const { groupName } = req.body
       if (typeof groupName !== 'string') {
@@ -125,6 +154,7 @@ export default class SoundAPI {
         return
       }
       this.config.setGroupName(groupName)
+      this.monitor?.setGroupName(this.config.groupName)
       try {
         if (groupName) {
           await this.sdk.models.device.envVar.set(process.env.BALENA_DEVICE_UUID!, 'SOUND_GROUP_NAME', groupName)
@@ -138,22 +168,22 @@ export default class SoundAPI {
       res.json({ groupName: this.config.groupName ?? null })
     })
 
-    // GET /multiroom/groups — return fleet-level known groups list
+    // GET /multiroom/groups — return discovered mDNS groups merged with fleet-level known groups
     this.api.get('/multiroom/groups', async (_req, res) => {
       const groups = await this.getKnownGroups()
       res.json(groups)
     })
 
-    // DELETE /multiroom/groups — clear known groups fleet var
+    // DELETE /multiroom/groups — clear known groups (both in-memory mDNS cache and fleet var)
     this.api.delete('/multiroom/groups', async (_req, res) => {
+      this.monitor?.clearSeenGroups()
       try {
         await this.sdk.models.application.envVar.remove(process.env.BALENA_APP_ID!, 'SOUND_KNOWN_GROUPS')
         console.log('SOUND_KNOWN_GROUPS fleet var cleared')
-        res.json({ cleared: true })
       } catch (err) {
         console.log(`Failed to clear SOUND_KNOWN_GROUPS: ${(err as Error).message}`)
-        res.status(500).json({ error: (err as Error).message })
       }
+      res.json({ cleared: true })
     })
 
     // GET /multiroom/latency — returns { latencyMs } (SOUND_MULTIROOM_LATENCY per device)
@@ -191,20 +221,20 @@ export default class SoundAPI {
       res.send(sink ?? '')
     })
 
-    // --- Internal (WirePlumber → supervisor events) ---
+    // --- Internal (audio pactl subscribe watcher → supervisor events) ---
 
     // POST /internal/play — fired by the `pactl subscribe` watcher in core/audio/start.sh
     // when a sink-input appears on balena-sound.input. For AUTO devices not yet master,
     // delegates to handlePlayDetect() (wired via setPlayHandler() in index.ts) to trigger
-    // re-election.
+    // promotion.
     this.api.post('/internal/play', (_req, res) => {
       this.playHandler?.().catch((err: Error) => console.log(`[play-detect] handler error: ${err.message}`))
       res.json({ received: true })
     })
 
-    // POST /internal/stop — fired by WirePlumber Lua when a stream unlinks from
-    // balena-sound.input. Starts a 30s demotion timer; if no play arrives before
-    // it fires, an elected AUTO master demotes back to unelected client.
+    // POST /internal/stop — fired by the `pactl subscribe` watcher in core/audio/start.sh
+    // when all streams unlink from balena-sound.input. Starts a 30s demotion timer; if no
+    // play arrives before it fires, an elected AUTO master demotes back to warm standby.
     this.api.post('/internal/stop', (_req, res) => {
       this.stopHandler?.()
       res.json({ received: true })
@@ -212,12 +242,34 @@ export default class SoundAPI {
 
     // --- Audio block ---
     this.api.get('/audio', async (_req, res) => res.json(await this.audioBlock.getInfo()))
-    this.api.get('/audio/volume', async (_req, res) => res.json(await this.audioBlock.getVolume()))
+    this.api.get('/audio/volume', async (_req, res) => {
+      if (this.isSnapcastVolumeActive() && this.monitor) {
+        res.json(await this.monitor.getGroupVolume())
+        return
+      }
+      res.json(await this.audioBlock.getVolume())
+    })
     this.api.post('/audio/volume', async (req, res) => {
-      const result = await this.audioBlock.setVolume(req.body.volume)
-      // Propagate to all snapcast clients so remote speakers change volume too
-      this.monitor?.setGroupVolume(req.body.volume).catch(() => {})
-      res.json(result)
+      const requested = Number(req.body.volume)
+      if (isNaN(requested)) {
+        res.status(400).json({ error: 'volume must be a number' })
+        return
+      }
+      const clamped = Math.max(0, Math.min(100, Math.round(requested)))
+      this.monitor?.setCachedVolume(clamped)
+
+      if (this.isSnapcastVolumeActive() && this.monitor) {
+        // Multiroom active: Snapcast Group.SetVolume is the single volume authority;
+        // keep the local PipeWire hardware sink at 100% unity gain to avoid double-attenuation.
+        await this.audioBlock.setHardwareUnityGain().catch(() => {})
+        const applied = await this.monitor.setGroupVolume(clamped)
+        res.json(applied)
+        return
+      }
+
+      // Standalone / SOLO / warm-idle: adjust local PipeWire sink directly.
+      await this.audioBlock.setVolume(clamped)
+      res.json(clamped)
     })
     this.api.get('/audio/sinks', async (_req, res) => res.json(stringify(await this.audioBlock.getSinks())))
 
@@ -269,6 +321,7 @@ export default class SoundAPI {
       console.warn('[DEPRECATED] POST /mode — use POST /multiroom/role')
       const updated: boolean = this.config.setMode(req.body.mode as SoundModes)
       if (updated) {
+        await this.applyLiveRoleSideEffects(this.config.role)
         try {
           await this.sdk.models.device.envVar.set(process.env.BALENA_DEVICE_UUID!, 'SOUND_MULTIROOM_ROLE', this.config.role)
           console.log(`SOUND_MULTIROOM_ROLE persisted via deprecated /mode: ${this.config.role}`)
@@ -286,7 +339,9 @@ export default class SoundAPI {
         config: this.config,
         audio: await this.audioBlock.getInfo(),
         sinks: stringify(await this.audioBlock.getSinks()),
-        volume: await this.audioBlock.getVolume(),
+        volume: this.isSnapcastVolumeActive() && this.monitor
+          ? await this.monitor.getGroupVolume()
+          : await this.audioBlock.getVolume(),
         constants: constants
       })
     })
@@ -309,14 +364,28 @@ export default class SoundAPI {
     })
   }
 
-  private async getKnownGroups(): Promise<KnownGroup[]> {
+  private async getKnownGroups(): Promise<SeenGroup[]> {
+    const byName = new Map<string, number>()
+    for (const g of this.monitor?.getSeenGroups() ?? []) {
+      byName.set(g.name, g.last_seen_epoch)
+    }
     try {
       const raw = await this.sdk.models.application.envVar.get(process.env.BALENA_APP_ID!, 'SOUND_KNOWN_GROUPS')
-      if (!raw) return []
-      return JSON.parse(raw) as KnownGroup[]
+      if (raw) {
+        const parsed = JSON.parse(raw) as SeenGroup[]
+        if (Array.isArray(parsed)) {
+          for (const g of parsed) {
+            if (g?.name && typeof g.last_seen_epoch === 'number') {
+              const prev = byName.get(g.name) ?? 0
+              if (g.last_seen_epoch > prev) byName.set(g.name, g.last_seen_epoch)
+            }
+          }
+        }
+      }
     } catch {
-      return []
+      // Ignore Balena API lookup failure; mDNS groups still populate the list
     }
+    return [...byName.entries()].map(([name, last_seen_epoch]) => ({ name, last_seen_epoch }))
   }
 }
 
