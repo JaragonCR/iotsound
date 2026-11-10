@@ -29,10 +29,16 @@ apply_hostname() {
   _logged_match=false
   echo "[hostname] Current: $CURRENT_HOSTNAME → Target: $TARGET_HOSTNAME — applying"
 
-  curl -fsS -X PATCH \
+  # Check the PATCH explicitly: apply_hostname runs on the left of `||`, which
+  # disables `set -e` inside the function, so a failed PATCH would otherwise fall
+  # through to the reboot below and loop on every boot.
+  if ! curl -fsS -X PATCH \
     --header "Content-Type: application/json" \
     --data "{\"network\": {\"hostname\": \"$TARGET_HOSTNAME\"}}" \
-    "$BALENA_SUPERVISOR_ADDRESS/v1/device/host-config?apikey=$BALENA_SUPERVISOR_API_KEY"
+    "$BALENA_SUPERVISOR_ADDRESS/v1/device/host-config?apikey=$BALENA_SUPERVISOR_API_KEY"; then
+    echo "[hostname] PATCH failed — not rebooting"
+    return 1
+  fi
 
   echo "[hostname] Applied — rebooting to take effect"
   curl -fsS -X POST \
