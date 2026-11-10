@@ -128,7 +128,7 @@ export default class SoundAPI {
 
     // POST /multiroom/role — change role live and persist to device env var
     this.api.post('/multiroom/role', async (req, res) => {
-      const { role } = req.body
+      const { role } = req.body ?? {}
       if (!role || !Object.values(MultiroomRole).includes(role)) {
         res.status(400).json({ error: `Invalid role. Must be one of: ${Object.values(MultiroomRole).join(', ')}` })
         return
@@ -148,7 +148,7 @@ export default class SoundAPI {
 
     // POST /multiroom/group — change group name live and persist to device env var
     this.api.post('/multiroom/group', async (req, res) => {
-      const { groupName } = req.body
+      const { groupName } = req.body ?? {}
       if (typeof groupName !== 'string') {
         res.status(400).json({ error: 'groupName must be a string' })
         return
@@ -195,7 +195,7 @@ export default class SoundAPI {
     // snapserver JSON-RPC (Client.SetLatency), so tuning from the UI takes effect immediately
     // with NO container restart. The persisted env still seeds the value on the next spawn.
     this.api.post('/multiroom/latency', async (req, res) => {
-      const { latencyMs } = req.body
+      const { latencyMs } = req.body ?? {}
       if (typeof latencyMs !== 'number' || latencyMs < -1000 || latencyMs > 2000) {
         res.status(400).json({ error: 'latencyMs must be a number between -1000 and 2000' })
         return
@@ -250,7 +250,7 @@ export default class SoundAPI {
       res.json(await this.audioBlock.getVolume())
     })
     this.api.post('/audio/volume', async (req, res) => {
-      const requested = Number(req.body.volume)
+      const requested = Number(req.body?.volume)
       if (isNaN(requested)) {
         res.status(400).json({ error: 'volume must be a number' })
         return
@@ -274,11 +274,13 @@ export default class SoundAPI {
     this.api.get('/audio/sinks', async (_req, res) => res.json(stringify(await this.audioBlock.getSinks())))
 
     // --- Device management ---
-    this.api.post('/device/restart', async (_req, res) => res.json(await restartDevice()))
-    this.api.post('/device/reboot', async (_req, res) => res.json(await rebootDevice()))
-    this.api.post('/device/shutdown', async (_req, res) => res.json(await shutdownDevice()))
+    // Return the supervisor's response body, not the AxiosResponse: that object is circular,
+    // so res.json() threw and these endpoints answered 500 after the action had already fired.
+    this.api.post('/device/restart', async (_req, res) => res.json((await restartDevice()).data ?? { status: 'OK' }))
+    this.api.post('/device/reboot', async (_req, res) => res.json((await rebootDevice()).data ?? { status: 'OK' }))
+    this.api.post('/device/shutdown', async (_req, res) => res.json((await shutdownDevice()).data ?? { status: 'OK' }))
     this.api.post('/device/dtoverlay', async (req, res) => {
-      let { dtoverlay } = req.body
+      let { dtoverlay } = req.body ?? {}
       if (typeof dtoverlay !== 'string') {
         res.status(400).json({ error: 'dtoverlay must be a string' })
         return
@@ -319,7 +321,7 @@ export default class SoundAPI {
     // POST /mode — kept for backward compat; use POST /multiroom/role instead
     this.api.post('/mode', async (req, res) => {
       console.warn('[DEPRECATED] POST /mode — use POST /multiroom/role')
-      const updated: boolean = this.config.setMode(req.body.mode as SoundModes)
+      const updated: boolean = this.config.setMode(req.body?.mode as SoundModes)
       if (updated) {
         await this.applyLiveRoleSideEffects(this.config.role)
         try {
@@ -329,7 +331,7 @@ export default class SoundAPI {
           console.log(`Failed to persist role via /mode: ${(err as Error).message}`)
         }
       }
-      res.json({ mode: req.body.mode, role: this.config.role, updated })
+      res.json({ mode: req.body?.mode, role: this.config.role, updated })
     })
 
     // Support endpoint
