@@ -432,6 +432,10 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "singer and url required", http.StatusBadRequest)
 		return
 	}
+	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
+		http.Error(w, "url must be http(s)", http.StatusBadRequest)
+		return
+	}
 
 	// Per-singer queue limit
 	var inQueue int
@@ -909,11 +913,12 @@ func downloadWorker() {
 			"--js-runtimes", "node",
 			"-o", outTmpl,
 			"--print", "after_move:filepath",
-			url,
 		}
 		if _, err := os.Stat("cookies.txt"); err == nil {
 			args = append(args, "--cookies", "cookies.txt")
 		}
+		// "--" ends option parsing so a queued "url" can never be read as a yt-dlp flag.
+		args = append(args, "--", url)
 
 		cmd := exec.Command("yt-dlp", args...)
 		stdout, _ := cmd.StdoutPipe()
