@@ -713,9 +713,12 @@ if [ -n "$HW_SOURCES" ]; then
       log_step "Enabling mic loopback to speakers for real-time monitoring..."
       
       # Clean up any existing loopback modules first
-      pactl list modules 2>/dev/null | grep -o "Module #[0-9]*" | awk '{print $2}' | while read mod; do
-        pactl unload-module "$mod" 2>/dev/null || true
-      done
+      # Only previous mic-monitor loopbacks (module-loopback → $HW_SINK with remix=true).
+      pactl list short modules 2>/dev/null \
+        | awk -v sink="sink=$HW_SINK" '$2 == "module-loopback" && index($0, sink) && /remix=true/ { print $1 }' \
+        | while read -r mod; do
+            pactl unload-module "$mod" 2>/dev/null || true
+          done
       sleep 1
       
       # Set mic volume (default 40%)
