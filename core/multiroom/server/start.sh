@@ -41,8 +41,8 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
     REQUESTED_BUFFER_MS=600
   fi
   if ! [[ "$CLIENT_LATENCY_MS" =~ ^-?[0-9]+$ ]]; then
-    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_LATENCY '$CLIENT_LATENCY_MS', falling back to 400ms"
-    CLIENT_LATENCY_MS=400
+    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_LATENCY '$CLIENT_LATENCY_MS', falling back to 0ms"
+    CLIENT_LATENCY_MS=0
   fi
 
   MIN_BUFFER_MS=$(( CLIENT_LATENCY_MS + 100 ))
