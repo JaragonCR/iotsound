@@ -602,11 +602,21 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func searchInvidious(q string) []SearchResult {
-	client := &http.Client{Timeout: 4 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second}
+	// Cap the whole pass: instances are tried one at a time, and a list of dead hosts used
+	// to add up to ~36s before the yt-dlp fallback even started.
+	deadline := time.Now().Add(6 * time.Second)
 	for _, inst := range invidiousInstances {
+		if time.Now().After(deadline) {
+			break
+		}
 		reqURL := inst + "/api/v1/search?q=" + url.QueryEscape(q) + "&type=video&fields=videoId,title,author,lengthSeconds,videoThumbnails"
 		resp, err := client.Get(reqURL)
 		if err != nil {
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			continue
 		}
 		var items []struct {
@@ -1038,6 +1048,11 @@ func play(filename string, semitones int) {
 
 	duration := probeDuration(filename)
 	if duration <= 0 {
+		// A missing file (evicted, or a bad cache entry) used to "play" 4 minutes of silence.
+		if _, err := os.Stat(filename); err != nil {
+			logWarnf("[player] skipping, file not available: %s (%v)", filename, err)
+			return
+		}
 		duration = 4 * time.Minute
 	}
 	end := time.NewTimer(duration)
