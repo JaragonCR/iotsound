@@ -9,7 +9,10 @@ import sdk from './BalenaClient'
 
 const deviceUuid = process.env.BALENA_DEVICE_UUID ?? ''
 const config: SoundConfig = new SoundConfig()
-const audioBlock: PulseAudioWrapper = new PulseAudioWrapper(`tcp:${config.device.ip}:4317`)
+// Loopback, not the LAN address: sound-supervisor is on the host network and the audio
+// container publishes 4317 there. The LAN IP was read once at startup, so a DHCP change
+// (or starting before WiFi had an address) left every pactl call pointing at a dead IP.
+const audioBlock: PulseAudioWrapper = new PulseAudioWrapper('tcp:127.0.0.1:4317')
 const soundAPI: SoundAPI = new SoundAPI(config, audioBlock)
 
 let monitor: SnapserverMonitor
