@@ -67,6 +67,11 @@ export default class SnapserverMonitor {
   // Wall-clock ms when this device last became the SOURCING master. Advertised so peers can
   // apply "newest source wins": a device that started sourcing more recently owns the group.
   private sourcingEpoch = 0
+  // Highest epoch seen in any remote master's advertisement. A new sourcing epoch is always
+  // above it, so "newest source wins" still holds when this device's clock is behind (no RTC,
+  // NTP not synced yet). Otherwise a promoting device with a slow clock advertises an older
+  // epoch than the master it is replacing, neither side yields, and the group splits.
+  private highestSeenEpoch = 0
 
   // Invoked when this device is SOURCING but a master with a newer epoch (or lower UUID on tie)
   // appears, i.e. we lost the tiebreak and must demote. The orchestrator decides SLAVE vs SOLO.
@@ -272,10 +277,14 @@ export default class SnapserverMonitor {
     // Browse in every state so we always know the current group masters.
     this.startBrowsing()
     if (this.isMaster) {
-      this.sourcingEpoch = Date.now()
+      this.sourcingEpoch = this.nextSourcingEpoch()
       this.startPolling()
       this.advertise()
     }
+  }
+
+  private nextSourcingEpoch(): number {
+    return Math.max(Date.now(), this.highestSeenEpoch + 1)
   }
 
   stop(): void {
@@ -290,7 +299,7 @@ export default class SnapserverMonitor {
     this.isMaster = isMaster
     console.log(`[snapserver-monitor] → ${isMaster ? 'SOURCING (master)' : 'not sourcing'}`)
     if (isMaster) {
-      this.sourcingEpoch = Date.now()
+      this.sourcingEpoch = this.nextSourcingEpoch()
       this.startPolling()
       this.advertise()
     } else {
@@ -347,6 +356,11 @@ export default class SnapserverMonitor {
   private onMasterUp(svc: SnapcastService): void {
     // Filter our own advertisement — we discover it too once browsing is always-on.
     if ((svc.txt['master_uuid'] ?? '') === this.deviceUuid) return
+
+    const seenEpoch = parseInt(svc.txt['epoch'] ?? '0', 10)
+    if (Number.isFinite(seenEpoch) && seenEpoch > this.highestSeenEpoch) {
+      this.highestSeenEpoch = seenEpoch
+    }
 
     const hadTarget = this.hasActiveMultiroomTarget()
     const known = this.masters.has(svc.name)
