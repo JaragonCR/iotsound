@@ -943,8 +943,16 @@ func downloadWorker() {
 		downloadProgress.Delete(id)
 
 		if finalPath != "" {
-			db.Exec(`UPDATE jobs SET status='ready', filename=? WHERE id=?`, finalPath, id)
-			logInfof("[download] done: %s", finalPath)
+			// Only promote to 'ready' if the job is still 'downloading'. A job deleted from the
+			// queue mid-download is already 'played'; keep it that way and just record the file
+			// so it is reusable as a cache hit and visible to LRU eviction.
+			res, _ := db.Exec(`UPDATE jobs SET status='ready', filename=? WHERE id=? AND status='downloading'`, finalPath, id)
+			if n, _ := res.RowsAffected(); n == 0 {
+				db.Exec(`UPDATE jobs SET filename=? WHERE id=?`, finalPath, id)
+				logInfof("[download] done but job %d was removed from the queue; kept as cache: %s", id, finalPath)
+			} else {
+				logInfof("[download] done: %s", finalPath)
+			}
 		} else {
 			db.Exec(`UPDATE jobs SET status='failed' WHERE id=?`, id)
 			logErrorf("[download] failed: %s", url)
