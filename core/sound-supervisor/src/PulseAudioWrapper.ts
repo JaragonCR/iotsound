@@ -351,8 +351,22 @@ export class PulseAudioWrapper extends EventEmitter {
     }
   }
 
+  // Latency for a re-created input loopback. Reuse what core/audio/start.sh configured on the
+  // loopback being replaced (500ms on HDMI, 100ms otherwise, or SOUND_INPUT_LATENCY), so a
+  // live reroute does not silently shrink the buffer an HDMI sink needs.
+  private _inputLoopbackLatency(modules: Array<{ name: string; args: string }>): number {
+    for (const m of modules) {
+      if (m.name !== 'module-loopback' || !m.args.includes('source=balena-sound.input.monitor')) continue
+      const match = m.args.match(/latency_msec=(\d+)/)
+      if (match) return parseInt(match[1], 10)
+    }
+    const env = parseInt(process.env.SOUND_INPUT_LATENCY ?? '', 10)
+    return Number.isFinite(env) && env > 0 ? env : 100
+  }
+
   async rerouteInputDirect(): Promise<void> {
     const modules = await this.listModulesShort()
+    const latency = this._inputLoopbackLatency(modules)
     for (const m of modules) {
       if (
         m.name === 'module-loopback' &&
@@ -372,7 +386,7 @@ export class PulseAudioWrapper extends EventEmitter {
     if (!alreadyDirect) {
       await this._loadModule(
         'module-loopback',
-        'source=balena-sound.input.monitor sink=balena-sound.output latency_msec=100'
+        `source=balena-sound.input.monitor sink=balena-sound.output latency_msec=${latency}`
       )
       console.log('[PulseAudioWrapper] Rerouted: balena-sound.input → balena-sound.output (Snapcast bypassed)')
     }
@@ -380,6 +394,7 @@ export class PulseAudioWrapper extends EventEmitter {
 
   async restoreSnapcastRouting(): Promise<void> {
     const modules = await this.listModulesShort()
+    const latency = this._inputLoopbackLatency(modules)
     for (const m of modules) {
       if (
         m.name === 'module-loopback' &&
@@ -399,7 +414,7 @@ export class PulseAudioWrapper extends EventEmitter {
     if (!alreadySnapcast) {
       await this._loadModule(
         'module-loopback',
-        'source=balena-sound.input.monitor sink=snapcast latency_msec=100'
+        `source=balena-sound.input.monitor sink=snapcast latency_msec=${latency}`
       )
       console.log('[PulseAudioWrapper] Restored: balena-sound.input → snapcast')
     }
