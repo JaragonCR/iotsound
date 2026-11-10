@@ -379,8 +379,11 @@ if [ "$HP_ACTIVE" = true ] || [ "$LP_ACTIVE" = true ] || [ "$BOXY_ACTIVE" = true
                         control = { Freq = $AUDIO_INPUT_LOWPASS Q = $AUDIO_INPUT_LOWPASS_Q }
                     }"
     
-    LINKS_SECTION="${LINKS_SECTION}
+    # Only link when an earlier node exists; with lowpass alone there is no hp node.
+    if [ "$HP_ACTIVE" = true ] || [ "$PROXIMITY_ACTIVE" = true ] || [ "$BOXY_ACTIVE" = true ]; then
+      LINKS_SECTION="${LINKS_SECTION}
                     { output = \"$CURRENT_OUTPUT\" input = \"lp:In\" }"
+    fi
     CURRENT_OUTPUT="lp:Out"
   fi
   
