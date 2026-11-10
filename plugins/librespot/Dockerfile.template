@@ -41,7 +41,7 @@ RUN apk add --no-cache \
     flac \
     mpg123-libs
 
-ENV PULSE_SERVER=tcp:localhost:4317
+ENV PULSE_SERVER=tcp:127.0.0.1:4317
 
 COPY --from=builder /daemon /usr/src/daemon
 COPY start.sh /usr/src/

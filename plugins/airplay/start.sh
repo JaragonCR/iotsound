@@ -14,7 +14,7 @@ echo "Device name: $SOUND_DEVICE_NAME"
 # Audio block can take 15–30s to init PipeWire/PulseAudio on boot;
 # without this delay each fast-fail counts against startretries=20.
 _tries=0
-until nc -z localhost 4317 2>/dev/null; do
+until nc -z 127.0.0.1 4317 2>/dev/null; do
   echo "Waiting for audio block on port 4317..."
   sleep 3
   _tries=$((_tries + 1))

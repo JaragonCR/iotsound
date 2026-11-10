@@ -12,8 +12,8 @@ mkdir -p "$CONFIG_DIR"
 # Wait for PulseAudio (pipewire-pulse) to be ready before starting the daemon.
 # Without this, go-librespot crashes immediately on restart and spins in a
 # fast on-failure loop that can destabilise PipeWire for other plugins.
-until (exec 3<>/dev/tcp/localhost/4317) 2>/dev/null; do
-  echo "[librespot] Waiting for PulseAudio at localhost:4317..."
+until (exec 3<>/dev/tcp/127.0.0.1/4317) 2>/dev/null; do
+  echo "[librespot] Waiting for PulseAudio at 127.0.0.1:4317..."
   sleep 2
 done
 echo "[librespot] PulseAudio ready"
