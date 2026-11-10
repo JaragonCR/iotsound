@@ -93,6 +93,6 @@ EOF
 fi
 
 echo "Generated config:"
-cat "$CONFIG_PATH"
+sed 's/^\( *access_token:\).*/\1 "<redacted>"/' "$CONFIG_PATH"
 
 exec /usr/src/daemon --config_dir $CONFIG_DIR
