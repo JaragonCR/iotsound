@@ -5,6 +5,7 @@ Monitors WiFi connectivity and audio playback.
 Implements recovery logic: WiFi toggle → reboot if needed.
 """
 
+import json
 import os
 import subprocess
 import time
@@ -27,6 +28,7 @@ WIFI_RECOVERY_WAIT = _env_int("WIFI_RECOVERY_WAIT", 300)         # 5 minutes bet
 MAX_RECOVERY_ATTEMPTS = _env_int("MAX_RECOVERY_ATTEMPTS", 3)
 AUDIO_CHECK_INTERVAL = _env_int("AUDIO_CHECK_INTERVAL", 60)      # Check if audio is playing
 SUPERVISOR_PORT = _env_int("SOUND_SUPERVISOR_PORT", 80)
+INPUT_SINK = os.environ.get("SOUND_INPUT_SINK", "balena-sound.input")
 
 LOG_FILE = "/tmp/wifi-watchdog.log"
 STATE_FILE = "/tmp/wifi-watchdog-state.txt"
@@ -135,14 +137,23 @@ class WiFiWatchdog:
             return False
 
     def is_audio_playing(self):
-        """Check if audio is currently playing across host processes (requires pid: host)."""
+        """True only while a local source is actually playing.
+
+        Asks sound-supervisor for the sink list and checks whether the plugin input sink
+        (balena-sound.input) is RUNNING. The previous check looked for processes such as
+        shairport-sync, which run permanently as daemons, so it was always true and recovery
+        never ran. The hardware sink is no use either: a loopback keeps it RUNNING when idle.
+        If the supervisor cannot be reached we report False so recovery is not blocked.
+        """
         try:
-            result = subprocess.run(
-                ["pgrep", "-f", "go-librespot|shairport-sync|snapclient|pacat|ffmpeg"],
-                capture_output=True,
-                timeout=5
-            )
-            return result.returncode == 0
+            with urllib.request.urlopen(
+                f"http://localhost:{SUPERVISOR_PORT}/audio/sinks", timeout=5
+            ) as resp:
+                sinks = json.loads(resp.read().decode("utf-8"))
+            for sink in sinks:
+                if sink.get("name") == INPUT_SINK:
+                    return str(sink.get("state", "")).upper() == "RUNNING"
+            return False
         except Exception as e:
             logger.warning(f"Error checking audio status: {e}")
             return False
