@@ -92,6 +92,10 @@ audioBlock.on('play', async (sink: any) => {
 // if another device starts sourcing even more recently, handleSuperseded() steps us down.
 export async function handlePlayDetect(): Promise<void> {
   if (!monitor) return
+  // The audio container resends the current state every few seconds (resync), so a play
+  // that is not a stop→play edge must be a no-op. Without this a SOLO device, which keeps
+  // a local source active on purpose, would re-take the group on every resync tick.
+  const wasActive = localSourceActive
   localSourceActive = true
 
   if (config.role !== MultiroomRole.AUTO) return
@@ -102,6 +106,7 @@ export async function handlePlayDetect(): Promise<void> {
     console.log('[play-detect] Demotion timer cancelled — still playing')
   }
 
+  if (wasActive) return
   if (config.isElectedMaster()) return
 
   // Newest source wins: promote unconditionally. If another device is actively sourcing,
@@ -126,7 +131,8 @@ export function handleStopDetect(): void {
   if (config.role !== MultiroomRole.AUTO) return
   if (!config.isElectedMaster() && !config.isSolo()) return
 
-  if (stopTimer) clearTimeout(stopTimer)
+  // Repeated stop (resync tick): the grace period is already counting down, keep it.
+  if (stopTimer) return
   console.log(`[stop-detect] Source stopped — demoting in ${STOP_DEMOTION_MS / 1000}s if no replay`)
   stopTimer = setTimeout(async () => {
     stopTimer = null

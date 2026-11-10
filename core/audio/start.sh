@@ -847,20 +847,34 @@ if [ -n "$SOUND_SUPERVISOR_URL" ]; then
       '
     }
     _last_state=""
-    pactl subscribe 2>/dev/null | while IFS= read -r _ev; do
-      case "$_ev" in *"on sink-input"*)
-        if has_plugin_playing; then _new="play"; else _new="stop"; fi
-        if [ "$_new" != "$_last_state" ]; then
-          _last_state="$_new"
-          if [ "$_new" = "play" ]; then
-            echo "[play-detect] play started → $SOUND_SUPERVISOR_URL/internal/play"
-            curl -sf -X POST "$SOUND_SUPERVISOR_URL/internal/play" >/dev/null 2>&1 || true
-          else
-            echo "[play-detect] play stopped → $SOUND_SUPERVISOR_URL/internal/stop"
-            curl -sf -X POST "$SOUND_SUPERVISOR_URL/internal/stop" >/dev/null 2>&1 || true
-          fi
-        fi
-      ;; esac
+    # $1 = 1 → resend the current state even if it has not changed (periodic resync).
+    # The supervisor treats repeated play/stop as no-ops, so resending is safe. It is what
+    # lets a restarted sound-supervisor (which comes back believing nothing is playing)
+    # relearn that a source is active, and what recovers a POST that failed.
+    _report_state() {
+      local _new
+      if has_plugin_playing; then _new="play"; else _new="stop"; fi
+      if [ "$1" != "1" ] && [ "$_new" = "$_last_state" ]; then
+        return 0
+      fi
+      if [ "$_new" != "$_last_state" ]; then
+        echo "[play-detect] $_new → $SOUND_SUPERVISOR_URL/internal/$_new"
+      fi
+      if curl -sf -m 3 -X POST "$SOUND_SUPERVISOR_URL/internal/$_new" >/dev/null 2>&1; then
+        _last_state="$_new"
+      else
+        # Not delivered: forget the state so the next event or resync tick retries.
+        _last_state=""
+      fi
+    }
+    {
+      pactl subscribe 2>/dev/null &
+      while sleep "${PLAY_DETECT_RESYNC_S:-10}"; do echo "resync"; done
+    } | while IFS= read -r _ev; do
+      case "$_ev" in
+        resync) _report_state 1 ;;
+        *"on sink-input"*) _report_state 0 ;;
+      esac
     done
   ) &
   log "Play detector started (pactl subscribe → $SOUND_SUPERVISOR_URL)"
