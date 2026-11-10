@@ -17,7 +17,9 @@ import { promisify } from 'util'
 const execAsync = (cmd: string) => promisify(exec)(cmd, { timeout: 5000 })
 
 const RECONNECT_DELAY_MS = 3000
-const POLL_INTERVAL_MS = 1000
+// Connectivity check only: play/stop detection lives in core/audio/start.sh (pactl subscribe).
+// Each tick forks pactl, so keep it slow.
+const POLL_INTERVAL_MS = 5000
 
 export interface AudioBlockSink {
   name: string
@@ -95,10 +97,7 @@ export class PulseAudioWrapper extends EventEmitter {
 
     this._pollInterval = setInterval(async () => {
       try {
-        // Check connectivity first via a lightweight stat call
-        await execAsync(`pactl --server ${this.server} stat`)
-
-        // Check playback state
+        // One call covers both connectivity (it throws when PulseAudio is gone) and state.
         const { stdout } = await execAsync(
           `pactl --server ${this.server} list short sink-inputs`
         )
