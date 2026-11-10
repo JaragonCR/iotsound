@@ -1446,7 +1446,9 @@ func proxyVolume(percent int) {
 
 func lockUpcoming() {
 	// Lock the first ready job — it's up next
-	db.Exec(`UPDATE jobs SET locked=1 WHERE id=(SELECT id FROM jobs WHERE status='ready' ORDER BY id LIMIT 1)`)
+	// "AND locked=0" makes this a no-op once the job is locked. It runs on every /api/data
+	// poll from every client, and an unconditional UPDATE rewrote the row each time.
+	db.Exec(`UPDATE jobs SET locked=1 WHERE locked=0 AND id=(SELECT id FROM jobs WHERE status='ready' ORDER BY id LIMIT 1)`)
 }
 
 func queryByStatus(status string, limit int) []*Job {
