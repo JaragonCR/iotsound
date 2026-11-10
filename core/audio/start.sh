@@ -515,7 +515,8 @@ log "SOUND_SUPERVISOR_URL=$SOUND_SUPERVISOR_URL"
 
 # Level W: warnings only from WirePlumber; our print() calls bypass this entirely
 export WIREPLUMBER_DEBUG=W
-wireplumber 2>&1 | tee /var/log/wireplumber.log &
+wireplumber > >(tee /var/log/wireplumber.log) 2>&1 &
+WIREPLUMBER_PID=$!
 sleep 1
 log_ok "WirePlumber daemon started"
 
@@ -886,4 +887,9 @@ if [ -n "$SOUND_SUPERVISOR_URL" ]; then
   log "Play detector started (pactl subscribe → $SOUND_SUPERVISOR_URL)"
 fi
 
-wait $PW_PULSE_PID
+# Exit as soon as any part of the stack dies so the container restarts cleanly. Waiting on
+# pipewire-pulse alone left the container up with no session manager if WirePlumber crashed.
+set +e
+wait -n "$PIPEWIRE_PID" "$WIREPLUMBER_PID" "$PW_PULSE_PID"
+log_error "PipeWire stack process exited (pipewire=$PIPEWIRE_PID wireplumber=$WIREPLUMBER_PID pipewire-pulse=$PW_PULSE_PID) — restarting container"
+exit 1
