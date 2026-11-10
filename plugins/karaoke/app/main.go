@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"database/sql"
 	"encoding/json"
@@ -920,25 +921,28 @@ func downloadWorker() {
 		go io.Copy(io.Discard, stderr)
 		cmd.Start()
 
+		// Read line by line. Reading raw chunks could deliver the last progress line and the
+		// final file path in one read (path ignored → good download marked failed) or split
+		// the path across two reads (truncated filename stored).
 		var finalPath string
-		buf := make([]byte, 512)
-		for {
-			n, err := stdout.Read(buf)
-			if n > 0 {
-				line := strings.TrimSpace(string(buf[:n]))
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			switch {
+			case strings.HasPrefix(line, "/"):
+				finalPath = line
+			case strings.Contains(line, "Finalizing"):
+				downloadProgress.Store(id, "Finalizing")
+			default:
 				if m := progressRe.FindStringSubmatch(line); m != nil {
+					// In-memory only: /api/data overlays downloadProgress on every poll, so
+					// writing each tick to SQLite was redundant SD-card wear.
 					downloadProgress.Store(id, m[1]+"%")
-					db.Exec(`UPDATE jobs SET progress=? WHERE id=?`, m[1]+"%", id)
-				} else if strings.HasPrefix(line, "/") {
-					finalPath = line
-				} else if strings.Contains(line, "Finalizing") {
-					downloadProgress.Store(id, "Finalizing")
 				}
 			}
-			if err != nil {
-				break
-			}
 		}
+		io.Copy(io.Discard, stdout)
 		cmd.Wait()
 		downloadProgress.Delete(id)
 
