@@ -85,8 +85,11 @@ port `1706` (`SOUND_MULTIROOM_BEACON_PORT`), plus a `bye` when it stops sourcing
 | Event | mDNS | Beacon |
 | --- | --- | --- |
 | Master appears | announcement burst, then on query | within 10s, repeated |
-| Master stops | goodbye burst | `bye` (sent twice), else dropped after ~35s of silence |
+| Master stops | goodbye burst | `bye` (sent twice), else checked over unicast after ~35s of silence |
 
-A master that has sent beacons and then goes quiet is removed even if its snapserver port
-still answers. A master on an older release that never beacons keeps the mDNS-only behaviour.
+Broadcast reception is lossy, so silence alone does not drop a master. After ~35s without a
+beacon the listener asks the master directly (`GET /multiroom/active` on its
+`sound-supervisor`, unicast HTTP). "Still sourcing" keeps it, "not sourcing" drops it at
+once (this is the missed-goodbye case, even though its snapserver port still answers), and
+three unanswered checks in a row drop it. A master on an older release that never beacons keeps the mDNS-only behaviour.
 Cost is one packet per interval from the master, independent of the number of idle speakers.

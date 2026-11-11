@@ -35,7 +35,14 @@ interface TrackedMaster {
   // Wall-clock ms of the last heartbeat beacon from this master; 0 if it has never sent one
   // (a master on an older release). A beaconing master that goes quiet is dropped.
   lastBeacon: number
+  // Wall-clock ms of the last successful unicast check that this master is still sourcing,
+  // and how many such checks in a row got no answer. See verifyQuietMaster().
+  lastVerified: number
+  verifyFailures: number
 }
+
+// Unanswered unicast checks tolerated before a quiet master is dropped.
+const VERIFY_MAX_FAILURES = 3
 
 // A beaconing master is considered gone after this long without a heartbeat (3 missed + slack).
 const BEACON_TIMEOUT_MS = BEACON_INTERVAL_MS * 3 + 5000
@@ -418,6 +425,8 @@ export default class SnapserverMonitor {
       // what the port probe found, or reachability would flap every beacon.
       reachable: fromBeacon && existing ? existing.reachable : true,
       lastBeacon: fromBeacon ? Date.now() : (existing?.lastBeacon ?? 0),
+      lastVerified: existing?.lastVerified ?? 0,
+      verifyFailures: fromBeacon ? 0 : (existing?.verifyFailures ?? 0),
     })
     if (fromBeacon && existing && !existing.lastBeacon) {
       console.log(`[snapserver-monitor] Heartbeat established from master ${svc.ip}`)
@@ -467,14 +476,26 @@ export default class SnapserverMonitor {
   private async checkReachability(): Promise<void> {
     let changed = false
     for (const [key, m] of [...this.masters.entries()]) {
-      // A master that was sending heartbeats and stopped is gone, even if we never received
-      // its goodbye and its snapserver port still answers (snapserver stays up when idle).
-      if (m.lastBeacon && Date.now() - m.lastBeacon > BEACON_TIMEOUT_MS) {
-        if (this.masters.delete(key)) {
-          console.log(`[snapserver-monitor] Master gone (heartbeat lost): ${m.svc.ip}`)
-          changed = true
+      // A master that was sending heartbeats has gone quiet. Broadcast reception is lossy
+      // (a Pi 3 on WiFi was seen missing 30-40s of beacons every few minutes while the master
+      // was fine), so silence alone is not proof. Ask the master directly over unicast HTTP
+      // before dropping it: pull is the fallback for a missed push.
+      if (m.lastBeacon && Date.now() - Math.max(m.lastBeacon, m.lastVerified) > BEACON_TIMEOUT_MS) {
+        const verdict = await this.verifyQuietMaster(m.svc.ip)
+        const quiet = this.masters.get(key)
+        if (!quiet) continue
+        if (verdict === 'sourcing') {
+          quiet.lastVerified = Date.now()
+          quiet.verifyFailures = 0
+        } else {
+          quiet.verifyFailures = verdict === 'stopped' ? VERIFY_MAX_FAILURES : quiet.verifyFailures + 1
+          if (quiet.verifyFailures >= VERIFY_MAX_FAILURES) {
+            this.masters.delete(key)
+            console.log(`[snapserver-monitor] Master gone (${verdict === 'stopped' ? 'no longer sourcing' : 'heartbeat lost and not answering'}): ${quiet.svc.ip}`)
+            changed = true
+            continue
+          }
         }
-        continue
       }
       const alive = await this.probe(m.svc.ip, SNAPCAST_TCP_PORT)
       // Re-read after the await: a heartbeat may have replaced this entry while we probed.
@@ -489,6 +510,29 @@ export default class SnapserverMonitor {
     if (changed) {
       this.onMasterChange?.(this.hasActiveMultiroomTarget())
     }
+  }
+
+  // Ask a master's sound-supervisor whether it is still the sourcing master.
+  // 'sourcing' / 'stopped' are definite answers; 'unknown' means it did not answer.
+  private verifyQuietMaster(ip: string): Promise<'sourcing' | 'stopped' | 'unknown'> {
+    return new Promise((resolve) => {
+      const req = http.get(
+        { host: ip, port: constants.port, path: '/multiroom/active', timeout: 2500 },
+        (res) => {
+          let data = ''
+          res.on('data', (chunk) => { data += chunk })
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(data)?.active === true ? 'sourcing' : 'stopped')
+            } catch {
+              resolve('unknown')
+            }
+          })
+        }
+      )
+      req.on('timeout', () => { req.destroy(); resolve('unknown') })
+      req.on('error', () => resolve('unknown'))
+    })
   }
 
   private probe(ip: string, port: number): Promise<boolean> {
