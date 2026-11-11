@@ -63,6 +63,54 @@ async function init() {
   // Connect to PulseAudio in the background; the wrapper retries indefinitely so a slow
   // audio container never blocks startup or handler registration.
   audioBlock.listen().then(() => reconcileVolumeMode()).catch(() => {})
+  // Re-check routing every time PulseAudio (re)appears, including audio container restarts.
+  audioBlock.on('connect', () => scheduleRoutingReconcile())
+}
+
+// Routing authority.
+//
+// core/audio/start.sh picks the input route once, at boot, from GET /role. If this service is
+// not answering within its 60s wait (seen on device during a release update: the audio
+// container came up about a minute before sound-supervisor), it falls back to standalone
+// routing: balena-sound.input → balena-sound.output. Nothing corrected that afterwards, so an
+// `auto` device played its own sources locally while its snapserver stayed silent and no
+// other speaker could hear it, even though every state transition looked right.
+//
+// So once PulseAudio is up and the audio container has finished applying its own rules
+// (default sink is the input sink), make the loopback match the state this service holds.
+// Both helpers are idempotent and only act (and log) when the routing is wrong.
+const ROUTING_POLL_MS = 3000
+const ROUTING_POLL_MAX = 60
+const ROUTING_SETTLE_MS = 5000
+let routingTimer: NodeJS.Timeout | null = null
+
+function scheduleRoutingReconcile(attempt = 1): void {
+  if (routingTimer) clearTimeout(routingTimer)
+  routingTimer = setTimeout(async () => {
+    routingTimer = null
+    const info = await audioBlock.getInfo().catch(() => ({} as Record<string, string>))
+    if (info['Default Sink'] !== constants.inputSink) {
+      // Audio container still starting (or gone again): keep waiting, up to ~3 minutes.
+      if (attempt < ROUTING_POLL_MAX) scheduleRoutingReconcile(attempt + 1)
+      return
+    }
+    // The default sink is set just before start.sh loads its loopbacks; let it finish so we
+    // never race it into loading a second input loopback.
+    routingTimer = setTimeout(() => {
+      routingTimer = null
+      reconcileRouting().catch(err => console.log(`[routing] reconcile error: ${(err as Error).message}`))
+    }, ROUTING_SETTLE_MS)
+  }, attempt === 1 ? 0 : ROUTING_POLL_MS)
+}
+
+async function reconcileRouting(): Promise<void> {
+  const wantDirect = config.role === MultiroomRole.DISABLED || config.isSolo()
+  if (wantDirect) {
+    await audioBlock.rerouteInputDirect()
+  } else {
+    await audioBlock.restoreSnapcastRouting()
+  }
+  reconcileVolumeMode()
 }
 
 function reconcileVolumeMode(): void {
