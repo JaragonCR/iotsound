@@ -1,4 +1,451 @@
 - commits:
+    - subject: "feat(multiroom): master heartbeat beacon so speakers that miss the
+        mDNS announcement still join"
+      hash: 0449e6ae119981f4277a2e3717f2045dbae8d83a
+      body: >
+        mDNS announces a new master with a short unsolicited burst and then only
+        answers queries, and a long-running avahi-browse backs its queries off.
+        A speaker that dropped the burst stayed out of the group (seen on
+        device: the Pi 3 did not discover a master that had been advertising for
+        61s), and one that dropped the goodbye kept a stale master. The sourcing
+        master now also broadcasts a small UDP datagram every 10s on port 1706
+        and a bye when it stops. Beacons and mDNS feed the same master table,
+        now keyed by master UUID. A beaconing master that goes silent for about
+        35s is dropped even if its snapserver port still answers.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "chore(deps): bump axios, proxy-addr, minimatch and brace-expansion to
+        clear 15 Dependabot alerts"
+      hash: 8e7ce657871df16bbd328305086921aa3b8722e0
+      body: >
+        axios 1.19.0 -> 1.21.1 (12 alerts, direct runtime dependency),
+        proxy-addr 2.0.7 -> 2.0.8 via override (critical, pulled in by express),
+        and the dev-only minimatch 10.2.6 -> 11.0.7 and brace-expansion 5.0.9 ->
+        5.0.12 via overrides. npm audit reports 0 vulnerabilities; the
+        supervisor builds and an express + axios smoke test passes.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(supervisor): retry plugin start calls so sources come back after a
+        clean reboot"
+      hash: 47c77394444adde55dca02586d95e27677aaf107
+      body: >
+        After a clean reboot sound-supervisor starts before the balena
+        supervisor API is reachable. The start-service calls for librespot,
+        airplay and bluetooth failed once and were dropped; only a 423 was
+        retried. Those services use restart: on-failure and exit 0 on shutdown,
+        so Docker does not restart them and the device came back with no
+        Spotify, AirPlay or Bluetooth. Retry network errors, 423, 404 and 5xx
+        for about 2.5 minutes, and drop retries that belong to an older role.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(supervisor): ship the VERSION file so /version reports the real
+        release"
+      hash: 4948d089c9a12d3e960d1c24d4672d89c5047796
+      body: >
+        The image never contained VERSION, so GET /version and /support fell
+        back to the hard-coded 3.11.0.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(watchdog): detect real playback so WiFi recovery can actually run"
+      hash: ba4bcec8cb6e037f2fdc5da319cd7b9d5802f779
+      body: >
+        is_audio_playing used pgrep for shairport-sync, snapclient, pacat and
+        ffmpeg. shairport-sync is a permanent daemon, so the check was always
+        true, and recovery is skipped while audio is playing: the watchdog never
+        toggled WiFi or rebooted. Ask sound-supervisor for the sink list and
+        treat audio as playing only when balena-sound.input is RUNNING (on an
+        idle device it reports IDLE while the hardware sink stays RUNNING).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(compose): publish PulseAudio 4317 on host loopback only"
+      hash: f74ba2b8f00ae9646348db441622468e8012683e
+      body: >
+        Port 4317 was published on every interface with unrestricted access, so
+        any device on the WiFi could play to the box or record its microphone.
+        Bind it to 127.0.0.1, point host-network services at 127.0.0.1
+        explicitly (no localhost/IPv6 ambiguity), and have karaoke reach the
+        audio container by service name over the compose network. Needs an
+        on-device check before merge: all sources still play and karaoke audio
+        and mic still work.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(supervisor): talk to PulseAudio over loopback instead of the LAN
+        address captured at boot"
+      hash: e545d5583f372435cdbafe19bda1651eeeca4ff4
+      body: >
+        The pactl target was built from the first wlan/eth IPv4 address at
+        startup and never refreshed, so volume, routing and sink queries broke
+        after an address change.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "docs: correct the Bluetooth name variable and document
+        SOUND_SPOTIFY_ZEROCONF_BACKEND"
+      hash: e23a6cee28e424263ed753634e9867a31f06fc54
+      body: >
+        SOUND_DEVICE_NAME does not name the Bluetooth device; the plugin only
+        reads BLUETOOTH_DEVICE_NAME.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "perf(supervisor): poll PulseAudio every 5s with one pactl call instead
+        of two per second"
+      hash: 1b47a27537210e78971baa24698bbd5349c383de
+      body: >
+        The wrapper forked pactl twice a second forever just to notice a
+        disconnect. Real play detection is event-driven in the audio container,
+        so one call every 5s is enough.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(multiroom): fall back to the real default when
+        SOUND_MULTIROOM_LATENCY is invalid"
+      hash: 76f49913b7551003650bc18608a7d3568af213e5
+      body: >
+        An invalid value fell back to 400ms, a leftover from before the default
+        became 0, which also raised the minimum snapserver buffer to 500ms.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(bluetooth): pass the selected HCI interface to the agent"
+      hash: d9b7227710c31a641050dd4c20ecc8fc23772a9f
+      body: >
+        entry.sh set HCI_INTERFACE without exporting it, so bluetooth-agent
+        ignored BLUETOOTH_HCI_INTERFACE and configured hci0. Also use the
+        function argument in reset_hci_interface instead of the caller's loop
+        variable.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(karaoke): guard the download-finished update against a failed query"
+      hash: 799a5b8a0d7dba69953b6ce0be6c296c94cfa121
+      body: >
+        Follow-up to the delete-while-downloading fix: do not dereference the
+        sql.Result when the UPDATE itself errors.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(karaoke): Queue, Sing Again and favorite buttons work for titles
+        with apostrophes"
+      hash: c268c359358e06d18d87ae7e6bf2a7efa38ed4c4
+      body: >
+        Values were HTML-escaped and placed inside single-quoted JS strings in
+        onclick attributes. The browser decodes &#39; back to an apostrophe
+        before running the handler, so a title like "Don't Stop Believin'" was a
+        syntax error and the button did nothing; a crafted title could also run
+        script. Emit JSON string literals (jsq) for handler arguments and escape
+        thumbnail urls and progress text.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(karaoke): skip songs whose file is missing and cap the Invidious
+        search time"
+      hash: 6c5d37805fe33fe81fccc4c28a0261c0c2ea3a22
+      body: >
+        A queued song whose file was gone played four minutes of silence; skip
+        it instead. Search tried nine public Invidious hosts in sequence at 4s
+        each before falling back to yt-dlp; cap the pass at 6s and skip non-200
+        answers.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "perf(karaoke): stop writing to SQLite on every /api/data poll"
+      hash: be640963544117f6c1880882b093560d19c41ec9
+      body: >
+        lockUpcoming ran an unconditional UPDATE on each poll from each client
+        (every 1.5 to 2s). Skip the write once the next job is already locked.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(karaoke): reject non-http urls and stop yt-dlp from parsing the
+        url as an option"
+      hash: edf40da364d62011d8d69ef704cff003e1f1d9e8
+      body: >
+        POST /add passed the user-supplied url straight to yt-dlp as an
+        argument. Require an http(s) url and pass it after '--'.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(karaoke): parse yt-dlp output line by line so finished downloads
+        are not marked failed"
+      hash: e2bc4b538402b6aa2e9f06200cf4cd263ab77b08
+      body: >
+        stdout was read in raw 512-byte chunks and each chunk was treated as one
+        line. When the final progress line and the after_move filepath arrived
+        in the same read the path was ignored and the job was marked failed,
+        leaving an orphaned file; a path split across reads was stored
+        truncated. Use a line scanner, and keep progress in memory only instead
+        of writing every tick to SQLite.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(karaoke): a song deleted while downloading no longer comes back
+        into the queue"
+      hash: cc3765dcef4ff5de69d773835eec870e1b5b3152
+      body: >
+        The download worker set status='ready' unconditionally when yt-dlp
+        finished, undoing a delete made during the download. Only promote jobs
+        that are still 'downloading'; otherwise keep the file as a cache entry.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(supervisor): return 200 from /device endpoints and 400 on a
+        missing JSON body"
+      hash: 53ce3574ad56e2ea6fbccd7ec1828059ad5b6d2d
+      body: >
+        restart, reboot and shutdown passed the whole AxiosResponse to
+        res.json(), which is circular, so they answered 500 after the action had
+        already fired (the WiFi watchdog then fell back to a shutdown binary
+        that does not exist in its image). Also read req.body defensively:
+        Express 5 leaves it undefined when no JSON body is sent, which turned
+        bad requests into 500s.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(supervisor): keep the configured loopback latency on live reroutes"
+      hash: 64989263e0e5140f9d089b1b29a611c38e9d11fd
+      body: >
+        rerouteInputDirect and restoreSnapcastRouting re-created the input
+        loopback with a hard-coded latency_msec=100, dropping
+        SOUND_INPUT_LATENCY and the 500ms HDMI default after the first SOLO or
+        role change. Reuse the latency of the loopback being replaced.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(multiroom): keep newest-source-wins correct when a device clock is
+        behind"
+      hash: 3ba7366ed0c44cad17c25b3f2f169a81d4195c96
+      body: >
+        Epochs were raw wall-clock times and were only compared when another
+        master's advertisement arrived. A device promoting with a slow clock
+        advertised an epoch older than the current master's, so neither yielded
+        and both kept advertising. The sourcing epoch is now max(now, highest
+        epoch seen + 1).
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(audio): restart the container when pipewire or wireplumber exits"
+      hash: 89b6ce2cb2dbaec5a83dffb546077c2e9599a09e
+      body: >
+        The script only waited on pipewire-pulse, so a WirePlumber crash left
+        the container running with no session manager and no device routing.
+        Wait on all three processes and exit non-zero when any of them dies.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(audio): only unload stale mic-monitor loopbacks before loading a
+        new one"
+      hash: 5fe76555dbd1ba3177a635165ff8c43ea39a562e
+      body: >
+        The cleanup iterated over every loaded module and passed ids as '#N', so
+        it targeted the wrong modules and never unloaded anything.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(audio): do not link the lowpass filter to a missing highpass node"
+      hash: 10ab0e7927fbc5d27e7a09d57cf179296e6a599c
+      body: >
+        With only AUDIO_INPUT_LOWPASS active the filter chain emitted a link
+        from hp:Out, a node that was never defined, which makes the filter-chain
+        module fail to load.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(audio,supervisor): resync play state so a supervisor restart
+        mid-song does not go silent"
+      hash: 8a668eaf2903daa6d724292c2bde002fe7a33cce
+      body: >
+        The play detector only POSTed on a state change and ignored curl
+        failures. A sound-supervisor that restarted during playback came back
+        with no local source, so an auto device dropped out of SOURCING and
+        stayed silent until the stream was paused and resumed. The detector now
+        resends the current state every PLAY_DETECT_RESYNC_S (default 10s) and
+        retries undelivered POSTs. handlePlayDetect and handleStopDetect ignore
+        repeats so the resync cannot re-promote a SOLO device or keep re-arming
+        the demotion timer.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(hostname): do not reboot when the hostname PATCH fails"
+      hash: 02f23e14a4abee4a9553a6ca02fa1b8b6a9fe12c
+      body: >
+        apply_hostname is called as 'apply_hostname || echo', which turns off
+        errexit inside the function. A failed PATCH therefore still reached the
+        reboot call, and since the hostname never changed the device rebooted
+        again on the next pass.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(librespot): do not print the Spotify access token to the logs"
+      hash: 0cb32de34a1841ea7cbe495591a7316cb9e6f5ac
+      body: >
+        The generated config was echoed verbatim, including
+        credentials.spotify_token.access_token.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(librespot): register Spotify Connect through avahi instead of the
+        built-in mDNS responder"
+      hash: abf5d52d211012934f5ea327d20684dd8340704a
+      body: >
+        start.sh waited for avahi-daemon and the docs said go-librespot used it,
+        but the generated config never set zeroconf_backend, so go-librespot ran
+        its own responder next to avahi-daemon on the host network. Set
+        zeroconf_backend to avahi when the shared D-Bus socket is present.
+        SOUND_SPOTIFY_ZEROCONF_BACKEND=builtin restores the old behavior.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+  version: 5.1.9
+  title: ""
+  date: 2026-11-11T03:29:49.844Z
+- commits:
     - subject: "fix(multiroom,audio,librespot): prevent snapclient boot race onto
         balena-sound.input and refresh go-librespot"
       hash: 6d9fbb3990cfe5b1530a4eebff23e54b122b034e

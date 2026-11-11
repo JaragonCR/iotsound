@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.1.9
+## (2026-11-11)
+
+* feat(multiroom): master heartbeat beacon so speakers that miss the mDNS announcement still join [JaragonCR]
+* chore(deps): bump axios, proxy-addr, minimatch and brace-expansion to clear 15 Dependabot alerts [JaragonCR]
+* fix(supervisor): retry plugin start calls so sources come back after a clean reboot [JaragonCR]
+* fix(supervisor): ship the VERSION file so /version reports the real release [JaragonCR]
+* fix(watchdog): detect real playback so WiFi recovery can actually run [JaragonCR]
+* fix(compose): publish PulseAudio 4317 on host loopback only [JaragonCR]
+* fix(supervisor): talk to PulseAudio over loopback instead of the LAN address captured at boot [JaragonCR]
+* docs: correct the Bluetooth name variable and document SOUND_SPOTIFY_ZEROCONF_BACKEND [JaragonCR]
+* perf(supervisor): poll PulseAudio every 5s with one pactl call instead of two per second [JaragonCR]
+* fix(multiroom): fall back to the real default when SOUND_MULTIROOM_LATENCY is invalid [JaragonCR]
+* fix(bluetooth): pass the selected HCI interface to the agent [JaragonCR]
+* fix(karaoke): guard the download-finished update against a failed query [JaragonCR]
+* fix(karaoke): Queue, Sing Again and favorite buttons work for titles with apostrophes [JaragonCR]
+* fix(karaoke): skip songs whose file is missing and cap the Invidious search time [JaragonCR]
+* perf(karaoke): stop writing to SQLite on every /api/data poll [JaragonCR]
+* fix(karaoke): reject non-http urls and stop yt-dlp from parsing the url as an option [JaragonCR]
+* fix(karaoke): parse yt-dlp output line by line so finished downloads are not marked failed [JaragonCR]
+* fix(karaoke): a song deleted while downloading no longer comes back into the queue [JaragonCR]
+* fix(supervisor): return 200 from /device endpoints and 400 on a missing JSON body [JaragonCR]
+* fix(supervisor): keep the configured loopback latency on live reroutes [JaragonCR]
+* fix(multiroom): keep newest-source-wins correct when a device clock is behind [JaragonCR]
+* fix(audio): restart the container when pipewire or wireplumber exits [JaragonCR]
+* fix(audio): only unload stale mic-monitor loopbacks before loading a new one [JaragonCR]
+* fix(audio): do not link the lowpass filter to a missing highpass node [JaragonCR]
+* fix(audio,supervisor): resync play state so a supervisor restart mid-song does not go silent [JaragonCR]
+* fix(hostname): do not reboot when the hostname PATCH fails [JaragonCR]
+* fix(librespot): do not print the Spotify access token to the logs [JaragonCR]
+* fix(librespot): register Spotify Connect through avahi instead of the built-in mDNS responder [JaragonCR]
+
 # v5.1.8
 ## (2026-11-08)
 
