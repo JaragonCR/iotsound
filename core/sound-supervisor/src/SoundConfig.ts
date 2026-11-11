@@ -24,13 +24,33 @@ export default class SoundConfig {
   private solo = false
   private readonly sourcePlugins = ['airplay', 'librespot', 'bluetooth', 'karaoke']
 
-  private safeService(fn: (s: string) => Promise<unknown>, service: string, attempt = 1): void {
+  // Bumped on every applyRoleServices(); retries queued for an older role are dropped so a
+  // late "start librespot" cannot undo a newer "stop librespot".
+  private serviceGeneration = 0
+  private static readonly SERVICE_RETRY_MAX = 12
+
+  // Start/stop a service through the balena supervisor, retrying while the supervisor is
+  // locked (423), not answering yet (no HTTP response), erroring (5xx) or does not know the
+  // service yet (404). After a clean reboot this container comes up before the balena
+  // supervisor does; without the retry the start calls for librespot, airplay and bluetooth
+  // failed once and were dropped. Those services use restart: on-failure and exit 0 on
+  // shutdown, so nothing else starts them and the device came back with no sources.
+  private safeService(
+    fn: (s: string) => Promise<unknown>,
+    service: string,
+    attempt = 1,
+    generation = this.serviceGeneration
+  ): void {
     fn(service).catch((err: unknown) => {
+      if (generation !== this.serviceGeneration) return
       const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 423 && attempt <= 3) {
-        const delay = attempt * 2000
-        console.log(`Service call locked [${service}] (423), retrying in ${delay}ms (attempt ${attempt}/3)`)
-        setTimeout(() => this.safeService(fn, service, attempt + 1), delay)
+      const retryable = status === undefined || status === 423 || status === 404 || status >= 500
+      if (retryable && attempt <= SoundConfig.SERVICE_RETRY_MAX) {
+        const delay = Math.min(attempt * 3000, 15000)
+        console.log(`Service call failed [${service}] (${status ?? (err as Error).message}), retrying in ${delay}ms (attempt ${attempt}/${SoundConfig.SERVICE_RETRY_MAX})`)
+        setTimeout(() => {
+          if (generation === this.serviceGeneration) this.safeService(fn, service, attempt + 1, generation)
+        }, delay)
       } else {
         console.log(`Service call failed [${service}]: ${(err as Error).message}`)
       }
@@ -46,6 +66,7 @@ export default class SoundConfig {
   }
 
   private applyRoleServices(): void {
+    this.serviceGeneration++
     switch (this.role) {
       case MultiroomRole.HOST:
         // HOST is always master — start everything including server immediately.
