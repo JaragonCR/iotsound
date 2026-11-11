@@ -1,6 +1,7 @@
 import * as http from 'http'
 import * as net from 'net'
 import AvahiAdvertiser from './AvahiAdvertiser'
+import MasterBeacon, { BEACON_INTERVAL_MS, type BeaconMessage } from './MasterBeacon'
 import { SnapcastBrowser, type SnapcastService } from './AvahiBrowser'
 import { constants } from './constants'
 
@@ -31,7 +32,13 @@ interface TrackedMaster {
   // excluded from selection — it is re-selected when it answers again, without needing a
   // fresh avahi 'up' event (which never comes while the advert stays published).
   reachable: boolean
+  // Wall-clock ms of the last heartbeat beacon from this master; 0 if it has never sent one
+  // (a master on an older release). A beaconing master that goes quiet is dropped.
+  lastBeacon: number
 }
+
+// A beaconing master is considered gone after this long without a heartbeat (3 missed + slack).
+const BEACON_TIMEOUT_MS = BEACON_INTERVAL_MS * 3 + 5000
 
 /**
  * Owns mDNS discovery + advertisement and Snapcast JSON-RPC volume/latency for the group.
@@ -47,6 +54,7 @@ interface TrackedMaster {
 export default class SnapserverMonitor {
   private pollInterval: NodeJS.Timeout | null = null
   private advertiser = new AvahiAdvertiser()
+  private beacon = new MasterBeacon((msg, ip) => this.onBeacon(msg, ip))
   private browser: SnapcastBrowser | null = null
   private ttlTimer: NodeJS.Timeout | null = null
   private serverWasUp = false
@@ -276,6 +284,7 @@ export default class SnapserverMonitor {
   start(): void {
     // Browse in every state so we always know the current group masters.
     this.startBrowsing()
+    this.beacon.listen()
     if (this.isMaster) {
       this.sourcingEpoch = this.nextSourcingEpoch()
       this.startPolling()
@@ -291,6 +300,7 @@ export default class SnapserverMonitor {
     this.stopPolling()
     this.stopBrowsing()
     this.unadvertise()
+    this.beacon.close()
   }
 
   // Called by the orchestrator on a SOURCING enter/exit. Never restarts containers.
@@ -325,12 +335,20 @@ export default class SnapserverMonitor {
       epoch: String(this.sourcingEpoch),
       master_uuid: this.deviceUuid,
     })
+    // Heartbeat alongside mDNS: one broadcast every 10s while we are the master.
+    this.beacon.start(() => ({
+      group: this.groupName ?? 'default',
+      uuid: this.deviceUuid,
+      epoch: this.sourcingEpoch,
+      port: SNAPCAST_TCP_PORT,
+    }))
   }
 
   unadvertise(): void {
     if (!this.advertising) return
     this.advertising = false
     this.advertiser.unpublish()
+    this.beacon.stop()
   }
 
   // --- Browsing ---
@@ -353,7 +371,34 @@ export default class SnapserverMonitor {
     this.masters.clear()
   }
 
-  private onMasterUp(svc: SnapcastService): void {
+  // One entry per master device, whichever path (mDNS or beacon) reported it.
+  private masterKey(svc: SnapcastService): string {
+    return svc.txt['master_uuid'] || svc.name
+  }
+
+  // Heartbeat from a master (or its "bye"). Feeds the same table as mDNS.
+  private onBeacon(msg: BeaconMessage, ip: string): void {
+    if (msg.uuid === this.deviceUuid) return
+    this.seenGroups.set(msg.group, Date.now())
+    if (msg.group !== (this.groupName ?? 'default')) return
+
+    if (msg.type === 'bye') {
+      if (this.masters.delete(msg.uuid)) {
+        console.log(`[snapserver-monitor] Master gone (beacon bye): ${ip}`)
+        this.onMasterChange?.(this.hasActiveMultiroomTarget())
+      }
+      return
+    }
+
+    this.onMasterUp({
+      name: msg.group,
+      ip,
+      port: msg.port,
+      txt: { group: msg.group, role: 'host', epoch: String(msg.epoch), master_uuid: msg.uuid },
+    }, true)
+  }
+
+  private onMasterUp(svc: SnapcastService, fromBeacon = false): void {
     // Filter our own advertisement — we discover it too once browsing is always-on.
     if ((svc.txt['master_uuid'] ?? '') === this.deviceUuid) return
 
@@ -363,11 +408,22 @@ export default class SnapserverMonitor {
     }
 
     const hadTarget = this.hasActiveMultiroomTarget()
-    const known = this.masters.has(svc.name)
-    // Optimistic reachable: it just announced. checkReachability() corrects it within 10s.
-    this.masters.set(svc.name, { svc, reachable: true })
+    const key = this.masterKey(svc)
+    const existing = this.masters.get(key)
+    const known = existing !== undefined
+    this.masters.set(key, {
+      svc,
+      // Optimistic reachable for a new master or a fresh mDNS announcement;
+      // checkReachability() corrects it within 10s. A routine heartbeat must not override
+      // what the port probe found, or reachability would flap every beacon.
+      reachable: fromBeacon && existing ? existing.reachable : true,
+      lastBeacon: fromBeacon ? Date.now() : (existing?.lastBeacon ?? 0),
+    })
+    if (fromBeacon && existing && !existing.lastBeacon) {
+      console.log(`[snapserver-monitor] Heartbeat established from master ${svc.ip}`)
+    }
     if (!known) {
-      console.log(`[snapserver-monitor] Master discovered: ${svc.name} @ ${svc.ip} (uuid=${svc.txt['master_uuid'] ?? '?'} epoch=${svc.txt['epoch'] ?? '?'})`)
+      console.log(`[snapserver-monitor] Master discovered${fromBeacon ? ' (beacon)' : ''}: ${svc.name} @ ${svc.ip} (uuid=${svc.txt['master_uuid'] ?? '?'} epoch=${svc.txt['epoch'] ?? '?'})`)
     }
 
     // Newest source wins: if we are sourcing and another master started MORE RECENTLY
@@ -391,7 +447,14 @@ export default class SnapserverMonitor {
   }
 
   private onMasterDown(svc: SnapcastService): void {
-    if (this.masters.delete(svc.name)) {
+    const key = this.masterKey(svc)
+    const tracked = this.masters.get(key)
+    // The heartbeat outranks an mDNS goodbye: if this master beaconed recently it is still
+    // sourcing (the goodbye is an mDNS rename/flap). A real stop sends a beacon "bye" too.
+    if (tracked && tracked.lastBeacon && Date.now() - tracked.lastBeacon < BEACON_INTERVAL_MS * 2) {
+      return
+    }
+    if (this.masters.delete(key)) {
       console.log(`[snapserver-monitor] Master gone (goodbye): ${svc.name} @ ${svc.ip}`)
       this.onMasterChange?.(this.hasActiveMultiroomTarget())
     }
@@ -403,13 +466,25 @@ export default class SnapserverMonitor {
   // answering, so recovery needs no fresh mDNS announcement.
   private async checkReachability(): Promise<void> {
     let changed = false
-    for (const m of this.masters.values()) {
+    for (const [key, m] of [...this.masters.entries()]) {
+      // A master that was sending heartbeats and stopped is gone, even if we never received
+      // its goodbye and its snapserver port still answers (snapserver stays up when idle).
+      if (m.lastBeacon && Date.now() - m.lastBeacon > BEACON_TIMEOUT_MS) {
+        if (this.masters.delete(key)) {
+          console.log(`[snapserver-monitor] Master gone (heartbeat lost): ${m.svc.ip}`)
+          changed = true
+        }
+        continue
+      }
       const alive = await this.probe(m.svc.ip, SNAPCAST_TCP_PORT)
-      if (alive !== m.reachable) {
-        console.log(`[snapserver-monitor] Master ${m.svc.ip} ${alive ? 'reachable' : 'unreachable'}`)
+      // Re-read after the await: a heartbeat may have replaced this entry while we probed.
+      const current = this.masters.get(key)
+      if (!current) continue
+      if (alive !== current.reachable) {
+        console.log(`[snapserver-monitor] Master ${current.svc.ip} ${alive ? 'reachable' : 'unreachable'}`)
         changed = true
       }
-      m.reachable = alive
+      current.reachable = alive
     }
     if (changed) {
       this.onMasterChange?.(this.hasActiveMultiroomTarget())
