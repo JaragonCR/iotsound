@@ -1,24 +1,28 @@
 # ----------------------
 # Stage 1: Build go-librespot
 # ----------------------
-FROM golang:1.27-alpine AS builder
+# Debian (glibc) rather than Alpine: this container can also run Spotify Soloist, Spotify's
+# own prebuilt client, which needs glibc 2.38 or newer. Trixie ships 2.41.
+FROM golang:1.27-trixie AS builder
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
-    build-base \
-    pkgconf \
-    alsa-lib-dev \
+    build-essential \
+    pkg-config \
+    libasound2-dev \
     libogg-dev \
     libvorbis-dev \
-    flac-dev \
-    mpg123-dev
+    libflac-dev \
+    libmpg123-dev \
+  && rm -rf /var/lib/apt/lists/*
 
 # Build go-librespot from upstream latest (devgianlu/go-librespot default branch).
 # Intentionally UNPINNED — always builds the newest upstream, which now carries the
 # clean DJ support (PR #352, incl. narration/TTS) and our upstreamed audio-key-skip
 # fix. Reproducibility is traded for always-current DJ/Spotify compatibility (same
 # rationale as the unpinned yt-dlp in the karaoke container).
-ARG GO_LIBRESPOT_CACHEBUST=2026-11-08
+ARG GO_LIBRESPOT_CACHEBUST=2026-11-11
 RUN git clone --depth 1 https://github.com/devgianlu/go-librespot.git /go-librespot
 WORKDIR /go-librespot
 RUN go mod download
@@ -27,24 +31,31 @@ RUN go build -v -o /daemon ./cmd/daemon
 # ----------------------
 # Stage 2: Runtime image
 # ----------------------
-FROM alpine:3.23
+FROM debian:trixie-slim
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apk add --no-cache \
+# go-librespot: alsa, ogg, vorbis, flac, mpg123 (it talks to PulseAudio in pure Go).
+# Soloist (downloaded at runtime, never shipped in this image): libpulse0, libatomic1.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
-    avahi \
-    libgcc \
-    gcompat \
-    alsa-lib \
-    libogg \
-    libvorbis \
-    flac \
-    mpg123-libs
+    curl \
+    iproute2 \
+    libasound2t64 \
+    libogg0 \
+    libvorbis0a \
+    libvorbisenc2 \
+    libvorbisfile3 \
+    libflac14 \
+    libmpg123-0t64 \
+    libpulse0 \
+    libatomic1 \
+  && rm -rf /var/lib/apt/lists/*
 
 ENV PULSE_SERVER=tcp:127.0.0.1:4317
 
 COPY --from=builder /daemon /usr/src/daemon
-COPY start.sh /usr/src/
+COPY start.sh soloist-engine.sh /usr/src/
 
 WORKDIR /usr/src/
 CMD ["/bin/bash", "/usr/src/start.sh"]

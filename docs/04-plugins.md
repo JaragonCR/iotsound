@@ -26,6 +26,33 @@ Spotify Connect requires a premium account. There is two methods of authenticati
 
 Manual authentication will let you stream audio over the internet from a client that is on a different network than the balenaSound device. This is useful if your IoTSound device is on a separate WiFi network that's harder to reach (e.g. a backyard network).
 
+#### Lossless with Spotify Soloist (optional)
+
+By default Spotify Connect is provided by go-librespot, which streams at up to 320 kbps. You
+can switch to [Spotify Soloist](https://github.com/spotify/soloist), Spotify's own headless
+Connect client, which supports lossless on Premium accounts.
+
+1. Create an API key on the Spotify for Developers dashboard (see Spotify's
+   [getting started guide](https://developer.spotify.com/documentation/soloist/tutorials/getting-started)).
+   A Premium account is needed to create it. The key is yours: do not share it.
+2. Set two device variables: `SOUND_SPOTIFY_ENGINE=soloist` and `SOLOIST_API_KEY=<your key>`.
+3. In the Spotify app, open the device's settings in the Connect menu and choose Lossless.
+
+How IoTSound handles it:
+
+- Spotify does not allow Soloist to be redistributed, so it is not part of the IoTSound
+  image. The device downloads it from Spotify's CDN the first time the engine is enabled
+  with a key present. Without a key nothing is downloaded and go-librespot runs.
+- Soloist builds expire 90 days after their build date. The device checks for a new build
+  every 6 hours and installs it while nothing is playing; an expired build is replaced
+  on the spot.
+- If Soloist fails to start 3 times within 5 minutes, go-librespot takes over under the same
+  speaker name. Soloist is tried again after `SOUND_SPOTIFY_SOLOIST_RETRY_MIN` minutes
+  (default 30) once nothing is playing.
+- Both engines run in the same container, so only one advertises the speaker at a time.
+- Soloist receives the key as a command-line argument, so it is visible in the process
+  list on the device.
+
 ### Karaoke
 
 Karaoke is shipped as a plugin under `plugins/karaoke/app`:
