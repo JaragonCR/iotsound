@@ -46,7 +46,7 @@ Set these in your balenaCloud fleet or device variables:
 
 | Variable | Description | Default |
 |---|---|---|
-| `SOUND_DEVICE_NAME` | Hostname and broadcast name for Bluetooth, AirPlay, Spotify Connect, and UPnP | `iotsound` |
+| `SOUND_DEVICE_NAME` | Hostname and broadcast name for AirPlay, Spotify Connect, and UPnP (Bluetooth uses `BLUETOOTH_DEVICE_NAME`) | `iotsound` |
 
 #### Logging
 
@@ -117,6 +117,7 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 | `SOUND_DISABLE_SPOTIFY` | Disable Spotify Connect entirely (set to any value) | unset |
 | `SOUND_SPOTIFY_BITRATE` | Streaming bitrate in kbps: `96`, `160`, or `320` | `160` |
 | `SOUND_SPOTIFY_INITIAL_VOLUME` | Volume level when Spotify connects (0–100) | `50` |
+| `SOUND_SPOTIFY_ZEROCONF_BACKEND` | mDNS backend for Spotify Connect discovery: `avahi` (shared avahi-daemon) or `builtin` (go-librespot's own responder) | `avahi` |
 | `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`) | unset |
 | `SOUND_SPOTIFY_PASSWORD` | Spotify access token for credential auth | unset |
 | `SOUND_SPOTIFY_DISABLE_NORMALISATION` | Disable loudness normalization (set to `1`) | unset |

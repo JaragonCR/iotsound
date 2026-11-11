@@ -298,11 +298,11 @@ function renderQueue(queue) {
   if (!changed('queue', queue.map(j=>({i:j.id,s:j.status,p:j.progress,k:j.key_offset})))) return;
   el.innerHTML = queue.map(j=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
-      ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
+      ${j.thumbnail ? `<img class="thumb" src="${esc(j.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div class="grow">
         <div class="truncate" style="font-weight:600">${esc(j.title)}</div>
         <div class="sub">${esc(j.singer)} &nbsp; <span class="key-badge">${fmtKey(j.key_offset)}</span></div>
-        ${j.status==='downloading' ? `<div style="font-size:.75rem;color:var(--accent)">${j.progress}</div>` : ''}
+        ${j.status==='downloading' ? `<div style="font-size:.75rem;color:var(--accent)">${esc(j.progress)}</div>` : ''}
       </div>
       ${j.locked ? '<span class="tag warn">Locked</span>' : `
         <select onchange="updateKey(${j.id},this.value)" style="background:var(--surface);color:var(--text);border:1px solid #444;border-radius:6px;padding:4px">
@@ -329,11 +329,11 @@ function renderHistory(history) {
   })) return;
   el.innerHTML = history.map(j=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
-      ${j.thumbnail ? `<img class="thumb" src="${j.thumbnail}" onerror="this.style.display='none'">` : ''}
+      ${j.thumbnail ? `<img class="thumb" src="${esc(j.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div class="grow truncate">${esc(j.title)}</div>
       <div class="history-actions">
-        <button class="secondary" onclick="addSong('${esc(j.yt_id)}','${esc(j.title)}','${esc(j.thumbnail)}')">Sing Again</button>
-        <button class="danger" onclick="deleteHistory('${esc(j.yt_id)}','${esc(j.title)}')">Delete</button>
+        <button class="secondary" onclick="addSong(${jsq(j.yt_id)},${jsq(j.title)},${jsq(j.thumbnail)})">Sing Again</button>
+        <button class="danger" onclick="deleteHistory(${jsq(j.yt_id)},${jsq(j.title)})">Delete</button>
       </div>
     </div>`).join('');
 }
@@ -350,12 +350,12 @@ function doSearch() {
     }
     document.getElementById('search-results').innerHTML = results.map(r=>`
       <div class="result-item">
-        ${r.thumb ? `<img class="thumb" src="${r.thumb}" onerror="this.style.display='none'">` : ''}
+        ${r.thumb ? `<img class="thumb" src="${esc(r.thumb)}" onerror="this.style.display='none'">` : ''}
         <div class="grow">
           <div class="truncate" style="font-weight:600">${esc(r.title)}</div>
           <div class="sub">${esc(r.uploader)} · ${r.duration}</div>
         </div>
-        <button onclick="addSong('${esc(r.id)}','${esc(r.title)}','${esc(r.thumb)}','${esc(r.url)}','${esc(r.duration)}')">Queue</button>
+        <button onclick="addSong(${jsq(r.id)},${jsq(r.title)},${jsq(r.thumb)},${jsq(r.url)},${jsq(r.duration)})">Queue</button>
       </div>`).join('');
   });
 }
@@ -414,6 +414,10 @@ function setHistoryTab(filter, btn) {
 
 // ── Util ─────────────────────────────────────────────────────────────────────
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+// For values inside inline handlers (onclick="fn(${jsq(x)})"). esc() alone is not enough there:
+// the browser decodes &#39; back to ' before the JS runs, so any title with an apostrophe
+// ("Don't Stop Believin'") broke the handler. Emit a JSON string literal, then HTML-escape it.
+function jsq(s){return esc(JSON.stringify(String(s||'')))}
 function fmtKey(k){return k>0?'+'+k:String(k||0)}
 
 loadSinger();

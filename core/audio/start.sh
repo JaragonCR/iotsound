@@ -379,8 +379,11 @@ if [ "$HP_ACTIVE" = true ] || [ "$LP_ACTIVE" = true ] || [ "$BOXY_ACTIVE" = true
                         control = { Freq = $AUDIO_INPUT_LOWPASS Q = $AUDIO_INPUT_LOWPASS_Q }
                     }"
     
-    LINKS_SECTION="${LINKS_SECTION}
+    # Only link when an earlier node exists; with lowpass alone there is no hp node.
+    if [ "$HP_ACTIVE" = true ] || [ "$PROXIMITY_ACTIVE" = true ] || [ "$BOXY_ACTIVE" = true ]; then
+      LINKS_SECTION="${LINKS_SECTION}
                     { output = \"$CURRENT_OUTPUT\" input = \"lp:In\" }"
+    fi
     CURRENT_OUTPUT="lp:Out"
   fi
   
@@ -512,7 +515,8 @@ log "SOUND_SUPERVISOR_URL=$SOUND_SUPERVISOR_URL"
 
 # Level W: warnings only from WirePlumber; our print() calls bypass this entirely
 export WIREPLUMBER_DEBUG=W
-wireplumber 2>&1 | tee /var/log/wireplumber.log &
+wireplumber > >(tee /var/log/wireplumber.log) 2>&1 &
+WIREPLUMBER_PID=$!
 sleep 1
 log_ok "WirePlumber daemon started"
 
@@ -710,9 +714,12 @@ if [ -n "$HW_SOURCES" ]; then
       log_step "Enabling mic loopback to speakers for real-time monitoring..."
       
       # Clean up any existing loopback modules first
-      pactl list modules 2>/dev/null | grep -o "Module #[0-9]*" | awk '{print $2}' | while read mod; do
-        pactl unload-module "$mod" 2>/dev/null || true
-      done
+      # Only previous mic-monitor loopbacks (module-loopback → $HW_SINK with remix=true).
+      pactl list short modules 2>/dev/null \
+        | awk -v sink="sink=$HW_SINK" '$2 == "module-loopback" && index($0, sink) && /remix=true/ { print $1 }' \
+        | while read -r mod; do
+            pactl unload-module "$mod" 2>/dev/null || true
+          done
       sleep 1
       
       # Set mic volume (default 40%)
@@ -847,23 +854,42 @@ if [ -n "$SOUND_SUPERVISOR_URL" ]; then
       '
     }
     _last_state=""
-    pactl subscribe 2>/dev/null | while IFS= read -r _ev; do
-      case "$_ev" in *"on sink-input"*)
-        if has_plugin_playing; then _new="play"; else _new="stop"; fi
-        if [ "$_new" != "$_last_state" ]; then
-          _last_state="$_new"
-          if [ "$_new" = "play" ]; then
-            echo "[play-detect] play started → $SOUND_SUPERVISOR_URL/internal/play"
-            curl -sf -X POST "$SOUND_SUPERVISOR_URL/internal/play" >/dev/null 2>&1 || true
-          else
-            echo "[play-detect] play stopped → $SOUND_SUPERVISOR_URL/internal/stop"
-            curl -sf -X POST "$SOUND_SUPERVISOR_URL/internal/stop" >/dev/null 2>&1 || true
-          fi
-        fi
-      ;; esac
+    # $1 = 1 → resend the current state even if it has not changed (periodic resync).
+    # The supervisor treats repeated play/stop as no-ops, so resending is safe. It is what
+    # lets a restarted sound-supervisor (which comes back believing nothing is playing)
+    # relearn that a source is active, and what recovers a POST that failed.
+    _report_state() {
+      local _new
+      if has_plugin_playing; then _new="play"; else _new="stop"; fi
+      if [ "$1" != "1" ] && [ "$_new" = "$_last_state" ]; then
+        return 0
+      fi
+      if [ "$_new" != "$_last_state" ]; then
+        echo "[play-detect] $_new → $SOUND_SUPERVISOR_URL/internal/$_new"
+      fi
+      if curl -sf -m 3 -X POST "$SOUND_SUPERVISOR_URL/internal/$_new" >/dev/null 2>&1; then
+        _last_state="$_new"
+      else
+        # Not delivered: forget the state so the next event or resync tick retries.
+        _last_state=""
+      fi
+    }
+    {
+      pactl subscribe 2>/dev/null &
+      while sleep "${PLAY_DETECT_RESYNC_S:-10}"; do echo "resync"; done
+    } | while IFS= read -r _ev; do
+      case "$_ev" in
+        resync) _report_state 1 ;;
+        *"on sink-input"*) _report_state 0 ;;
+      esac
     done
   ) &
   log "Play detector started (pactl subscribe → $SOUND_SUPERVISOR_URL)"
 fi
 
-wait $PW_PULSE_PID
+# Exit as soon as any part of the stack dies so the container restarts cleanly. Waiting on
+# pipewire-pulse alone left the container up with no session manager if WirePlumber crashed.
+set +e
+wait -n "$PIPEWIRE_PID" "$WIREPLUMBER_PID" "$PW_PULSE_PID"
+log_error "PipeWire stack process exited (pipewire=$PIPEWIRE_PID wireplumber=$WIREPLUMBER_PID pipewire-pulse=$PW_PULSE_PID) — restarting container"
+exit 1

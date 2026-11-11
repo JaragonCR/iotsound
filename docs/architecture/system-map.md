@@ -39,7 +39,7 @@ flowchart LR
 
 | Service | Path | Network | Restart | Owns | Notes |
 |---|---|---:|---|---|---|
-| `audio` | `core/audio/` | bridge, publishes `4317` | `unless-stopped` | PipeWire/WirePlumber, `pipewire-pulse`, virtual sinks, hardware source/sink selection, `pactl subscribe` play-detect | Privileged. Exposes PulseAudio-compatible TCP server. |
+| `audio` | `core/audio/` | bridge, publishes `4317` on host loopback only | `unless-stopped` | PipeWire/WirePlumber, `pipewire-pulse`, virtual sinks, hardware source/sink selection, `pactl subscribe` play-detect | Privileged. Exposes PulseAudio-compatible TCP server. |
 | `sound-supervisor` | `core/sound-supervisor/` | host | `unless-stopped` | Web UI/API, live role/group orchestration, service start/stop, mDNS state, single-authority volume | Uses balena API/supervisor API labels and shared D-Bus volume. |
 | `multiroom-server` | `core/multiroom/server/` | host | `on-failure` | `snapserver`, FIFO, `pacat` capture from `snapcast.monitor` | Pre-warmed in `auto`; starts/stops `pacat` in place via `/multiroom/active`. |
 | `multiroom-client` | `core/multiroom/client/` | host | `on-failure` | `snapclient --player pulse`, master-watchdog reconnect | Waits for `/multiroom/client-ready`; outputs directly to detected hardware sink via `/audio/output-sink`. |

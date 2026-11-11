@@ -4,7 +4,7 @@ set -e
 SOUND_SUPERVISOR_PORT=${SOUND_SUPERVISOR_PORT:-80}
 SOUND_SUPERVISOR="localhost:$SOUND_SUPERVISOR_PORT"
 # host networking: audio and sound-supervisor share the host network stack
-export PULSE_SERVER="tcp:localhost:4317"
+export PULSE_SERVER="tcp:127.0.0.1:4317"
 # Wait for sound supervisor to start
 while ! curl --silent --output /dev/null "$SOUND_SUPERVISOR/ping"; do sleep 5; echo "Waiting for sound supervisor to start at $SOUND_SUPERVISOR"; done
 
@@ -41,8 +41,8 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
     REQUESTED_BUFFER_MS=600
   fi
   if ! [[ "$CLIENT_LATENCY_MS" =~ ^-?[0-9]+$ ]]; then
-    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_LATENCY '$CLIENT_LATENCY_MS', falling back to 400ms"
-    CLIENT_LATENCY_MS=400
+    echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_LATENCY '$CLIENT_LATENCY_MS', falling back to 0ms"
+    CLIENT_LATENCY_MS=0
   fi
 
   MIN_BUFFER_MS=$(( CLIENT_LATENCY_MS + 100 ))
@@ -97,7 +97,7 @@ SNAPEOF
     # race where the audio container hasn't loaded the snapcast sink module yet.
     # Timeout after 120s so the container exits and on-failure restarts it if PA is down.
     local waited=0
-    until PULSE_SERVER="tcp:localhost:4317" pactl list short sources 2>/dev/null | grep -q "snapcast.monitor"; do
+    until PULSE_SERVER="tcp:127.0.0.1:4317" pactl list short sources 2>/dev/null | grep -q "snapcast.monitor"; do
       echo "[pacat] Waiting for PulseAudio snapcast.monitor... (${waited}s)"
       sleep 2
       waited=$((waited + 2))
@@ -106,7 +106,7 @@ SNAPEOF
         exit 1
       fi
     done
-    PULSE_SERVER="tcp:localhost:4317" pacat \
+    PULSE_SERVER="tcp:127.0.0.1:4317" pacat \
       --record \
       --device=snapcast.monitor \
       --format=s16le \

@@ -4,7 +4,7 @@ WORKDIR /usr/src
 ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
 # Audio block exposes pipewire-pulse compat on host port 4317
 # airplay runs network_mode:host so localhost:4317 is correct
-ENV PULSE_SERVER=tcp:localhost:4317
+ENV PULSE_SERVER=tcp:127.0.0.1:4317
 
 RUN apk update && apk add --no-cache supervisor
 

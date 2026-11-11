@@ -12,8 +12,8 @@ mkdir -p "$CONFIG_DIR"
 # Wait for PulseAudio (pipewire-pulse) to be ready before starting the daemon.
 # Without this, go-librespot crashes immediately on restart and spins in a
 # fast on-failure loop that can destabilise PipeWire for other plugins.
-until (exec 3<>/dev/tcp/localhost/4317) 2>/dev/null; do
-  echo "[librespot] Waiting for PulseAudio at localhost:4317..."
+until (exec 3<>/dev/tcp/127.0.0.1/4317) 2>/dev/null; do
+  echo "[librespot] Waiting for PulseAudio at 127.0.0.1:4317..."
   sleep 2
 done
 echo "[librespot] PulseAudio ready"
@@ -54,6 +54,18 @@ else
   NORMALISATION_BOOL=false
 fi
 
+# mDNS backend. go-librespot defaults to its own built-in responder, which then
+# competes with the avahi-daemon that sound-supervisor already runs on the host
+# network. When the shared avahi D-Bus socket is wired in, register through it
+# instead. Override with SOUND_SPOTIFY_ZEROCONF_BACKEND=builtin to roll back.
+ZEROCONF_BACKEND="builtin"
+if [ -n "$DBUS_SYSTEM_BUS_ADDRESS" ]; then
+  ZEROCONF_BACKEND="avahi"
+fi
+case "${SOUND_SPOTIFY_ZEROCONF_BACKEND:-}" in
+  avahi|builtin) ZEROCONF_BACKEND="$SOUND_SPOTIFY_ZEROCONF_BACKEND" ;;
+esac
+
 AUTH_TYPE="zeroconf"
 if [[ -n "$SOUND_SPOTIFY_USERNAME" && -n "$SOUND_SPOTIFY_PASSWORD" ]]; then
   AUTH_TYPE="spotify_token"
@@ -67,6 +79,7 @@ device_type: "speaker"
 initial_volume: $SOUND_SPOTIFY_INITIAL_VOLUME
 bitrate: $SOUND_SPOTIFY_BITRATE
 normalisation_disabled: $NORMALISATION_BOOL
+zeroconf_backend: "$ZEROCONF_BACKEND"
 credentials:
   type: "$AUTH_TYPE"
 EOF
@@ -80,6 +93,6 @@ EOF
 fi
 
 echo "Generated config:"
-cat "$CONFIG_PATH"
+sed 's/^\( *access_token:\).*/\1 "<redacted>"/' "$CONFIG_PATH"
 
 exec /usr/src/daemon --config_dir $CONFIG_DIR

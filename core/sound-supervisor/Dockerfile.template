@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /usr/src
 COPY core/sound-supervisor/package*.json ./
 COPY --from=build /usr/src/build ./build
+# SoundAPI reads ./VERSION for GET /version; without it the API reported a stale 3.11.0.
+COPY VERSION ./VERSION
 RUN npm install --omit=dev
 COPY core/sound-supervisor/entrypoint.sh /usr/src/entrypoint.sh
 COPY core/sound-supervisor/iotsound-dbus.conf /etc/dbus-1/iotsound-system.conf

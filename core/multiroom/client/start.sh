@@ -4,7 +4,7 @@ set -e
 SOUND_SUPERVISOR_PORT=${SOUND_SUPERVISOR_PORT:-80}
 SOUND_SUPERVISOR="localhost:$SOUND_SUPERVISOR_PORT"
 # host networking: audio and sound-supervisor share the host network stack
-export PULSE_SERVER="tcp:localhost:4317"
+export PULSE_SERVER="tcp:127.0.0.1:4317"
 # Wait for sound supervisor to start
 while ! curl --silent --output /dev/null "$SOUND_SUPERVISOR/ping"; do sleep 5; echo "Waiting for sound supervisor to start at $SOUND_SUPERVISOR"; done
 
@@ -16,14 +16,14 @@ MODE=$(curl --silent "$SOUND_SUPERVISOR/mode" || true)
 # while the hardware sink is still the default sink) causes WirePlumber to migrate snapclient's
 # active stream onto balena-sound.input when `pactl set-default-sink balena-sound.input` runs.
 _pa_routing_ready() {
-  PULSE_SERVER="tcp:localhost:4317" pactl info 2>/dev/null | grep -q "Default Sink: balena-sound.input"
+  PULSE_SERVER="tcp:127.0.0.1:4317" pactl info 2>/dev/null | grep -q "Default Sink: balena-sound.input"
 }
 
 _pa_waited=0
 _pa_log_interval=30
 until _pa_routing_ready; do
   if [ $_pa_waited -eq 0 ] || [ $(( _pa_waited % _pa_log_interval )) -eq 0 ]; then
-    echo "[snapclient] Waiting for PulseAudio routing (Default Sink: balena-sound.input) at tcp:localhost:4317... (${_pa_waited}s)"
+    echo "[snapclient] Waiting for PulseAudio routing (Default Sink: balena-sound.input) at tcp:127.0.0.1:4317... (${_pa_waited}s)"
   fi
   sleep 2
   _pa_waited=$(( _pa_waited + 2 ))

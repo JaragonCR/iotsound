@@ -11,15 +11,17 @@ fi
 function reset_hci_interface () {
   local INTERFACE=$1
 
-  echo "Resetting $i"
-  btmgmt --index $i discov off > /dev/null
-  btmgmt --index $i pairable off > /dev/null
-  btmgmt --index $i connectable off > /dev/null
+  echo "Resetting $INTERFACE"
+  btmgmt --index "$INTERFACE" discov off > /dev/null
+  btmgmt --index "$INTERFACE" pairable off > /dev/null
+  btmgmt --index "$INTERFACE" connectable off > /dev/null
 }
 
 # Bluetooth block environment variables and defaults
 DEVICE_NAME=${BLUETOOTH_DEVICE_NAME:-$(printf "balenaOS %s"$(echo "$BALENA_DEVICE_UUID" | cut -c -4))}
-HCI_INTERFACE=${BLUETOOTH_HCI_INTERFACE:-"hci0"}
+# Exported: bluetooth-agent reads HCI_INTERFACE from the environment. Unexported, the agent
+# always fell back to hci0 even when BLUETOOTH_HCI_INTERFACE selected another adapter.
+export HCI_INTERFACE=${BLUETOOTH_HCI_INTERFACE:-"hci0"}
 PAIRING_MODE=${BLUETOOTH_PAIRING_MODE:-"SSP"}
 
 echo "--- Bluetooth ---"

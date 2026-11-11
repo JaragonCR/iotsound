@@ -17,7 +17,9 @@ import { promisify } from 'util'
 const execAsync = (cmd: string) => promisify(exec)(cmd, { timeout: 5000 })
 
 const RECONNECT_DELAY_MS = 3000
-const POLL_INTERVAL_MS = 1000
+// Connectivity check only: play/stop detection lives in core/audio/start.sh (pactl subscribe).
+// Each tick forks pactl, so keep it slow.
+const POLL_INTERVAL_MS = 5000
 
 export interface AudioBlockSink {
   name: string
@@ -95,10 +97,7 @@ export class PulseAudioWrapper extends EventEmitter {
 
     this._pollInterval = setInterval(async () => {
       try {
-        // Check connectivity first via a lightweight stat call
-        await execAsync(`pactl --server ${this.server} stat`)
-
-        // Check playback state
+        // One call covers both connectivity (it throws when PulseAudio is gone) and state.
         const { stdout } = await execAsync(
           `pactl --server ${this.server} list short sink-inputs`
         )
@@ -351,8 +350,22 @@ export class PulseAudioWrapper extends EventEmitter {
     }
   }
 
+  // Latency for a re-created input loopback. Reuse what core/audio/start.sh configured on the
+  // loopback being replaced (500ms on HDMI, 100ms otherwise, or SOUND_INPUT_LATENCY), so a
+  // live reroute does not silently shrink the buffer an HDMI sink needs.
+  private _inputLoopbackLatency(modules: Array<{ name: string; args: string }>): number {
+    for (const m of modules) {
+      if (m.name !== 'module-loopback' || !m.args.includes('source=balena-sound.input.monitor')) continue
+      const match = m.args.match(/latency_msec=(\d+)/)
+      if (match) return parseInt(match[1], 10)
+    }
+    const env = parseInt(process.env.SOUND_INPUT_LATENCY ?? '', 10)
+    return Number.isFinite(env) && env > 0 ? env : 100
+  }
+
   async rerouteInputDirect(): Promise<void> {
     const modules = await this.listModulesShort()
+    const latency = this._inputLoopbackLatency(modules)
     for (const m of modules) {
       if (
         m.name === 'module-loopback' &&
@@ -372,7 +385,7 @@ export class PulseAudioWrapper extends EventEmitter {
     if (!alreadyDirect) {
       await this._loadModule(
         'module-loopback',
-        'source=balena-sound.input.monitor sink=balena-sound.output latency_msec=100'
+        `source=balena-sound.input.monitor sink=balena-sound.output latency_msec=${latency}`
       )
       console.log('[PulseAudioWrapper] Rerouted: balena-sound.input → balena-sound.output (Snapcast bypassed)')
     }
@@ -380,6 +393,7 @@ export class PulseAudioWrapper extends EventEmitter {
 
   async restoreSnapcastRouting(): Promise<void> {
     const modules = await this.listModulesShort()
+    const latency = this._inputLoopbackLatency(modules)
     for (const m of modules) {
       if (
         m.name === 'module-loopback' &&
@@ -399,7 +413,7 @@ export class PulseAudioWrapper extends EventEmitter {
     if (!alreadySnapcast) {
       await this._loadModule(
         'module-loopback',
-        'source=balena-sound.input.monitor sink=snapcast latency_msec=100'
+        `source=balena-sound.input.monitor sink=snapcast latency_msec=${latency}`
       )
       console.log('[PulseAudioWrapper] Restored: balena-sound.input → snapcast')
     }

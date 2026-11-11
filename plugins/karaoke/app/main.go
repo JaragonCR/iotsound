@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"database/sql"
 	"encoding/json"
@@ -431,6 +432,10 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "singer and url required", http.StatusBadRequest)
 		return
 	}
+	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
+		http.Error(w, "url must be http(s)", http.StatusBadRequest)
+		return
+	}
 
 	// Per-singer queue limit
 	var inQueue int
@@ -597,11 +602,21 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func searchInvidious(q string) []SearchResult {
-	client := &http.Client{Timeout: 4 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second}
+	// Cap the whole pass: instances are tried one at a time, and a list of dead hosts used
+	// to add up to ~36s before the yt-dlp fallback even started.
+	deadline := time.Now().Add(6 * time.Second)
 	for _, inst := range invidiousInstances {
+		if time.Now().After(deadline) {
+			break
+		}
 		reqURL := inst + "/api/v1/search?q=" + url.QueryEscape(q) + "&type=video&fields=videoId,title,author,lengthSeconds,videoThumbnails"
 		resp, err := client.Get(reqURL)
 		if err != nil {
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			continue
 		}
 		var items []struct {
@@ -908,11 +923,12 @@ func downloadWorker() {
 			"--js-runtimes", "node",
 			"-o", outTmpl,
 			"--print", "after_move:filepath",
-			url,
 		}
 		if _, err := os.Stat("cookies.txt"); err == nil {
 			args = append(args, "--cookies", "cookies.txt")
 		}
+		// "--" ends option parsing so a queued "url" can never be read as a yt-dlp flag.
+		args = append(args, "--", url)
 
 		cmd := exec.Command("yt-dlp", args...)
 		stdout, _ := cmd.StdoutPipe()
@@ -920,31 +936,45 @@ func downloadWorker() {
 		go io.Copy(io.Discard, stderr)
 		cmd.Start()
 
+		// Read line by line. Reading raw chunks could deliver the last progress line and the
+		// final file path in one read (path ignored → good download marked failed) or split
+		// the path across two reads (truncated filename stored).
 		var finalPath string
-		buf := make([]byte, 512)
-		for {
-			n, err := stdout.Read(buf)
-			if n > 0 {
-				line := strings.TrimSpace(string(buf[:n]))
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			switch {
+			case strings.HasPrefix(line, "/"):
+				finalPath = line
+			case strings.Contains(line, "Finalizing"):
+				downloadProgress.Store(id, "Finalizing")
+			default:
 				if m := progressRe.FindStringSubmatch(line); m != nil {
+					// In-memory only: /api/data overlays downloadProgress on every poll, so
+					// writing each tick to SQLite was redundant SD-card wear.
 					downloadProgress.Store(id, m[1]+"%")
-					db.Exec(`UPDATE jobs SET progress=? WHERE id=?`, m[1]+"%", id)
-				} else if strings.HasPrefix(line, "/") {
-					finalPath = line
-				} else if strings.Contains(line, "Finalizing") {
-					downloadProgress.Store(id, "Finalizing")
 				}
 			}
-			if err != nil {
-				break
-			}
 		}
+		io.Copy(io.Discard, stdout)
 		cmd.Wait()
 		downloadProgress.Delete(id)
 
 		if finalPath != "" {
-			db.Exec(`UPDATE jobs SET status='ready', filename=? WHERE id=?`, finalPath, id)
-			logInfof("[download] done: %s", finalPath)
+			// Only promote to 'ready' if the job is still 'downloading'. A job deleted from the
+			// queue mid-download is already 'played'; keep it that way and just record the file
+			// so it is reusable as a cache hit and visible to LRU eviction.
+			var promoted int64
+			if res, err := db.Exec(`UPDATE jobs SET status='ready', filename=? WHERE id=? AND status='downloading'`, finalPath, id); err == nil {
+				promoted, _ = res.RowsAffected()
+			}
+			if promoted == 0 {
+				db.Exec(`UPDATE jobs SET filename=? WHERE id=?`, finalPath, id)
+				logInfof("[download] done but job %d was removed from the queue; kept as cache: %s", id, finalPath)
+			} else {
+				logInfof("[download] done: %s", finalPath)
+			}
 		} else {
 			db.Exec(`UPDATE jobs SET status='failed' WHERE id=?`, id)
 			logErrorf("[download] failed: %s", url)
@@ -1021,6 +1051,11 @@ func play(filename string, semitones int) {
 
 	duration := probeDuration(filename)
 	if duration <= 0 {
+		// A missing file (evicted, or a bad cache entry) used to "play" 4 minutes of silence.
+		if _, err := os.Stat(filename); err != nil {
+			logWarnf("[player] skipping, file not available: %s (%v)", filename, err)
+			return
+		}
 		duration = 4 * time.Minute
 	}
 	end := time.NewTimer(duration)
@@ -1429,7 +1464,9 @@ func proxyVolume(percent int) {
 
 func lockUpcoming() {
 	// Lock the first ready job — it's up next
-	db.Exec(`UPDATE jobs SET locked=1 WHERE id=(SELECT id FROM jobs WHERE status='ready' ORDER BY id LIMIT 1)`)
+	// "AND locked=0" makes this a no-op once the job is locked. It runs on every /api/data
+	// poll from every client, and an unconditional UPDATE rewrote the row each time.
+	db.Exec(`UPDATE jobs SET locked=1 WHERE locked=0 AND id=(SELECT id FROM jobs WHERE status='ready' ORDER BY id LIMIT 1)`)
 }
 
 func queryByStatus(status string, limit int) []*Job {

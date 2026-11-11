@@ -10,7 +10,7 @@ To connect to your IoTSound device:
 - If using Airplay: select the IoTSound device from your audio output options.
 - If using Spotify Connect: open Spotify and choose the IoTSound device as an alternate output.
 
-The `iotsound` name is used by default. Set `SOUND_DEVICE_NAME` to customize the name broadcast by Bluetooth, AirPlay, and Spotify Connect.
+The `iotsound` name is used by default. Set `SOUND_DEVICE_NAME` to customize the name broadcast by AirPlay and Spotify Connect. Bluetooth uses `BLUETOOTH_DEVICE_NAME`.
 
 Let the music play!
 

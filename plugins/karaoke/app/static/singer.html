@@ -186,10 +186,10 @@ function renderFavorites(favs) {
   if (!favs || !favs.length) { el.innerHTML='<div class="sub">No favorites yet</div>'; return; }
   el.innerHTML = favs.map(f=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
-      ${f.thumbnail?`<img class="thumb" src="${f.thumbnail}" onerror="this.style.display='none'">` : ''}
+      ${f.thumbnail?`<img class="thumb" src="${esc(f.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div class="grow truncate">${esc(f.title)}</div>
-      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="queueSong('${esc(f.yt_id)}','${esc(f.title)}','${esc(f.thumbnail)}')">Queue</button>
-      <button class="secondary" style="padding:6px 10px" onclick="toggleFav('${esc(f.yt_id)}','${esc(f.title)}','${esc(f.thumbnail)}')">★</button>
+      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="queueSong(${jsq(f.yt_id)},${jsq(f.title)},${jsq(f.thumbnail)})">Queue</button>
+      <button class="secondary" style="padding:6px 10px" onclick="toggleFav(${jsq(f.yt_id)},${jsq(f.title)},${jsq(f.thumbnail)})">★</button>
     </div>`).join('');
 }
 
@@ -200,13 +200,13 @@ function renderHistory(hist, filter) {
   if (!items.length) { el.innerHTML='<div class="sub">No history yet</div>'; return; }
   el.innerHTML = items.map(h=>`
     <div class="row" style="padding:8px 0;border-bottom:1px solid #333">
-      ${h.thumbnail?`<img class="thumb" src="${h.thumbnail}" onerror="this.style.display='none'">` : ''}
+      ${h.thumbnail?`<img class="thumb" src="${esc(h.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div class="grow">
         <div class="truncate">${esc(h.title)}</div>
         <div class="sub">×${h.play_count||1} &nbsp; <span class="key-badge">${fmtKey(h.key_offset)}</span></div>
       </div>
-      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="queueSong('${esc(h.yt_id)}','${esc(h.title)}','${esc(h.thumbnail)}')">Sing Again</button>
-      <button class="secondary" style="padding:6px 10px" onclick="toggleFav('${esc(h.yt_id)}','${esc(h.title)}','${esc(h.thumbnail)}')">☆</button>
+      <button class="secondary" style="padding:6px 12px;font-size:.85rem" onclick="queueSong(${jsq(h.yt_id)},${jsq(h.title)},${jsq(h.thumbnail)})">Sing Again</button>
+      <button class="secondary" style="padding:6px 10px" onclick="toggleFav(${jsq(h.yt_id)},${jsq(h.title)},${jsq(h.thumbnail)})">☆</button>
     </div>`).join('');
 }
 
@@ -276,6 +276,10 @@ function changeSinger() {
 }
 
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+// For values inside inline handlers (onclick="fn(${jsq(x)})"). esc() alone is not enough there:
+// the browser decodes &#39; back to ' before the JS runs, so any title with an apostrophe
+// ("Don't Stop Believin'") broke the handler. Emit a JSON string literal, then HTML-escape it.
+function jsq(s){return esc(JSON.stringify(String(s||'')))}
 function fmtKey(k){return k>0?'+'+k:String(k||0)}
 
 load();

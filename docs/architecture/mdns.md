@@ -69,3 +69,24 @@ If IPv6-only networks need to be supported in the future, the fix is to bind sna
 ## Why not SO_REUSEPORT?
 
 Node.js 16+ supports `SO_REUSEPORT` via `dgram.createSocket({ reusePort: true })`, which would let multiple sockets better share port 5353. The old `multicast-dns` dependency did not expose this option, and patching it would have been fragile across npm updates. The Avahi path is the standard solution and also enables instant goodbye detection, which `SO_REUSEPORT` alone would not provide.
+
+## Master heartbeat (UDP beacon)
+
+mDNS announces a new master with a short burst of unsolicited packets and then only answers
+queries, and a long-running `avahi-browse` queries less and less often. A speaker that drops
+the burst may not learn about the master for minutes; one that drops the goodbye keeps a
+stale master.
+
+To cover that, the sourcing master also broadcasts one small UDP datagram every 10 seconds on
+port `1706` (`SOUND_MULTIROOM_BEACON_PORT`), plus a `bye` when it stops sourcing. Every
+`sound-supervisor` listens on that port. Beacons and mDNS feed the same master table
+(`SnapserverMonitor`, keyed by master UUID), so either path alone is enough:
+
+| Event | mDNS | Beacon |
+| --- | --- | --- |
+| Master appears | announcement burst, then on query | within 10s, repeated |
+| Master stops | goodbye burst | `bye` (sent twice), else dropped after ~35s of silence |
+
+A master that has sent beacons and then goes quiet is removed even if its snapserver port
+still answers. A master on an older release that never beacons keeps the mDNS-only behaviour.
+Cost is one packet per interval from the master, independent of the number of idle speakers.
