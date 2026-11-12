@@ -1,0 +1,269 @@
+{
+  "_comment": "Every external piece of software IoTSound builds on. scripts/check-deps.py reads the pinned version from the files listed in 'where' and compares it with upstream. Add an entry whenever a Dockerfile, manifest or compose file gains a new external dependency.",
+  "dependencies": [
+    {
+      "name": "Alpine Linux",
+      "kind": "base image",
+      "pin": "alpine:(\\d+\\.\\d+)",
+      "where": [
+        "core/audio/Dockerfile.template",
+        "core/hostname/Dockerfile.template",
+        "plugins/bluetooth/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "dockerhub",
+        "repo": "library/alpine",
+        "tag": "^(\\d+\\.\\d+)$"
+      },
+      "notes": "Carries PipeWire, WirePlumber, BlueZ and bluez-alsa (apk, unpinned: they move with the Alpine release). A bump changes the audio stack: full audio regression on both device types."
+    },
+    {
+      "name": "Debian",
+      "kind": "base image",
+      "pin": "debian:([a-z]+)-slim",
+      "where": [
+        "core/multiroom/server/Dockerfile.template",
+        "core/multiroom/client/Dockerfile.template",
+        "plugins/karaoke/app/Dockerfile.template",
+        "plugins/upnp/Dockerfile.template",
+        "plugins/librespot/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "manual",
+        "url": "https://www.debian.org/releases/"
+      },
+      "notes": "Named release (trixie = 13). Soloist needs glibc 2.38 or newer. ffmpeg, libpulse and the Snapcast runtime libraries come from apt, unpinned. Node and Go image tags carry the same release name: move them together."
+    },
+    {
+      "name": "Node.js",
+      "kind": "base image",
+      "pin": "node:(\\d+)-trixie-slim",
+      "where": [
+        "core/sound-supervisor/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "dockerhub",
+        "repo": "library/node",
+        "tag": "^(\\d+)-trixie-slim$"
+      },
+      "notes": "Use even (LTS) majors only. Keep @types/node on the same major."
+    },
+    {
+      "name": "npm",
+      "kind": "build tool",
+      "pin": "npm@(\\d+\\.\\d+\\.\\d+)",
+      "where": [
+        "core/sound-supervisor/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "npm",
+        "package": "npm"
+      },
+      "notes": "Build stage only."
+    },
+    {
+      "name": "Python",
+      "kind": "base image",
+      "pin": "python:(\\d+\\.\\d+)-slim",
+      "where": [
+        "core/watchdog/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "dockerhub",
+        "repo": "library/python",
+        "tag": "^(\\d+\\.\\d+)-slim$"
+      },
+      "notes": "wifi-watchdog only, standard library."
+    },
+    {
+      "name": "Go toolchain",
+      "kind": "base image",
+      "pin": "golang:(\\d+\\.\\d+)-trixie",
+      "where": [
+        "plugins/karaoke/app/Dockerfile.template",
+        "plugins/librespot/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "dockerhub",
+        "repo": "library/golang",
+        "tag": "^(\\d+\\.\\d+)-trixie$"
+      },
+      "notes": "Builds the karaoke app and go-librespot. go-librespot's go.mod sets the minimum."
+    },
+    {
+      "name": "Snapcast",
+      "kind": "built from source",
+      "pin": "SNAPCAST_VERSION=(\\d+\\.\\d+\\.\\d+)",
+      "where": [
+        "core/multiroom/server/Dockerfile.template",
+        "core/multiroom/client/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "github-tag",
+        "repo": "badaix/snapcast"
+      },
+      "notes": "Server and client must be the same version. Multiroom regression on both devices."
+    },
+    {
+      "name": "shairport-sync",
+      "kind": "base image",
+      "pin": "mikebrady/shairport-sync:([\\d.]+)",
+      "where": [
+        "plugins/airplay/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "dockerhub",
+        "repo": "mikebrady/shairport-sync",
+        "tag": "^(\\d+(?:\\.\\d+){1,3})$"
+      },
+      "notes": "AirPlay 2. Bundles NQPTP. Test AirPlay from an Apple device, single speaker and multiroom."
+    },
+    {
+      "name": "go-librespot",
+      "kind": "built from source",
+      "pin": "GO_LIBRESPOT_CACHEBUST=(\\S+)",
+      "where": [
+        "plugins/librespot/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "github-release",
+        "repo": "devgianlu/go-librespot"
+      },
+      "notes": "Floating on purpose: built from upstream master because Spotify changes its protocol. The pin is only a cache-bust date; bump it to pull a new build."
+    },
+    {
+      "name": "Spotify Soloist",
+      "kind": "downloaded at runtime",
+      "pin": null,
+      "where": [
+        "plugins/librespot/soloist-engine.sh"
+      ],
+      "upstream": {
+        "type": "manual",
+        "url": "https://developer.spotify.com/"
+      },
+      "notes": "Never in the image. Self-updates from Spotify's CDN every 6 hours while idle; builds expire after 90 days."
+    },
+    {
+      "name": "yt-dlp",
+      "kind": "pip, unpinned",
+      "pin": null,
+      "where": [
+        "plugins/karaoke/app/Dockerfile.template"
+      ],
+      "upstream": {
+        "type": "github-release",
+        "repo": "yt-dlp/yt-dlp"
+      },
+      "notes": "Floating on purpose: latest at build time, and the container self-updates every 24 hours."
+    },
+    {
+      "name": "modernc.org/sqlite",
+      "kind": "Go module",
+      "pin": "modernc.org/sqlite v(\\d+\\.\\d+\\.\\d+)",
+      "where": [
+        "plugins/karaoke/app/go.mod"
+      ],
+      "upstream": {
+        "type": "gomod",
+        "module": "modernc.org/sqlite"
+      },
+      "notes": "Karaoke queue database. Update with go get and go mod tidy, then test the queue survives a restart."
+    },
+    {
+      "name": "axios",
+      "kind": "npm",
+      "pin": "\"node_modules/axios\": \\{\\s+\"version\": \"([\\d.]+)\"",
+      "where": [
+        "core/sound-supervisor/package-lock.json",
+        "core/sound-supervisor/package.json"
+      ],
+      "upstream": {
+        "type": "npm",
+        "package": "axios"
+      },
+      "notes": "Pinned column is the locked version; package.json holds the range."
+    },
+    {
+      "name": "balena-sdk",
+      "kind": "npm",
+      "pin": "\"node_modules/balena-sdk\": \\{\\s+\"version\": \"([\\d.]+)\"",
+      "where": [
+        "core/sound-supervisor/package-lock.json",
+        "core/sound-supervisor/package.json"
+      ],
+      "upstream": {
+        "type": "npm",
+        "package": "balena-sdk"
+      },
+      "notes": "Pulls most of the transitive tree; the 'overrides' block in package.json exists because of it. Re-check each override on every bump and drop the ones no longer needed. Pinned column is the locked version; package.json holds the range."
+    },
+    {
+      "name": "express",
+      "kind": "npm",
+      "pin": "\"node_modules/express\": \\{\\s+\"version\": \"([\\d.]+)\"",
+      "where": [
+        "core/sound-supervisor/package-lock.json",
+        "core/sound-supervisor/package.json"
+      ],
+      "upstream": {
+        "type": "npm",
+        "package": "express"
+      },
+      "notes": "Pinned column is the locked version; package.json holds the range."
+    },
+    {
+      "name": "TypeScript",
+      "kind": "npm (dev)",
+      "pin": "\"node_modules/typescript\": \\{\\s+\"version\": \"([\\d.]+)\"",
+      "where": [
+        "core/sound-supervisor/package-lock.json",
+        "core/sound-supervisor/package.json"
+      ],
+      "upstream": {
+        "type": "npm",
+        "package": "typescript"
+      },
+      "notes": "Build only. A new major can need tsconfig or source changes. Pinned column is the locked version; package.json holds the range."
+    },
+    {
+      "name": "support-toolkit",
+      "kind": "image, unpinned",
+      "pin": null,
+      "where": [
+        "docker-compose.yml"
+      ],
+      "upstream": {
+        "type": "manual",
+        "url": "https://hub.docker.com/r/kb2ma/support-toolkit"
+      },
+      "notes": "Debug container, only runs with LOG_LEVEL=debug. Third-party image on the latest tag."
+    },
+    {
+      "name": "Flowzone",
+      "kind": "CI workflow",
+      "pin": null,
+      "where": [
+        ".github/workflows/flowzone.yml"
+      ],
+      "upstream": {
+        "type": "manual",
+        "url": "https://github.com/product-os/flowzone"
+      },
+      "notes": "Tracks @master, so it updates itself."
+    },
+    {
+      "name": "balenaOS and Supervisor",
+      "kind": "host",
+      "pin": null,
+      "where": [
+        "balenaCloud fleet, not in the repo"
+      ],
+      "upstream": {
+        "type": "manual",
+        "url": "https://www.balena.io/os"
+      },
+      "notes": "Updated per device from the dashboard. Check for a host OS update when a PR touches audio devices, WiFi or boot config."
+    }
+  ]
+}

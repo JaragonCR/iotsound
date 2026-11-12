@@ -40,3 +40,7 @@ git push --force-with-lease origin your-branch
 ```
 
 We strongly encourage using the `--force-with-lease` option instead of `--force` when performing git push to a repository. The reason is that `git push --force` can accidentally overwrite work that has been pushed by a team member in the meantime.
+
+## Dependency check
+
+Every PR compares our pinned software with upstream. Run `python3 scripts/check-deps.py` and paste the rows that are `behind`, `DRIFT` or `check` into the PR description with a decision for each (bump now, or defer with a reason). The inventory lives in `dependencies.json`; the readable version is [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md). Full rules are in [AGENTS.md](AGENTS.md).

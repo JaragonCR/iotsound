@@ -88,3 +88,19 @@ flowchart LR
 - **Development & Release Workflow:**
   - Always work on a feature/fix branch, create clean commits, validate on local devices using `balena-cli` (`balena push g_jorge_aragon/sound`), open a PR against `master`, and squash-merge after verification.
   - **Versionist Requirement:** Every commit in a PR **must** end with a `Change-type: patch` (or `minor` / `major`) trailer in the commit footer so CI / Versionist can calculate the next semantic version.
+
+---
+
+## 5. Dependency Freshness (every PR)
+
+We once ended up locked on old software because nobody looked. Now every PR looks.
+
+- **The list:** [`dependencies.json`](dependencies.json) is the inventory of every external piece of software (base images, source builds, npm and Go modules, runtime downloads, CI, host OS) and every file that pins it. [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) is generated from it.
+- **Every PR runs** `python3 scripts/check-deps.py` and puts the result in the PR description under a "Dependency check" heading: one line per row that is `behind`, `DRIFT` or `check`, each with a decision.
+- **Decision per row, no silent skips:**
+  - *Bump now* when the PR already rebuilds and device-tests that container, or the bump is a patch or minor of something with no audio path (build tools, the watchdog, npm patch releases).
+  - *Defer* with a one-line reason when the bump needs its own regression (Alpine and the PipeWire stack, Snapcast, shairport-sync, a Node or TypeScript major). Open or link an issue so it is not lost. A row may not be deferred in more than two consecutive PRs without a dedicated bump PR.
+  - *Floating by design* (go-librespot, yt-dlp, Soloist): confirm the build still pulls upstream; bump `GO_LIBRESPOT_CACHEBUST` if go-librespot has a newer release than the last build.
+- **Security fixes are never deferred.** Dependabot alerts get fixed in the PR that is open.
+- **When a PR adds or removes a dependency,** update `dependencies.json` in the same commit and regenerate the doc with `python3 scripts/check-deps.py --write`.
+- **Bumps are separate commits** (`build(deps): ...`), one per dependency, so a bad one can be reverted alone.
