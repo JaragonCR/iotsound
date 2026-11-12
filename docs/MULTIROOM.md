@@ -170,12 +170,26 @@ all, and the extra bandwidth is small for a home network. If a Pi 3 in your grou
 regular interval, set `SOUND_MULTIROOM_CODEC=pcm` before touching the buffers. `multiroom-client`
 logs show the restarts if you want to confirm.
 
-**Raspberry Pi 3 and the undervoltage flag.** Many Pi 3 boards report undervoltage for a few
-seconds now and then even on a good supply and cable, and balenaCloud then shows the device as
-undervolted for good. `BALENA_HOST_CONFIG_avoid_warnings=1` hides the on-screen warning.
-`BALENA_HOST_CONFIG_avoid_warnings=2` also stops the firmware from slowing the CPU while the
-voltage is low, which is the part that can be heard. Neither clears the flag in the dashboard:
-that comes from the kernel log and resets on reboot. Both settings reboot the device.
+**Raspberry Pi and undervoltage (`avoid_warnings`).** Many Pi 3 boards report undervoltage for a
+few seconds now and then even on a good supply and cable. While that lasts the firmware slows the
+CPU, and on a speaker that can be heard as a skip. IoTSound therefore installs with
+`BALENA_HOST_CONFIG_avoid_warnings=2`, which keeps the CPU at full speed during those blips.
+
+| Value | Effect |
+|---|---|
+| `2` (IoTSound default) | no on-screen warning, no CPU slowdown on low voltage |
+| `1` (balenaOS default) | no on-screen warning, CPU still slows down on low voltage |
+| `0` | warning shown, CPU slows down |
+
+- **New fleets** created with the Deploy with balena button get the variable automatically.
+- **Existing fleets** and fleets pushed with the CLI do not: add `BALENA_HOST_CONFIG_avoid_warnings`
+  = `2` under Configuration in the dashboard, for the fleet or for one device.
+- **To override**, set the same variable to `1` or `0`. A device value wins over the fleet value.
+  Changing it reboots the device.
+- With a supply that really is too weak, `2` trades the slowdown for a risk of crashes. If a
+  device becomes unstable, go back to `1` and replace the supply.
+- balenaCloud may keep showing the device as undervolted; the setting changes what the firmware
+  does about it, not what the kernel reports.
 
 ---
 

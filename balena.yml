@@ -20,6 +20,8 @@ data:
   applicationEnvironmentVariables:
     - SOUND_VOLUME: 75
     - AUDIO_OUTPUT: AUTO
+  applicationConfigVariables:
+    - BALENA_HOST_CONFIG_avoid_warnings: 2
   defaultDeviceType: raspberry-pi
   supportedDeviceTypes:
     - raspberry-pi

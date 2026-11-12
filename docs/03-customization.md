@@ -28,6 +28,14 @@ The following variables apply to IoTSound in general, modifying its behavior acr
 | SOUND_OUTPUT_LATENCY                      | Output loopback latency in milliseconds. Note that this is only a friendly request, the actual latency might be higher.                                                                     | 1 - 2000.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 100 (auto-raised to 500 on HDMI/mailbox sinks)                                                                                                 |
 | SOUND_SUPERVISOR_PORT                     | Web port that is used for serving API and UI by sound supervisor.                                                                                                                           | Any valid port number                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 80                                                                                                                                              |
 
+## Device configuration
+
+These are balena **configuration** variables (Configuration tab), not environment variables.
+
+| Variable | Description | Options | Default |
+| --- | --- | --- | --- |
+| BALENA_HOST_CONFIG_avoid_warnings | What a Raspberry Pi does on low voltage. `2` keeps the CPU at full speed, which avoids skips on boards that report short undervoltage blips (common on the Pi 3). Set by Deploy with balena on new fleets; add it by hand on existing ones. See [multi-room](./MULTIROOM.md#choosing-the-stream-codec). | `0`, `1`, `2` | `2` |
+
 ## Multi-room
 
 These options only have an effect on multi-room behavior:
