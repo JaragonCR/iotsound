@@ -95,4 +95,6 @@ fi
 echo "Generated config:"
 sed 's/^\( *access_token:\).*/\1 "<redacted>"/' "$CONFIG_PATH"
 
-exec /usr/src/daemon --config_dir $CONFIG_DIR
+# Pick and run the engine: go-librespot (default) or Spotify Soloist (opt-in, see the file).
+. /usr/src/soloist-engine.sh
+run_spotify_engine

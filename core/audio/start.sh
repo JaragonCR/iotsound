@@ -890,6 +890,18 @@ fi
 # Exit as soon as any part of the stack dies so the container restarts cleanly. Waiting on
 # pipewire-pulse alone left the container up with no session manager if WirePlumber crashed.
 set +e
-wait -n "$PIPEWIRE_PID" "$WIREPLUMBER_PID" "$PW_PULSE_PID"
-log_error "PipeWire stack process exited (pipewire=$PIPEWIRE_PID wireplumber=$WIREPLUMBER_PID pipewire-pulse=$PW_PULSE_PID) — restarting container"
+EXITED_PID=""
+wait -n -p EXITED_PID "$PIPEWIRE_PID" "$WIREPLUMBER_PID" "$PW_PULSE_PID"
+EXITED_CODE=$?
+case "$EXITED_PID" in
+  "$PIPEWIRE_PID") EXITED_NAME="pipewire" ;;
+  "$WIREPLUMBER_PID") EXITED_NAME="wireplumber" ;;
+  "$PW_PULSE_PID") EXITED_NAME="pipewire-pulse" ;;
+  *) EXITED_NAME="unknown" ;;
+esac
+# Keep the dying process's log: the live files are truncated when the stack starts again.
+for f in pipewire pipewire-pulse wireplumber; do
+  cp -f "/var/log/$f.log" "/var/log/$f.last-exit.log" 2>/dev/null || true
+done
+log_error "$EXITED_NAME exited (pid $EXITED_PID, code $EXITED_CODE) — restarting container. Logs kept as /var/log/*.last-exit.log"
 exit 1

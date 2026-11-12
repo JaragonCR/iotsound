@@ -88,7 +88,7 @@ See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of roles, grou
 |---|---|---|
 | `SOUND_MULTIROOM_ROLE` | `auto` (the device you play to becomes the group master), `host` (always master), `join` (always client), `disabled` (standalone) | `auto` |
 | `SOUND_GROUP_NAME` | Multiroom group — devices with the same name sync together | `default` |
-| `SOUND_MULTIROOM_CODEC` | Snapcast stream codec: `flac` (lossless, Wi‑Fi‑friendly), `pcm`, `opus`, `ogg` | `flac` |
+| `SOUND_MULTIROOM_CODEC` | Snapcast stream codec: `flac` (lossless, Wi‑Fi‑friendly), `pcm` (use it if a Raspberry Pi 3 skips), `opus`, `ogg` | `flac` |
 | `SOUND_MULTIROOM_BUFFER_MS` | Snapserver stream buffer in ms — increase if all Snapcast clients stutter | `600` |
 | `SOUND_MULTIROOM_CAPTURE_MS` | Master-side pacat capture latency in ms | `50` |
 | `SOUND_MULTIROOM_PA_LATENCY_MS` | PulseAudio sink-input buffer for snapclient output in ms | `200` |
@@ -117,6 +117,10 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 | `SOUND_DISABLE_SPOTIFY` | Disable Spotify Connect entirely (set to any value) | unset |
 | `SOUND_SPOTIFY_BITRATE` | Streaming bitrate in kbps: `96`, `160`, or `320` | `160` |
 | `SOUND_SPOTIFY_INITIAL_VOLUME` | Volume level when Spotify connects (0–100) | `50` |
+| `SOUND_SPOTIFY_ENGINE` | Spotify client: `librespot` (go-librespot, 320 kbps) or `soloist` (Spotify's official headless client, lossless). `soloist` needs `SOLOIST_API_KEY`; without it go-librespot runs | `librespot` |
+| `SOLOIST_API_KEY` | Your own Spotify Soloist API key from the Spotify for Developers dashboard (Premium account needed to create it). Set it as a device variable and never share it. Soloist is only downloaded when this is set | unset |
+| `SOUND_SPOTIFY_SOLOIST_RETRY_MIN` | Minutes to stay on go-librespot after Soloist fails to start 3 times in 5 minutes, before trying Soloist again | `30` |
+| `SOUND_SPOTIFY_SOLOIST_CACHE_MB` | Soloist playback cache limit in MB (`0` = no limit, otherwise at least 100) | `500` |
 | `SOUND_SPOTIFY_ZEROCONF_BACKEND` | mDNS backend for Spotify Connect discovery: `avahi` (shared avahi-daemon) or `builtin` (go-librespot's own responder) | `avahi` |
 | `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`) | unset |
 | `SOUND_SPOTIFY_PASSWORD` | Spotify access token for credential auth | unset |

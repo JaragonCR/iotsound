@@ -145,10 +145,51 @@ you may touch are the **buffers** that absorb network/CPU jitter, and only if yo
 | The master itself stutters at capture | `SOUND_MULTIROOM_CAPTURE_MS` (pacat buffer) | `50` |
 | One client pops/crackles locally | `SOUND_MULTIROOM_PA_LATENCY_MS` (client PA buffer) | `200` |
 | Frequent Wi‑Fi dropouts | leave codec at `flac` (lower bandwidth than `pcm`) | `flac` |
+| A Raspberry Pi 3 skips about once a minute | `SOUND_MULTIROOM_CODEC=pcm` (see below) | `flac` |
 
 `SOUND_MULTIROOM_LATENCY` (snapclient `--latency`) is an **advanced** escape hatch, default `0`.
 Only set a non-zero value if one specific device has a known fixed output delay that Snapcast
 genuinely cannot see; otherwise leave it at `0` and let the automatic compensation do its job.
+
+### Choosing the stream codec
+
+`SOUND_MULTIROOM_CODEC` sets how the master encodes the Snapcast stream. The master decides, so
+set it as a **fleet** variable: any speaker can become the master, and they should all agree.
+
+| Codec | Quality | Bandwidth (48 kHz stereo) | CPU on each speaker | Use it when |
+|---|---|---|---|---|
+| `flac` (default) | lossless | about 0.7 to 1 Mbit/s | decode on every speaker | Pi 4 or better everywhere, or weak Wi‑Fi |
+| `pcm` | lossless | about 1.5 Mbit/s, constant | none | there is a Raspberry Pi 3 in the group |
+| `opus` | lossy | about 0.2 Mbit/s | decode on every speaker | very poor Wi‑Fi and quality matters less |
+| `ogg` | lossy | about 0.2 to 0.3 Mbit/s | decode on every speaker | same as `opus`; prefer `opus` |
+
+**Raspberry Pi 3 and `flac`.** On a Pi 3 we have seen `snapclient` crash and restart roughly once
+a minute while decoding the `flac` stream, which is heard as a short skip on that speaker (and
+only that speaker). Switching the fleet to `pcm` stopped it: no decoder runs on the speakers at
+all, and the extra bandwidth is small for a home network. If a Pi 3 in your group skips at a
+regular interval, set `SOUND_MULTIROOM_CODEC=pcm` before touching the buffers. `multiroom-client`
+logs show the restarts if you want to confirm.
+
+**Raspberry Pi and undervoltage (`avoid_warnings`).** Many Pi 3 boards report undervoltage for a
+few seconds now and then even on a good supply and cable. While that lasts the firmware slows the
+CPU, and on a speaker that can be heard as a skip. IoTSound therefore installs with
+`BALENA_HOST_CONFIG_avoid_warnings=2`, which keeps the CPU at full speed during those blips.
+
+| Value | Effect |
+|---|---|
+| `2` (IoTSound default) | no on-screen warning, no CPU slowdown on low voltage |
+| `1` (balenaOS default) | no on-screen warning, CPU still slows down on low voltage |
+| `0` | warning shown, CPU slows down |
+
+- **New fleets** created with the Deploy with balena button get the variable automatically.
+- **Existing fleets** and fleets pushed with the CLI do not: add `BALENA_HOST_CONFIG_avoid_warnings`
+  = `2` under Configuration in the dashboard, for the fleet or for one device.
+- **To override**, set the same variable to `1` or `0`. A device value wins over the fleet value.
+  Changing it reboots the device.
+- With a supply that really is too weak, `2` trades the slowdown for a risk of crashes. If a
+  device becomes unstable, go back to `1` and replace the supply.
+- balenaCloud may keep showing the device as undervolted; the setting changes what the firmware
+  does about it, not what the kernel reports.
 
 ---
 
@@ -170,6 +211,7 @@ genuinely cannot see; otherwise leave it at `0` and let the automatic compensati
 - mDNS is link-local — it will not cross routed subnet boundaries
 
 **Audio drops or stutters on clients**
+- On a Raspberry Pi 3 that skips at a regular interval, set `SOUND_MULTIROOM_CODEC=pcm` first (see [Choosing the stream codec](#choosing-the-stream-codec))
 - Increase `SOUND_MULTIROOM_BUFFER_MS` (try 600–800ms)
 - Use wired Ethernet on the master device if possible
 
