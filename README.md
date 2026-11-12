@@ -88,7 +88,7 @@ See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of roles, grou
 |---|---|---|
 | `SOUND_MULTIROOM_ROLE` | `auto` (the device you play to becomes the group master), `host` (always master), `join` (always client), `disabled` (standalone) | `auto` |
 | `SOUND_GROUP_NAME` | Multiroom group — devices with the same name sync together | `default` |
-| `SOUND_MULTIROOM_CODEC` | Snapcast stream codec: `flac` (lossless, Wi‑Fi‑friendly), `pcm`, `opus`, `ogg` | `flac` |
+| `SOUND_MULTIROOM_CODEC` | Snapcast stream codec: `flac` (lossless, Wi‑Fi‑friendly), `pcm` (use it if a Raspberry Pi 3 skips), `opus`, `ogg` | `flac` |
 | `SOUND_MULTIROOM_BUFFER_MS` | Snapserver stream buffer in ms — increase if all Snapcast clients stutter | `600` |
 | `SOUND_MULTIROOM_CAPTURE_MS` | Master-side pacat capture latency in ms | `50` |
 | `SOUND_MULTIROOM_PA_LATENCY_MS` | PulseAudio sink-input buffer for snapclient output in ms | `200` |
