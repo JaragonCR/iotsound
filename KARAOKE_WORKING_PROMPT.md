@@ -59,7 +59,7 @@ Architecture summary:
   - `balena-sound.input`: default plugin/input mix.
   - `balena-sound.output`: selected hardware output.
   - In multiroom roles, input routes to Snapcast; in disabled/standalone, input routes directly to output.
-- `sound-supervisor` is Node 24 + TypeScript + Express 5 on port 80. It owns role/multiroom orchestration and volume APIs.
+- `sound-supervisor` is Node 26 + TypeScript + Express 5 on port 80. It owns role/multiroom orchestration and volume APIs.
 - Supervisor service calls must be wrapped with `safeService()` so supervisor API failures do not crash the process.
 - `applyCurrentRole()`/startup orchestration matters because balenaOS persists manually stopped service state across reboots.
 

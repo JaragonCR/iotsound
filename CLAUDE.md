@@ -23,7 +23,7 @@ Before scanning the entire repository, read these compact architecture documents
 ## 2. Core Invariants (Do Not Break)
 
 1. **`audio` (`core/audio/`):**
-   - Runs PipeWire + WirePlumber on Alpine 3.23 and exposes `pipewire-pulse` on `tcp:localhost:4317`.
+   - Runs PipeWire + WirePlumber on Alpine 3.24 and exposes `pipewire-pulse` on `tcp:localhost:4317`.
    - Creates three virtual null sinks in `balena-sound.pa`: `balena-sound.input` (default sink for all plugins), `snapcast` (multiroom capture sink), and `balena-sound.output` (used only for `disabled` standalone and `SOLO` fallback).
    - Detects sink-inputs on `balena-sound.input` via a `pactl subscribe` bash loop in `core/audio/start.sh` (Phase 10) and posts `/internal/play` and `/internal/stop` to `sound-supervisor`.
    - Keep `AUDIO_OUTPUT=AUTO` by default; `start.sh` and `PulseAudioWrapper.getHardwareSink()` support `AUTO`, 1-based index (`1`, `2`), or sink substring matching.
