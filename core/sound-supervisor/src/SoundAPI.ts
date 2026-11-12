@@ -1,5 +1,5 @@
 import * as path from 'path'
-import * as express from 'express'
+import express from 'express'
 import { Application } from 'express'
 import SoundConfig from './SoundConfig'
 import PulseAudioWrapper from './PulseAudioWrapper'
