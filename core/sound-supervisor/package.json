@@ -14,7 +14,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "axios": "^1.20.0",
-    "balena-sdk": "^23.2.15",
+    "balena-sdk": "^23.2.24",
     "express": "^5.3.0"
   },
   "devDependencies": {
