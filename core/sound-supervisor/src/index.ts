@@ -6,6 +6,8 @@ import type { SnapcastService } from './AvahiBrowser'
 import { MultiroomRole } from './types'
 import { constants } from './constants'
 import sdk from './BalenaClient'
+import axios from 'axios'
+import { restartBalenaService } from './utils'
 
 const deviceUuid = process.env.BALENA_DEVICE_UUID ?? ''
 const config: SoundConfig = new SoundConfig()
@@ -111,6 +113,64 @@ async function reconcileRouting(): Promise<void> {
     await audioBlock.restoreSnapcastRouting()
   }
   reconcileVolumeMode()
+  await restartSpotifyIfStale().catch(err =>
+    console.log(`[spotify-restart] check failed: ${(err as Error).message}`))
+}
+
+// Restart the Spotify service when PulseAudio has been replaced underneath it.
+//
+// go-librespot keeps its PulseAudio connection for as long as its output exists and does not
+// notice when the server goes away: it carries on "playing" into a dead connection (seen on
+// device: `failed to set volume error=EOF`, no sound, no play event) until the service is
+// restarted. The audio container can be restarted or replaced on its own (a crash, a release
+// that only changes the audio image), so someone has to restart Spotify afterwards.
+//
+// Two cases, both checked once PulseAudio is up and routed:
+//  - We were running across the restart: the PipeWire instance cookie in `pactl info`
+//    changed. A supervisor-side pactl timeout does not change the cookie, so a blip never
+//    restarts Spotify mid-song.
+//  - We started after it (release update replaced audio and this service together): the
+//    audio container is newer than the Spotify container.
+const SPOTIFY_SERVICE = 'librespot'
+let lastPulseCookie: string | null = null
+
+async function restartSpotifyIfStale(): Promise<void> {
+  // JOIN keeps source plugins stopped; a restart call would start Spotify.
+  if (config.role === MultiroomRole.JOIN) return
+
+  const cookie = (await audioBlock.getInfo())['Cookie'] ?? ''
+  const previous = lastPulseCookie
+  if (cookie) lastPulseCookie = cookie
+
+  let reason: string | null = null
+  if (previous === null) {
+    reason = await spotifyOlderThanAudio()
+  } else if (cookie && cookie !== previous) {
+    reason = 'PulseAudio restarted'
+  }
+  if (!reason) return
+
+  console.log(`[spotify-restart] ${reason}: restarting ${SPOTIFY_SERVICE} so it reconnects to PulseAudio`)
+  await restartBalenaService(SPOTIFY_SERVICE)
+}
+
+// Returns a reason string if the Spotify container was created before the audio container.
+async function spotifyOlderThanAudio(): Promise<string | null> {
+  const url = `${process.env.BALENA_SUPERVISOR_ADDRESS}/v2/state/status?apikey=${process.env.BALENA_SUPERVISOR_API_KEY}`
+  const res = await axios.get(url, { timeout: 5000 })
+  const containers: Array<{ serviceName?: string; createdAt?: string; status?: string }> = res.data?.containers ?? []
+  const created = (name: string): number => {
+    const c = containers.find(x => x.serviceName === name)
+    return c?.createdAt ? Date.parse(c.createdAt) : NaN
+  }
+  const spotify = containers.find(x => x.serviceName === SPOTIFY_SERVICE)
+  if (!spotify || spotify.status !== 'Running') return null
+  const audioAt = created('audio')
+  const spotifyAt = created(SPOTIFY_SERVICE)
+  if (Number.isFinite(audioAt) && Number.isFinite(spotifyAt) && audioAt > spotifyAt + 5000) {
+    return 'audio container is newer than the Spotify container'
+  }
+  return null
 }
 
 function reconcileVolumeMode(): void {
