@@ -28,6 +28,9 @@ COPY pulseaudio/pulse-server.conf /etc/pipewire/pipewire-pulse.conf.d/server.con
 
 COPY udev/95-balena-audio.rules /etc/udev/rules.d/95-balena-audio.rules
 
+# Stream rules: keep snapclient's PipeWire stream at 100% (see the file for why).
+COPY wireplumber/50-iotsound-streams.conf /etc/wireplumber/wireplumber.conf.d/50-iotsound-streams.conf
+
 # This valid ENV command safely busts the cache for the COPY steps below
 ENV CACHE_BUST=2026-05-01b
 COPY . .
