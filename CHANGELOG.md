@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.2.0
+## (2026-11-12)
+
+* feat(install): set avoid_warnings=2 on new fleets and document the override [JaragonCR]
+* docs(multiroom): document stream codec options and the Raspberry Pi 3 pcm workaround [JaragonCR]
+* chore(audio): log which PipeWire process exited and keep its log [JaragonCR]
+* fix(supervisor): restart the Spotify service when PulseAudio is replaced underneath it [JaragonCR]
+* fix(audio): stop WirePlumber restoring a Spotify volume onto snapclient's stream [JaragonCR]
+* feat(spotify): optional Spotify Soloist engine with go-librespot fallback [JaragonCR]
+* fix(multiroom): confirm a quiet master over unicast before dropping it [JaragonCR]
+* fix(supervisor): reconcile input routing with the role whenever PulseAudio comes up [JaragonCR]
+
 # v5.1.9
 ## (2026-11-11)
 

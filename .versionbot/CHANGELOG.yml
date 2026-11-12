@@ -1,4 +1,170 @@
 - commits:
+    - subject: "feat(install): set avoid_warnings=2 on new fleets and document the
+        override"
+      hash: 37813d83d544d59525724c7a0974d81c82693fca
+      body: >
+        Pi 3 boards report short undervoltage blips on good supplies, and the
+        firmware throttles the CPU while they last. Ship
+        BALENA_HOST_CONFIG_avoid_warnings=2 through balena.yml so Deploy with
+        balena sets it on new fleets, and document the values, how existing
+        fleets add it, and how to override it per fleet or device.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "docs(multiroom): document stream codec options and the Raspberry Pi 3
+        pcm workaround"
+      hash: 45e38b470d50c0323900397e41c990496a542b2c
+      body: >
+        A Pi 3 speaker crashed snapclient about once a minute on the default
+        flac stream; pcm fixed it. Keep flac as the default and document the
+        codec choices, the Pi 3 symptom, and what avoid_warnings does and does
+        not do for the undervoltage flag.
+
+
+        Carries the minor bump for this PR: the Spotify Soloist engine is a new,
+        opt-in feature and the default engine is unchanged.
+      footer:
+        Change-type: minor
+        change-type: minor
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "chore(audio): log which PipeWire process exited and keep its log"
+      hash: af8f95138bed4d963d738813b0bbf4f99cbc4bb6
+      body: >
+        The container exit message listed all three pids without saying which
+        one died, and the per-process logs are truncated on the next start. Name
+        the process and exit code, and keep the logs as *.last-exit.log. Added
+        after one unexplained stack exit on the Pi 3 during testing that could
+        not be reproduced.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(supervisor): restart the Spotify service when PulseAudio is
+        replaced underneath it"
+      hash: fd9fa614d77ec5db374f9ae0ae3201791205de20
+      body: >
+        go-librespot does not notice when its PulseAudio server goes away: it
+        keeps playing into a dead connection (failed to set volume error=EOF, no
+        sound, no play event) until the service restarts. The audio container
+        can restart or be replaced on its own, and that left Spotify silent on
+        that speaker twice during testing. After routing is reconciled,
+        sound-supervisor now restarts the Spotify service if the PipeWire
+        instance cookie changed while it was running, or, on its own first
+        connect, if the audio container is newer than the Spotify container. A
+        pactl timeout does not change the cookie, so a blip never restarts
+        Spotify mid-song. Skipped in the join role, where source plugins are
+        kept stopped.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(audio): stop WirePlumber restoring a Spotify volume onto
+        snapclient's stream"
+      hash: 59ebdb3488e831f30a387fafa3bec451082a0327
+      body: >
+        WirePlumber saves and restores stream volumes by identity, and for
+        streams that set media.role the identity is the role alone. snapclient
+        and Spotify Soloist both use the role music, so the last Spotify volume
+        was restored onto the next snapclient stream on the same device. Seen on
+        device: the sourcing speaker's snapclient stream sat at 50% (-18 dB),
+        later 75%, while Snapcast reported 100% and the other speaker played at
+        full level. Snapcast owns snapclient's level, so its PipeWire stream now
+        never saves or restores a volume. Verified on the Pi 4: with a saved
+        role volume of 50%, a new snapclient stream opens at 100%.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "feat(spotify): optional Spotify Soloist engine with go-librespot
+        fallback"
+      hash: 7f9ba40f807e786bb212ae676d00d9d6622abb22
+      body: >
+        SOUND_SPOTIFY_ENGINE selects the Spotify client: librespot (default,
+        unchanged) or soloist, Spotify's official headless Connect client with
+        lossless support. Spotify does not allow Soloist to be redistributed, so
+        it is never part of the image: it is downloaded from Spotify's CDN at
+        runtime, and only when the engine is soloist and the user has set their
+        own SOLOIST_API_KEY. Without a key nothing is downloaded and
+        go-librespot runs. Both engines share one container so only one
+        advertises the speaker. Three failed Soloist starts in five minutes fall
+        back to go-librespot, and Soloist is retried after
+        SOUND_SPOTIFY_SOLOIST_RETRY_MIN (default 30) once nothing is playing.
+        Builds expire after 90 days: exit code 10 triggers a re-download, and a
+        watcher installs new builds every six hours while idle. The container
+        moves from Alpine to Debian trixie because Soloist needs glibc 2.38 or
+        newer.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(multiroom): confirm a quiet master over unicast before dropping it"
+      hash: d2cb5562e046648040a8a61edd2f269554521997
+      body: >
+        The heartbeat timeout dropped a master after about 35s without a beacon.
+        On device a Pi 3 on WiFi lost 30 to 40 seconds of broadcasts every few
+        minutes while the master was fine, so it kept dropping and rediscovering
+        the master and once restarted snapclient mid-song. Silence now triggers
+        a unicast GET /multiroom/active to the master: still sourcing keeps it,
+        not sourcing drops it at once, and three unanswered checks drop it.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(supervisor): reconcile input routing with the role whenever
+        PulseAudio comes up"
+      hash: d1b575028ca4502bd9ea8fff1a6b79fbad8d7d84
+      body: >
+        core/audio/start.sh chooses the input route once at boot from GET /role
+        and falls back to standalone routing (input to output) if
+        sound-supervisor does not answer within 60s. Seen on device after the
+        5.1.9 update: the audio container started about a minute before
+        sound-supervisor, so an auto device kept standalone routing. It played
+        its own sources locally while its snapserver stream stayed idle, and no
+        other speaker could hear it although every state transition was correct.
+        sound-supervisor now re-applies the route that matches its state each
+        time it (re)connects to PulseAudio, after the audio container has
+        finished its own rules.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+  version: 5.2.0
+  title: ""
+  date: 2026-11-12T14:46:58.940Z
+- commits:
     - subject: "feat(multiroom): master heartbeat beacon so speakers that miss the
         mDNS announcement still join"
       hash: 0449e6ae119981f4277a2e3717f2045dbae8d83a
