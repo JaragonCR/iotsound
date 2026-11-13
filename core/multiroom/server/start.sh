@@ -66,15 +66,14 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
   esac
   echo "- Snapcast codec: ${CODEC}"
 
-  # Stream bit depth. 16 is the default: it is what a Raspberry Pi 3 on 2.4 GHz Wi-Fi can
-  # carry (tested: 32-bit pcm, 3.1 Mbit/s, dropped out on the Pi 3 while 16-bit did not), and
-  # the Pi 3's 3.5mm jack cannot resolve more. 24 or 32 keep Spotify lossless (up to 24-bit)
-  # intact on speakers with a DAC and a good network. Snapcast carries 24-bit in a 32-bit
-  # container, so on pcm 24 and 32 cost the same. The lossy codecs always encode 16-bit.
-  BITS=$(printf '%s' "${SOUND_MULTIROOM_BITS:-16}" | tr -cd '0-9')
+  # Stream bit depth. Sources go up to 24-bit (Spotify lossless) and PipeWire mixes in 32-bit
+  # float, so 32 is the default. Snapcast carries 24-bit in a 32-bit container, so on pcm 24
+  # and 32 cost the same (3.1 Mbit/s; 16-bit is 1.5). A Raspberry Pi 3 on 2.4 GHz Wi-Fi carried
+  # 3.1 Mbit/s both ways in testing. The lossy codecs always encode 16-bit.
+  BITS=$(printf '%s' "${SOUND_MULTIROOM_BITS:-32}" | tr -cd '0-9')
   case "$BITS" in
     16|24|32) ;;
-    *) echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BITS '${SOUND_MULTIROOM_BITS:-}', using 16"; BITS=16 ;;
+    *) echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BITS '${SOUND_MULTIROOM_BITS:-}', using 32"; BITS=32 ;;
   esac
   case "$CODEC" in
     opus|ogg) [ "$BITS" != 16 ] && echo "- ${CODEC} is lossy and encodes 16-bit: using 16-bit"; BITS=16 ;;
