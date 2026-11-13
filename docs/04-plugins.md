@@ -59,6 +59,9 @@ How IoTSound handles it:
 - Soloist caches every track it plays. On devices with 1.5 GB of memory or more the cache
   lives in RAM (100 MB limit) so lossless playback does not wear the SD card; smaller devices
   cache on disk. Force either with `SOUND_SPOTIFY_SOLOIST_CACHE=ram` or `disk`.
+- A speaker that is not the active Spotify Connect device must be silent. Soloist has been
+  seen to keep playing after the app disconnected, so IoTSound checks its state every few
+  seconds and pauses it when it is playing without being the active device.
 - Soloist receives the key as a command-line argument, so it is visible in the process
   list on the device.
 

@@ -77,6 +77,30 @@ WATCHER_PID=""
 
 slog() { echo "[spotify] $*"; }
 
+# Soloist can keep playing after it stops being the active Spotify Connect device (seen on
+# device: the app disconnected, Soloist logged "no longer active device", audio kept coming
+# out of the speakers and it took the session back a minute later). A speaker that is not the
+# active device must be silent, so pause it. The state has to hold across two looks a few
+# seconds apart, so a hand-over in progress is never interrupted.
+soloist_inactive_guard() {
+  local pid="$1" state strikes=0
+  local ctl=("$SOLOIST_BIN" ctl -D "$SOLOIST_DIR/data")
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 4
+    state=$("${ctl[@]}" now --json 2>/dev/null) || { strikes=0; continue; }
+    if [[ "$state" == *'"status":"playing"'* && "$state" == *'"is_active":false'* ]]; then
+      strikes=$((strikes + 1))
+      if [ "$strikes" -ge 2 ]; then
+        slog "Soloist is playing but is no longer the active device: pausing it"
+        "${ctl[@]}" pause >/dev/null 2>&1 || slog "Soloist: pause command failed"
+        strikes=0
+      fi
+    else
+      strikes=0
+    fi
+  done
+}
+
 run_librespot_foreground() {
   # Default path, unchanged from before Soloist existed: replace this shell with the daemon.
   exec "$LIBRESPOT_BIN" --config_dir "$CONFIG_DIR"
@@ -195,16 +219,20 @@ run_soloist_supervised() {
                     -D "$SOLOIST_DIR/data" -C "$SOLOIST_CACHE_DIR" -z "$SOLOIST_CACHE_MB"
                     -i "$SOUND_SPOTIFY_INITIAL_VOLUME")
         [ "${LOG_LEVEL,,}" = "debug" ] && args+=(-v)
-        [ -n "${SOUND_SPOTIFY_SOLOIST_WS:-}" ] && args+=(-w "$SOUND_SPOTIFY_SOLOIST_WS")
+        # Local control API, loopback only by default. The inactive guard below needs it.
+        args+=(-w "${SOUND_SPOTIFY_SOLOIST_WS:-127.0.0.1:0}")
         slog "Starting Soloist as \"$SOUND_DEVICE_NAME\" (initial volume $SOUND_SPOTIFY_INITIAL_VOLUME)"
         "$SOLOIST_BIN" "${args[@]}" &
         ENGINE_CHILD=$!
         soloist_update_watcher "$ENGINE_CHILD" &
         WATCHER_PID=$!
+        soloist_inactive_guard "$ENGINE_CHILD" &
+        GUARD_PID=$!
         wait "$ENGINE_CHILD"
         code=$?
         ENGINE_CHILD=""
         kill "$WATCHER_PID" 2>/dev/null; WATCHER_PID=""
+        kill "$GUARD_PID" 2>/dev/null; GUARD_PID=""
       fi
       duration=$((SECONDS - start))
 
