@@ -20,7 +20,7 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | Snapserver capture/buffer | `core/multiroom/server/start.sh` | generated `/tmp/snapserver.conf` (written by start.sh), `docs/architecture/audio-flow.md` | `snapclient` unless only one client stutters |
 | Snapclient output/latency | `core/multiroom/client/start.sh` | `core/sound-supervisor/src/SoundAPI.ts` (`/audio/output-sink`, `/multiroom/latency`) | `snapserver` unless every client stutters |
 | SOLO routing fallback | `core/sound-supervisor/src/index.ts` | `PulseAudioWrapper.ts` (`rerouteInputDirect` / `restoreSnapcastRouting`) | `core/audio/balena-sound.pa` |
-| Routing reconcile after an audio restart | `core/sound-supervisor/src/index.ts` (`scheduleRoutingReconcile`, `reconcileRouting`, `restartSpotifyIfStale`) | `PulseAudioWrapper.ts` | `core/audio/start.sh` boot routing |
+| Routing reconcile after an audio restart | `core/sound-supervisor/src/index.ts` (`scheduleRoutingReconcile`, `reconcileRouting`, `restartSourcesIfStale`) | `PulseAudioWrapper.ts` | `core/audio/start.sh` boot routing |
 | Single-authority volume control | `core/sound-supervisor/src/SoundAPI.ts` | `SnapserverMonitor.ts`, `PulseAudioWrapper.ts`, `index.ts` | Hardware selection code |
 | Spotify Connect source | `plugins/librespot/start.sh` (go-librespot config), `plugins/librespot/soloist-engine.sh` (engine choice, Soloist download/update/fallback/cache) | shared D-Bus volume in `docker-compose.yml` | Audio routing unless no source reaches input |
 | AirPlay source | `plugins/airplay/start.sh` | shared D-Bus volume in `docker-compose.yml` | Multiroom services |
@@ -46,7 +46,7 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | One client is consistently late | `SOUND_MULTIROOM_LATENCY` on that device or on the earlier device | Lower the late device's value, or raise the earlier device's value. |
 | Speakers drift or all clients stutter | Snapcast/Pulse buffering | `SOUND_MULTIROOM_BUFFER_MS`, `SOUND_MULTIROOM_PA_LATENCY_MS`, network and CPU |
 | Every speaker drops out together for seconds | `multiroom-server` (snapserver stalled) | `Snapserver status unavailable` in `sound-supervisor` logs, SD card I/O, anything writing to disk in the audio path |
-| Spotify plays but is silent after an `audio` restart | `restartSpotifyIfStale()` in `index.ts` | `[spotify-restart]` log lines, `librespot` service state |
+| Spotify or AirPlay plays but is silent after an `audio` restart | `restartSourcesIfStale()` in `index.ts` | `[source-restart]` log lines, `librespot` and `airplay` service state |
 | Volume changes only local speaker | `SoundAPI.ts` `/audio/volume` and `SnapserverMonitor.setGroupVolume()` | Cached Snapcast group id and JSON-RPC `1780` |
 | AUTO source starts but no promotion | `pactl subscribe` play-detect in `core/audio/start.sh` and `/internal/play` | `sound-supervisor` startup order and `PulseAudioWrapper.listen()` |
 | AUTO device never demotes | `/internal/stop` flow | sink-inputs stuck on `balena-sound.input` |

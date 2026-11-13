@@ -79,7 +79,7 @@ flowchart LR
 
 6. **Discovery has two paths:** mDNS (`_snapcast._tcp`) and a UDP heartbeat on port `1706` broadcast by the sourcing master every 10 s (`MasterBeacon.ts`). Both feed one master table keyed by master UUID. A master that goes quiet for ~35 s is checked over unicast (`GET /multiroom/active`) and only dropped if it says it stopped or misses 3 checks.
 
-7. **Routing follows the supervisor's state:** `core/audio/start.sh` sets the input route once at boot and falls back to standalone if the supervisor is not up within 60 s. `sound-supervisor` re-applies the correct route every time it (re)connects to PulseAudio, then restarts the `librespot` service if PulseAudio was replaced under it.
+7. **Routing follows the supervisor's state:** `core/audio/start.sh` sets the input route once at boot and falls back to standalone if the supervisor is not up within 60 s. `sound-supervisor` re-applies the correct route every time it (re)connects to PulseAudio, then restarts the `librespot` and `airplay` services if PulseAudio was replaced under them.
 
 8. **Spotify engine (`plugins/librespot/`):** one container, two engines. `SOUND_SPOTIFY_ENGINE=soloist` plus `SOLOIST_API_KEY` downloads Spotify Soloist at runtime (never ship it in the image), keeps it updated, and falls back to go-librespot after 3 failed starts in 5 minutes.
 

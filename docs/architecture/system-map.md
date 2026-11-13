@@ -45,7 +45,7 @@ flowchart LR
 | `wifi-watchdog` | `core/watchdog/` | host (`pid: host`) | `unless-stopped` | WiFi recovery and optional reboot | Skips when Ethernet is active; checks default gateway before `8.8.8.8`. |
 | `hostname` | `core/hostname/` | default | `unless-stopped` | Device hostname setup through supervisor API | Not in audio path. |
 | `librespot` | `plugins/librespot/` | host | `on-failure` | Spotify Connect source: go-librespot or Spotify Soloist (`SOUND_SPOTIFY_ENGINE`) | Waits for PulseAudio, network, and Avahi sentinel. Privileged (mounts a tmpfs for the Soloist cache). Restarted by `sound-supervisor` when PulseAudio is replaced. |
-| `airplay` | `plugins/airplay/` | host | `on-failure` | AirPlay source | Uses Shairport Sync with PulseAudio output. |
+| `airplay` | `plugins/airplay/` | host | `on-failure` | AirPlay source | Uses Shairport Sync with PulseAudio output. Restarted by `sound-supervisor` when PulseAudio is replaced. |
 | `bluetooth` | `plugins/bluetooth/` | host | `on-failure` | Bluetooth source | Delegates to `bluetooth-agent`. |
 | `upnp` | `plugins/upnp/` | default | not in compose currently | UPnP source | Present in repo but not listed in current `docker-compose.yml`. |
 | `karaoke` | `plugins/karaoke/app/` | bridge, publishes `8080` | `on-failure` | Karaoke UI/API, `yt-dlp` download worker, queue DB, local ffmpeg player, mic loopback | Talks to supervisor at `http://172.17.0.1:80` and PulseAudio at `tcp:audio:4317`. |

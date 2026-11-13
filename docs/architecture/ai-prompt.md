@@ -26,7 +26,7 @@ Important invariants:
 - mDNS/Snapcast targets must be usable IPv4 LAN addresses. Do not remove IPv6/Docker/loopback filtering casually.
 - join devices stop source plugins; disabled devices keep source plugins active but do not use Snapcast.
 - Masters are found by mDNS and by a UDP 1706 heartbeat every 10s; a quiet master is checked over unicast before it is dropped.
-- sound-supervisor re-applies input routing whenever it reconnects to PulseAudio, then restarts the librespot service if PulseAudio was replaced.
+- sound-supervisor re-applies input routing whenever it reconnects to PulseAudio, then restarts the librespot and airplay services if PulseAudio was replaced.
 - TCP 4317 is loopback-only on the host. Nothing in the audio path may write to the SD card (snapserver state lives in /dev/shm).
 
 Task:
