@@ -80,20 +80,34 @@ slog() { echo "[spotify] $*"; }
 # Soloist can keep playing after it stops being the active Spotify Connect device (seen on
 # device: the app disconnected, Soloist logged "no longer active device", audio kept coming
 # out of the speakers and it took the session back a minute later). A speaker that is not the
-# active device must be silent, so pause it. The state has to hold across two looks a few
-# seconds apart, so a hand-over in progress is never interrupted.
+# active device must be silent.
+#
+# "Playing" is judged from Soloist's own PulseAudio stream, never from `ctl now`: on an
+# inactive device that reports the account's playback, i.e. what is playing somewhere else.
+# For the same reason the remedy is to restart Soloist, not `ctl pause`, which from an
+# inactive device would pause the music on whichever device is active.
+# The state has to hold on three looks in a row, so a hand-over in progress is left alone.
+soloist_stream_running() {
+  PULSE_SERVER="${PULSE_SERVER:-tcp:127.0.0.1:4317}" pactl list sink-inputs 2>/dev/null | awk '
+    /^Sink Input #/ { if (name && !corked) found = 1; name = 0; corked = 0 }
+    /Corked: yes/ { corked = 1 }
+    /application.name = "spotify"/ { name = 1 }
+    END { if (name && !corked) found = 1; exit(found ? 0 : 1) }'
+}
+
 soloist_inactive_guard() {
   local pid="$1" state strikes=0
   local ctl=("$SOLOIST_BIN" ctl -D "$SOLOIST_DIR/data")
+  command -v pactl >/dev/null 2>&1 || return 0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 4
     state=$("${ctl[@]}" now --json 2>/dev/null) || { strikes=0; continue; }
-    if [[ "$state" == *'"status":"playing"'* && "$state" == *'"is_active":false'* ]]; then
+    if [[ "$state" == *'"is_active":false'* ]] && soloist_stream_running; then
       strikes=$((strikes + 1))
-      if [ "$strikes" -ge 2 ]; then
-        slog "Soloist is playing but is no longer the active device: pausing it"
-        "${ctl[@]}" pause >/dev/null 2>&1 || slog "Soloist: pause command failed"
-        strikes=0
+      if [ "$strikes" -ge 3 ]; then
+        slog "Soloist is sending audio but is not the active device: restarting it"
+        kill -TERM "$pid" 2>/dev/null
+        return 0
       fi
     else
       strikes=0
