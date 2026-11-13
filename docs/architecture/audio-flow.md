@@ -49,7 +49,7 @@ FIFO pipe  /tmp/snapserver-audio               (kernel pipe buffer, ~64 KB)
         ▼
 snapserver  (multiroom-server container; state file in /dev/shm, never on the SD card)
         │  Stream buffer: 600 ms default (codec: flac, or pcm/opus/ogg)
-        │  Sample format: 48000:32:2 default (SOUND_MULTIROOM_BITS)
+        │  Sample format: 48000:16:2 default (SOUND_MULTIROOM_BITS, 24 or 32 for lossless)
         │  Env var: SOUND_MULTIROOM_BUFFER_MS   (set per-fleet or per-device)
         │
         ├── local loopback ─────────────────────────────────────────
