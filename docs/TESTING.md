@@ -51,7 +51,7 @@ This document records what was manually validated for the v5.0 release and calls
 
 ### Karaoke plugin
 
-Karaoke is included in v5.0 but hardware validation is incomplete — see open items in `KARAOKE_WORKING_PROMPT.md`. Treat it as **beta** for this release.
+Karaoke is included in v5.0 but hardware validation is incomplete — see open items in `docs/archive/KARAOKE_WORKING_PROMPT.md`. Treat it as **beta** for this release.
 
 ---
 
