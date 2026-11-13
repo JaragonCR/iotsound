@@ -9,10 +9,10 @@
 
 ## Features
 
-- **Multi-source streaming** — Bluetooth, AirPlay 2, Spotify Connect, UPnP
-- **Synchronized multi-room audio** — mDNS auto-discovery, play-triggered election, no IP pinning required
+- **Multi-source streaming** — Bluetooth, AirPlay 2, Spotify Connect (go-librespot, or lossless with Spotify Soloist)
+- **Synchronized multi-room audio** — mDNS auto-discovery backed by a master heartbeat, play-triggered election, no IP pinning required
 - **Karaoke** — YouTube search, singer/audience UI, queue, mic loopback with configurable EQ filters
-- **Modern audio stack** — PipeWire + WirePlumber, full PulseAudio backward compatibility on TCP 4317
+- **Modern audio stack** — PipeWire + WirePlumber, PulseAudio-compatible server on TCP 4317 (reachable from the device only, not from the LAN)
 - **Hardware auto-detection** — DAC > USB > HDMI > built-in priority, manual override supported
 - **balenaCloud managed** — OTA updates, fleet management, device monitoring
 
@@ -46,7 +46,7 @@ Set these in your balenaCloud fleet or device variables:
 
 | Variable | Description | Default |
 |---|---|---|
-| `SOUND_DEVICE_NAME` | Hostname and broadcast name for AirPlay, Spotify Connect, and UPnP (Bluetooth uses `BLUETOOTH_DEVICE_NAME`) | `iotsound` |
+| `SOUND_DEVICE_NAME` | Hostname and broadcast name for AirPlay and Spotify Connect (Bluetooth uses `BLUETOOTH_DEVICE_NAME`) | hostname `iotsound`; broadcast names `balenaSound Spotify <first 4 of UUID>` and `balenaSound AirPlay <first 4 of UUID>` |
 
 #### Logging
 
@@ -94,6 +94,7 @@ See [docs/MULTIROOM.md](docs/MULTIROOM.md) for a full explanation of roles, grou
 | `SOUND_MULTIROOM_PA_LATENCY_MS` | PulseAudio sink-input buffer for snapclient output in ms | `200` |
 | `SOUND_MULTIROOM_LATENCY` | **Advanced.** Extra fixed snapclient `--latency` offset in ms. Leave at `0` — snapclient plays direct to the hardware sink and Snapcast compensates the real device latency automatically, so no per-device tuning is needed. | `0` |
 | `SOUND_MULTIROOM_MASTER` | Override master IP — skips mDNS discovery (for networks where mDNS is blocked) | unset |
+| `SOUND_MULTIROOM_BEACON_PORT` | UDP port for the master heartbeat (broadcast every 10 s by the sourcing master). Must be the same on every device in the group | `1706` |
 
 #### Multiroom roles
 
@@ -115,17 +116,17 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 | Variable | Description | Default |
 |---|---|---|
 | `SOUND_DISABLE_SPOTIFY` | Disable Spotify Connect entirely (set to any value) | unset |
-| `SOUND_SPOTIFY_BITRATE` | Streaming bitrate in kbps: `96`, `160`, or `320` | `160` |
+| `SOUND_SPOTIFY_BITRATE` | Streaming bitrate in kbps: `96`, `160`, or `320`. go-librespot only; with Soloist, quality is chosen in the Spotify app | `160` |
 | `SOUND_SPOTIFY_INITIAL_VOLUME` | Volume level when Spotify connects (0–100) | `50` |
-| `SOUND_SPOTIFY_ENGINE` | Spotify client: `librespot` (go-librespot, 320 kbps) or `soloist` (Spotify's official headless client, lossless). `soloist` needs `SOLOIST_API_KEY`; without it go-librespot runs | `librespot` |
+| `SOUND_SPOTIFY_ENGINE` | Spotify client: `librespot` (go-librespot, up to 320 kbps) or `soloist` (Spotify's official headless client, lossless). `soloist` needs `SOLOIST_API_KEY`; without it go-librespot runs | `librespot` |
 | `SOLOIST_API_KEY` | Your own Spotify Soloist API key from the Spotify for Developers dashboard (Premium account needed to create it). Set it as a device variable and never share it. Soloist is only downloaded when this is set | unset |
 | `SOUND_SPOTIFY_SOLOIST_RETRY_MIN` | Minutes to stay on go-librespot after Soloist fails to start 3 times in 5 minutes, before trying Soloist again | `30` |
 | `SOUND_SPOTIFY_SOLOIST_CACHE` | Where Soloist caches audio: `ram` (tmpfs, 100 MB limit, no SD card wear), `disk`, or `auto` (`ram` on devices with 1.5 GB of memory or more) | `auto` |
 | `SOUND_SPOTIFY_SOLOIST_CACHE_MB` | Soloist cache limit in MB when the cache is on disk (`0` = no limit, otherwise at least 100) | `500` |
-| `SOUND_SPOTIFY_ZEROCONF_BACKEND` | mDNS backend for Spotify Connect discovery: `avahi` (shared avahi-daemon) or `builtin` (go-librespot's own responder) | `avahi` |
-| `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`) | unset |
-| `SOUND_SPOTIFY_PASSWORD` | Spotify access token for credential auth | unset |
-| `SOUND_SPOTIFY_DISABLE_NORMALISATION` | Disable loudness normalization (set to `1`) | unset |
+| `SOUND_SPOTIFY_ZEROCONF_BACKEND` | go-librespot's mDNS backend: `avahi` (shared avahi-daemon) or `builtin` (its own responder). Soloist always uses its own responder | `avahi` |
+| `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`). go-librespot only | unset |
+| `SOUND_SPOTIFY_PASSWORD` | Spotify access token for credential auth. go-librespot only | unset |
+| `SOUND_SPOTIFY_DISABLE_NORMALISATION` | Disable loudness normalization (set to `1`). go-librespot only; Soloist follows the Spotify app | unset |
 
 #### Bluetooth
 
@@ -153,6 +154,12 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 | `KARAOKE_MIC_GAIN` | Default karaoke mic gain 0–100 | `AUDIO_MIC_INPUT_VOLUME` or `35` |
 | `KARAOKE_LOG_LEVEL` | Override karaoke app verbosity | `LOG_LEVEL` or `info` |
 
+#### Device configuration (balena Configuration tab, not environment variables)
+
+| Variable | Description | Default |
+|---|---|---|
+| `BALENA_HOST_CONFIG_avoid_warnings` | Raspberry Pi behaviour on low voltage. `2` keeps the CPU at full speed during short undervoltage blips (common on the Pi 3). Set automatically on fleets created with Deploy with balena; add it by hand on existing fleets. See [docs/MULTIROOM.md](docs/MULTIROOM.md#choosing-the-stream-codec) | `2` |
+
 #### WiFi watchdog
 
 | Variable | Description | Default |
@@ -167,10 +174,10 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 ### Web UI
 
 Access the control panel at `http://<device-ip>/` for:
-- **Volume control** — device output volume slider
-- **Multiroom** — role selector, group name dropdown with discovered groups, live master IP, client latency display
-- **Multi-room buffer** — Snapcast latency slider
+- **Volume control** — device volume slider (group volume while multiroom is active)
+- **Multiroom** — role selector, group name dropdown with discovered groups, live master IP
 - **DAC overlay** — set a custom device tree overlay for DAC boards
+- **Karaoke** — link to the karaoke app on port 8080
 - **Device management** — restart services, reboot, shutdown
 
 ---
@@ -222,11 +229,14 @@ For detailed filter descriptions see [docs/Audio_Configuration.md](docs/Audio_Co
 - [Getting started](docs/01-getting-started.md)
 - [Usage and roles](docs/02-usage.md)
 - [Customization](docs/03-customization.md)
+- [Plugins, including lossless Spotify](docs/04-plugins.md)
 - [Multiroom](docs/MULTIROOM.md)
 - [Audio configuration](docs/Audio_Configuration.md)
 - [Device support](docs/06-device-support.md)
 - [Troubleshooting](docs/07-support.md)
 - [Testing matrix](docs/TESTING.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Dependencies](docs/DEPENDENCIES.md)
 
 ---
 

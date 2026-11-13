@@ -10,7 +10,7 @@ nav_order: 1
 
 ## Highlights
 
-- **Audio source plugins**: Stream audio from your favourite music services: Bluetooth, Airplay2, Spotify Connect, UPnP and more!
+- **Audio source plugins**: Stream audio from your favourite music services: Bluetooth, Airplay2, Spotify Connect (lossless optional) and karaoke.
 - **Multi-room synchronous playing**: Play perfectly synchronized audio on multiple devices all over your place.
 - **Extended DAC support**: Upgrade your audio quality with one of our supported DACs
 

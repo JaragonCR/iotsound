@@ -18,7 +18,7 @@ IoTSound services can be divided in three groups:
 
 - Sound core: `sound-supervisor` and `audio`.
 - Multiroom: `multiroom-server` and `multiroom-client`
-- Plugins: `librespot`, `airplay`, `bluetooth`, etc.
+- Plugins: `librespot` (go-librespot or Spotify Soloist), `airplay`, `bluetooth`, `karaoke`.
 
 ### Sound core
 
@@ -104,6 +104,11 @@ Set the `PULSE_SERVER` environment variable in your plugin `Dockerfile`:
 ```
 ENV PULSE_SERVER=tcp:localhost:4317
 ```
+
+That address works for plugins on the host network (`network_mode: host`). The `audio` service
+publishes port 4317 on the device's loopback interface only, so it is not reachable from the
+LAN. A plugin on the default bridge network reaches it by service name instead
+(`PULSE_SERVER=tcp:audio:4317`, as `karaoke` does).
 
 **ALSA bridge**
 

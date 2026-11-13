@@ -11,10 +11,10 @@ IoTSound turns multiple Raspberry Pis into a perfectly-synchronized whole-home a
 ### Audio pipeline
 
 ```
-Bluetooth / AirPlay / Spotify / UPnP
+Bluetooth / AirPlay / Spotify / Karaoke
             │
             ▼
-    PipeWire (audio block, TCP :4317)
+    PipeWire (audio block, local TCP :4317)
      sink: balena-sound.input
             │
             ▼
@@ -41,7 +41,7 @@ There is no permanent master device. The device you play to becomes the group ma
 1. You stream to any device (Bluetooth, AirPlay, Spotify, etc.)
 2. The audio block detects audio on `balena-sound.input` via `pactl subscribe`
 3. That device promotes itself in place — starts capturing into snapserver and advertises via mDNS (`_snapcast._tcp`)
-4. All other devices in the same group discover the master and connect their snapclient
+4. All other devices in the same group discover the master and connect their snapclient. The master also broadcasts a small heartbeat every 10 seconds (UDP `1706`), so a speaker that missed the mDNS announcement still joins within about 10 seconds
 5. All devices sync within a few seconds and play the same audio
 
 When you stop playing for 30 seconds, the master demotes in place — capture stops and its advertisement is withdrawn; containers are not restarted. The next play event promotes it again instantly.
@@ -202,7 +202,8 @@ CPU, and on a speaker that can be heard as a skip. IoTSound therefore installs w
 - Check networking. The Snapcast master IP advertised by mDNS must be reachable from each `multiroom-client` container on TCP `1704`.
 
 **Devices don't sync after streaming starts**
-- Wait up to 10 seconds — mDNS discovery can take a moment on first connection
+- Wait up to 10 seconds — discovery uses mDNS plus a 10 second master heartbeat on UDP `1706`
+- Make sure nothing on the network blocks UDP broadcast on port `1706` between speakers (client isolation on guest Wi‑Fi does)
 - Confirm `SOUND_GROUP_NAME` is the same on all devices you expect to sync
 - Ensure all devices are on the same subnet (no VLAN separation without a reflector)
 

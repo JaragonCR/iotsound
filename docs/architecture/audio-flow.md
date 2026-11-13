@@ -9,7 +9,7 @@ End-to-end signal paths for standalone and multiroom playback. Each multiroom st
 Used when `SOUND_MULTIROOM_ROLE=disabled`.
 
 ```
-[Plugin source: librespot / airplay / bluetooth / karaoke / upnp]
+[Plugin source: librespot / airplay / bluetooth / karaoke]
         │  PCM audio written to balena-sound.input
         ▼
 balena-sound.input                              (PipeWire null sink, audio container)
@@ -37,7 +37,7 @@ Used when a device is `host` or when an `auto` device promotes to master. The ma
         │  PCM audio written to balena-sound.input (PipeWire null sink)
         ▼
 balena-sound.input                              (PipeWire null sink, audio container)
-        │  WirePlumber loopback rule
+        │  module-loopback (from balena-sound.pa, 100 ms; 500 ms on mailbox/HDMI sinks)
         ▼
 snapcast                                        (PipeWire null sink, audio container)
         │  pacat --record --device=snapcast.monitor
@@ -47,8 +47,8 @@ snapcast                                        (PipeWire null sink, audio conta
 FIFO pipe  /tmp/snapserver-audio               (kernel pipe buffer, ~64 KB)
         │
         ▼
-snapserver  (multiroom-server container)
-        │  Stream buffer: 600 ms default (codec: flac)
+snapserver  (multiroom-server container; state file in /dev/shm, never on the SD card)
+        │  Stream buffer: 600 ms default (codec: flac, or pcm/opus/ogg)
         │  Env var: SOUND_MULTIROOM_BUFFER_MS   (set per-fleet or per-device)
         │
         ├── local loopback ─────────────────────────────────────────
@@ -87,7 +87,7 @@ Speakers
 ```
 
 > **Why direct-to-sink (Option C):** routing snapclient through the `balena-sound.output`
-> null sink + a WirePlumber loopback hid a per-device, variable output delay that Snapcast
+> null sink + a loopback hid a per-device, variable output delay that Snapcast
 > could not see, which made heterogeneous hardware impossible to sync. Playing straight to the
 > hardware sink lets PipeWire report the true latency, so Snapcast keeps devices in sync with
 > no per-device tuning. The `balena-sound.output` sink is still used for the standalone
@@ -146,7 +146,7 @@ not the latency offset.
 | Sink | Purpose |
 |---|---|
 | `balena-sound.input` | Plugin capture point — all sources write here |
-| `snapcast` | Multiroom capture — WirePlumber loopback feeds from balena-sound.input:monitor |
-| `balena-sound.output` | Playback mixing point — all consumers read from here |
+| `snapcast` | Multiroom capture — a `module-loopback` feeds it from `balena-sound.input.monitor` |
+| `balena-sound.output` | Output point for standalone (`disabled`) and SOLO only; multiroom snapclients bypass it |
 
-WirePlumber loopback rules live in `core/audio/` and wire these sinks together automatically.
+The loopbacks are PulseAudio `module-loopback` instances declared in `core/audio/balena-sound.pa` and applied by `core/audio/start.sh` (Phase 9). `sound-supervisor` swaps the input loopback at runtime for SOLO and re-applies the right one whenever it reconnects to PulseAudio.

@@ -2,16 +2,22 @@
 
 ## Current state (v5.x)
 
-A single `avahi-daemon` instance in `sound-supervisor` owns mDNS. Other services use the shared D-Bus socket or Avahi CLI helpers instead of binding UDP `5353` directly.
+A single `avahi-daemon` instance in `sound-supervisor` owns mDNS. Other services use the shared D-Bus socket or Avahi CLI helpers instead of binding UDP `5353` directly. The one exception is Spotify Soloist, which only has its own responder.
 
 | Service | Role | Implementation | Binds 5353 directly? |
 |---|---|---|---|
 | `sound-supervisor` entrypoint | Starts `dbus-daemon` and `avahi-daemon` | `core/sound-supervisor/entrypoint.sh` | Avahi owns it |
 | `sound-supervisor` advertiser | Publishes `_snapcast._tcp` when elected master | `avahi-publish -s` via `AvahiAdvertiser.ts` | No |
 | `sound-supervisor` browser | Discovers snapcast master IP for client join | `avahi-browse -r -p` via `AvahiBrowser.ts` | No |
-| `librespot` | Advertises Spotify Connect via zeroconf | go-librespot uses Avahi through shared D-Bus when available | No |
+| `librespot` (go-librespot engine) | Advertises Spotify Connect via zeroconf | `zeroconf_backend: avahi` through the shared D-Bus socket (`SOUND_SPOTIFY_ZEROCONF_BACKEND=builtin` switches to its own responder) | No, unless `builtin` |
+| `librespot` (Soloist engine) | Advertises Spotify Connect via zeroconf | Soloist's built-in responder; it has no Avahi option | **Yes** |
+| `airplay` | Advertises AirPlay | Shairport Sync through the shared D-Bus socket | No |
 
 The shared socket lives in the `iotsound-dbus` volume at `/run/iotsound-dbus/socket`. `sound-supervisor` writes `/run/iotsound-dbus/avahi-ready` after Avahi is healthy; `librespot` and `airplay` wait for that sentinel before advertising.
+
+Soloist binding `5353` next to Avahi is the same socket-sharing situation described under
+"Historical problem" below. It has worked on the test devices, but if Spotify Connect
+visibility becomes flaky with Soloist as the engine, compare against go-librespot first.
 
 ### Why this shape
 

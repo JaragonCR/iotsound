@@ -161,7 +161,7 @@ Setting `LOG_LEVEL=debug` on a device (or fleet) is the universal debug switch. 
 |---|---|
 | `sound-supervisor` | Play/stop/election events logged in detail |
 | `audio` | PulseAudio log level raised to debug |
-| `librespot` | Spotify client logs at debug verbosity |
+| `librespot` | Spotify client logs at debug verbosity (go-librespot `log_level: debug`, Soloist `-v`) |
 | `multiroom-client` | Periodic waiting heartbeat logged every 5 minutes |
 | `support-toolkit` | Debug toolkit container stays running |
 

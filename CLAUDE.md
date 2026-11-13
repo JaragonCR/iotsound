@@ -2,7 +2,7 @@
 
 > See [`AGENTS.md`](AGENTS.md) and [`docs/architecture/ai-index.md`](docs/architecture/ai-index.md) for the canonical AI architecture index and system diagrams.
 
-IoTSound (`JaragonCR/iotsound`) is a multi-container balena audio streaming and karaoke platform for Raspberry Pi (Pi 3, Pi 4, Pi 5) and x86 devices. It combines PipeWire + WirePlumber (`pipewire-pulse` on TCP `4317`), Snapcast multiroom audio, Spotify Connect (`go-librespot`), AirPlay 2 (`shairport-sync`), Bluetooth (`bluez-alsa`), and a self-hosted Go Karaoke web app (`plugins/karaoke/app`).
+IoTSound (`JaragonCR/iotsound`) is a multi-container balena audio streaming and karaoke platform for Raspberry Pi (Pi 3, Pi 4, Pi 5) and x86 devices. It combines PipeWire + WirePlumber (`pipewire-pulse` on TCP `4317`), Snapcast multiroom audio, Spotify Connect (`go-librespot`, or Spotify Soloist for lossless), AirPlay 2 (`shairport-sync`), Bluetooth (BlueZ agent, A2DP through PipeWire's BlueZ backend), and a self-hosted Go Karaoke web app (`plugins/karaoke/app`).
 
 ---
 
@@ -23,7 +23,7 @@ Before scanning the entire repository, read these compact architecture documents
 ## 2. Core Invariants (Do Not Break)
 
 1. **`audio` (`core/audio/`):**
-   - Runs PipeWire + WirePlumber on Alpine 3.24 and exposes `pipewire-pulse` on `tcp:localhost:4317`.
+   - Runs PipeWire + WirePlumber on Alpine 3.24 and exposes `pipewire-pulse` on `tcp:localhost:4317`. The port is published on host loopback only: host-network services use `127.0.0.1:4317`, bridge services use `audio:4317`, and it must stay unreachable from the LAN.
    - Creates three virtual null sinks in `balena-sound.pa`: `balena-sound.input` (default sink for all plugins), `snapcast` (multiroom capture sink), and `balena-sound.output` (used only for `disabled` standalone and `SOLO` fallback).
    - Detects sink-inputs on `balena-sound.input` via a `pactl subscribe` bash loop in `core/audio/start.sh` (Phase 10) and posts `/internal/play` and `/internal/stop` to `sound-supervisor`.
    - Keep `AUDIO_OUTPUT=AUTO` by default; `start.sh` and `PulseAudioWrapper.getHardwareSink()` support `AUTO`, 1-based index (`1`, `2`), or sink substring matching.
@@ -43,6 +43,16 @@ Before scanning the entire repository, read these compact architecture documents
    - Runs as a single Go container on port `8080` with `ffmpeg` and `yt-dlp` installed locally (with a background 24h `yt-dlp -U` self-updater).
    - Serves pre-downloaded MP4s via HTTP range requests at `/stream/current`.
    - In `local` speaker mode, streams audio via `ffmpeg` to `balena-sound.input`, notifies `/internal/play` & `/internal/stop`, and loads a mic loopback (`source=<mic> sink=balena-sound.input`) **only while a song is actively playing**.
+
+6. **Discovery has two paths:** mDNS (`_snapcast._tcp`) and a UDP heartbeat on port `1706` broadcast by the sourcing master every 10 s (`MasterBeacon.ts`). Both feed one master table keyed by master UUID. A master that goes quiet for ~35 s is checked over unicast (`GET /multiroom/active`) and only dropped if it says it stopped or misses 3 checks.
+
+7. **Routing follows the supervisor's state:** `core/audio/start.sh` sets the input route once at boot and falls back to standalone if the supervisor is not up within 60 s. `sound-supervisor` re-applies the correct route every time it (re)connects to PulseAudio, then restarts the `librespot` service if PulseAudio was replaced under it.
+
+8. **Spotify engine (`plugins/librespot/`):** one container, two engines. `SOUND_SPOTIFY_ENGINE=soloist` plus `SOLOIST_API_KEY` downloads Spotify Soloist at runtime (never ship it in the image), keeps it updated, and falls back to go-librespot after 3 failed starts in 5 minutes.
+
+9. **No SD card writes in the audio path:** snapserver keeps `server.json` in `/dev/shm`, the supervisor only sends `Client.SetVolume` to clients that are off target, and the Soloist cache is a tmpfs on devices with 1.5 GB of memory or more. A blocked card write on snapserver's thread silences every speaker.
+
+10. **WirePlumber 0.5.15 and later:** do not set `state.restore-props=false` on a stream; it then starts at 0% volume.
 
 ---
 

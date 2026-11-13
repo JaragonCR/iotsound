@@ -35,7 +35,7 @@ This document records what was manually validated for the v5.0 release and calls
 | Pi 4 master + Pi 3 B/B+ client | ✔ Confirmed working | mDNS discovery, dynamic election, audio sync |
 | Volume sync across devices | ✔ Confirmed working | |
 | 30s demotion after stream stops | ✔ Confirmed working | |
-| Per-device snapclient latency | ⚠ Needs hardware calibration | Current default is 400ms for every snapclient; tune `SOUND_MULTIROOM_LATENCY` per device. |
+| Per-device snapclient latency | Superseded | Since direct-to-hardware output, latency is compensated automatically; `SOUND_MULTIROOM_LATENCY` defaults to `0`. |
 | 2+ clients simultaneously | ✘ Not tested | Only 1 client available during validation |
 | Pi 3 B/B+ as master | ✘ Not tested | Known BT/WiFi interference risk; Pi 4 preferred for master |
 | Multiple groups on the same network | ✘ Not tested | |
@@ -52,6 +52,27 @@ This document records what was manually validated for the v5.0 release and calls
 ### Karaoke plugin
 
 Karaoke is included in v5.0 but hardware validation is incomplete — see open items in `KARAOKE_WORKING_PROMPT.md`. Treat it as **beta** for this release.
+
+---
+
+## v5.2 validation (November 2026)
+
+Same two devices: Raspberry Pi 4 with a DAC HAT, Raspberry Pi 3 on the 3.5mm jack, both on Wi‑Fi.
+
+| Area | Result | Notes |
+|---|---|---|
+| Spotify Connect, go-librespot | ✔ Confirmed by ear | Both speakers, master moves when you switch device |
+| Spotify Connect, Soloist (lossless) | ✔ Confirmed by ear | `codec: flac` in the logs, multiroom follows it, auto-update installed a new build |
+| Soloist takeover from a second account | ✘ Not tested | |
+| Master heartbeat and quiet-master check | ✔ Confirmed on devices | Speakers join within 10 s; no false "Master gone" on lossy Wi‑Fi |
+| Routing recovery after `audio` starts before the supervisor | ✔ Forced 6 times | Route restored, Spotify restarted |
+| `pcm` stream codec on the Pi 3 | ✔ Confirmed on devices | Stops the once-a-minute snapclient crash seen with `flac` |
+| Mid-song dropouts on all speakers | ✔ Fixed and re-tested under forced SD card load | snapserver state moved to RAM |
+| Soloist cache in RAM (Pi 4) | ✔ Confirmed on device | Disk cache removed, tmpfs in use |
+| Alpine 3.24 / PipeWire 1.6.8 / WirePlumber 0.5.15 | ✔ Spotify by ear; other sources not yet | |
+| AirPlay (shairport-sync 5.6.3) | ✘ Not re-tested after the bump | Worked on 5.2.2.2 with both speakers selected |
+| Bluetooth (BlueZ 5.86) | ✘ Not re-tested after the bump | |
+| Karaoke playback (new SQLite driver) | ✘ Web UI loads; playback not re-tested | |
 
 ---
 

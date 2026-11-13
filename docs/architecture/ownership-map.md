@@ -15,12 +15,14 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | Play/stop promotion flow | `core/sound-supervisor/src/index.ts` | `core/audio/start.sh` (Phase 10 `pactl subscribe`), `SoundAPI.ts` | Plugin code |
 | Supervisor API/UI | `core/sound-supervisor/src/SoundAPI.ts` | `core/sound-supervisor/src/ui/` | Audio service |
 | mDNS advertise/browse | `core/sound-supervisor/src/SnapserverMonitor.ts` | `AvahiAdvertiser.ts`, `AvahiBrowser.ts`, `docs/architecture/mdns.md` | `multiroom-client` unless connection target is wrong |
+| Master heartbeat (UDP 1706) | `core/sound-supervisor/src/MasterBeacon.ts` | `SnapserverMonitor.ts` (`verifyQuietMaster`), `docs/architecture/mdns.md` | Avahi code |
 | Master election (play-triggered promotion) | `core/sound-supervisor/src/index.ts` | `SnapserverMonitor.ts`, `SoundConfig.ts` | Snapserver config |
 | Snapserver capture/buffer | `core/multiroom/server/start.sh` | generated `/tmp/snapserver.conf` (written by start.sh), `docs/architecture/audio-flow.md` | `snapclient` unless only one client stutters |
 | Snapclient output/latency | `core/multiroom/client/start.sh` | `core/sound-supervisor/src/SoundAPI.ts` (`/audio/output-sink`, `/multiroom/latency`) | `snapserver` unless every client stutters |
 | SOLO routing fallback | `core/sound-supervisor/src/index.ts` | `PulseAudioWrapper.ts` (`rerouteInputDirect` / `restoreSnapcastRouting`) | `core/audio/balena-sound.pa` |
+| Routing reconcile after an audio restart | `core/sound-supervisor/src/index.ts` (`scheduleRoutingReconcile`, `reconcileRouting`, `restartSpotifyIfStale`) | `PulseAudioWrapper.ts` | `core/audio/start.sh` boot routing |
 | Single-authority volume control | `core/sound-supervisor/src/SoundAPI.ts` | `SnapserverMonitor.ts`, `PulseAudioWrapper.ts`, `index.ts` | Hardware selection code |
-| Spotify Connect source | `plugins/librespot/start.sh` | shared D-Bus volume in `docker-compose.yml` | Audio routing unless no source reaches input |
+| Spotify Connect source | `plugins/librespot/start.sh` (go-librespot config), `plugins/librespot/soloist-engine.sh` (engine choice, Soloist download/update/fallback/cache) | shared D-Bus volume in `docker-compose.yml` | Audio routing unless no source reaches input |
 | AirPlay source | `plugins/airplay/start.sh` | shared D-Bus volume in `docker-compose.yml` | Multiroom services |
 | Bluetooth source | `plugins/bluetooth/` | `bluetooth-agent`, `entry.sh` | Snapcast services |
 | UPnP source | `plugins/upnp/` | `docker-compose.yml` if enabling it | Core audio unless routing fails |
@@ -28,6 +30,7 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | Karaoke local audio injection | `plugins/karaoke/app/main.go` | `SOUND_SUPERVISOR_URL`, `PULSE_SERVER` env in compose | Global source plugins |
 | WiFi recovery | `core/watchdog/` | `WIFI_*` env vars | Audio services |
 | Hostname | `core/hostname/` | `SOUND_DEVICE_NAME` | mDNS discovery code unless advertised names are wrong |
+| Dependency inventory and freshness check | `dependencies.json`, `scripts/check-deps.py` | `docs/DEPENDENCIES.md` (generated), `AGENTS.md` section 5 | Editing the generated doc by hand |
 
 ## By symptom
 
@@ -42,8 +45,10 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | One client stutters | `multiroom-client` latency/output | `SOUND_MULTIROOM_PA_LATENCY_MS`, DAC/hardware, client CPU/network |
 | One client is consistently late | `SOUND_MULTIROOM_LATENCY` on that device or on the earlier device | Lower the late device's value, or raise the earlier device's value. |
 | Speakers drift or all clients stutter | Snapcast/Pulse buffering | `SOUND_MULTIROOM_BUFFER_MS`, `SOUND_MULTIROOM_PA_LATENCY_MS`, network and CPU |
+| Every speaker drops out together for seconds | `multiroom-server` (snapserver stalled) | `Snapserver status unavailable` in `sound-supervisor` logs, SD card I/O, anything writing to disk in the audio path |
+| Spotify plays but is silent after an `audio` restart | `restartSpotifyIfStale()` in `index.ts` | `[spotify-restart]` log lines, `librespot` service state |
 | Volume changes only local speaker | `SoundAPI.ts` `/audio/volume` and `SnapserverMonitor.setGroupVolume()` | Cached Snapcast group id and JSON-RPC `1780` |
-| AUTO source starts but no promotion | WirePlumber play-detect and `/internal/play` | `sound-supervisor` startup order and `PulseAudioWrapper.listen()` |
+| AUTO source starts but no promotion | `pactl subscribe` play-detect in `core/audio/start.sh` and `/internal/play` | `sound-supervisor` startup order and `PulseAudioWrapper.listen()` |
 | AUTO device never demotes | `/internal/stop` flow | sink-inputs stuck on `balena-sound.input` |
 | Karaoke plays in browser but not speakers | `plugins/karaoke/app/main.go` audio mode | `PULSE_SERVER`, ffmpeg command, `/internal/play` notification |
 | Karaoke mic leaks when idle | karaoke mic loopback cleanup | modules containing `sink=balena-sound.input` |
@@ -60,6 +65,10 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | `SOUND_MULTIROOM_CAPTURE_MS` | `core/multiroom/server/start.sh` | `pacat` capture latency. |
 | `SOUND_MULTIROOM_LATENCY` | `core/multiroom/client/start.sh` | `snapclient --latency`. |
 | `SOUND_MULTIROOM_PA_LATENCY_MS` | `core/multiroom/client/start.sh` | PulseAudio sink-input buffer for snapclient. |
+| `SOUND_MULTIROOM_BEACON_PORT` | `MasterBeacon.ts` | UDP port of the master heartbeat (default `1706`). |
+| `SOUND_SPOTIFY_ENGINE`, `SOLOIST_API_KEY`, `SOUND_SPOTIFY_SOLOIST_*` | `plugins/librespot/soloist-engine.sh` | Spotify engine choice, Soloist retry and cache. |
+| `SOUND_SPOTIFY_*` (others) | `plugins/librespot/start.sh` | go-librespot config: bitrate, initial volume, normalisation, zeroconf backend, credentials. |
+| `PLAY_DETECT_RESYNC_S` | `core/audio/start.sh` | Seconds between play-detect resyncs with the supervisor (default `10`). |
 | `SOUND_VOLUME` | `constants.ts`, `PulseAudioWrapper.ts` | Startup and API volume. |
 | `AUDIO_OUTPUT` | `core/audio/start.sh` | Hardware sink selection. |
 | `AUDIO_INPUT` and mic EQ vars | `core/audio/start.sh` | Hardware input selection/filtering. |
