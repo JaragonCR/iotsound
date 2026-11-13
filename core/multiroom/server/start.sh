@@ -66,6 +66,26 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
   esac
   echo "- Snapcast codec: ${CODEC}"
 
+  # Stream bit depth. Sources go up to 24-bit (Spotify lossless) and PipeWire mixes in 32-bit
+  # float, so 16-bit was a cap. Snapcast carries 24-bit in a 32-bit container, so on pcm 24 and
+  # 32 cost the same bandwidth; 32 is the default and leaves room. flac carries 24 more
+  # cheaply than 32. The lossy codecs encode 16-bit internally, so they stay at 16.
+  BITS=$(printf '%s' "${SOUND_MULTIROOM_BITS:-32}" | tr -cd '0-9')
+  case "$BITS" in
+    16|24|32) ;;
+    *) echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BITS '${SOUND_MULTIROOM_BITS:-}', using 32"; BITS=32 ;;
+  esac
+  case "$CODEC" in
+    opus|ogg) [ "$BITS" != 16 ] && echo "- ${CODEC} is lossy and encodes 16-bit: using 16-bit"; BITS=16 ;;
+  esac
+  case "$BITS" in
+    16) PACAT_FORMAT=s16le ;;
+    24) PACAT_FORMAT=s24-32le ;;
+    32) PACAT_FORMAT=s32le ;;
+  esac
+  SAMPLE_FORMAT="48000:${BITS}:2"
+  echo "- Snapcast sample format: ${SAMPLE_FORMAT}"
+
   # snapserver rewrites server.json in datadir, synchronously on its only I/O thread, on every
   # client connect and volume change. On the container filesystem that is an SD card write: when
   # the card was busy (image pull, log rotation, Spotify caching a lossless track) the write
@@ -86,8 +106,8 @@ port = 1780
 doc_root = /var/www/
 
 [stream]
-stream = pipe:///tmp/snapserver-audio?name=balenaSound&sampleformat=48000:16:2&codec=${CODEC}&bufferMs=${BUFFER_MS}
-sampleformat = 48000:16:2
+stream = pipe:///tmp/snapserver-audio?name=balenaSound&sampleformat=${SAMPLE_FORMAT}&codec=${CODEC}&bufferMs=${BUFFER_MS}
+sampleformat = ${SAMPLE_FORMAT}
 
 [logging]
 filter = *:error,ControlSessionHTTP:fatal
@@ -117,7 +137,7 @@ SNAPEOF
     PULSE_SERVER="tcp:127.0.0.1:4317" pacat \
       --record \
       --device=snapcast.monitor \
-      --format=s16le \
+      --format=${PACAT_FORMAT} \
       --rate=48000 \
       --channels=2 \
       --raw \

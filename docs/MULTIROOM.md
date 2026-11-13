@@ -158,10 +158,16 @@ set it as a **fleet** variable: any speaker can become the master, and they shou
 
 | Codec | Quality | Bandwidth (48 kHz stereo) | CPU on each speaker | Use it when |
 |---|---|---|---|---|
-| `flac` (default) | lossless | about 0.7 to 1 Mbit/s | decode on every speaker | Pi 4 or better everywhere, or weak Wi‑Fi |
-| `pcm` | lossless | about 1.5 Mbit/s, constant | none | there is a Raspberry Pi 3 in the group |
-| `opus` | lossy | about 0.2 Mbit/s | decode on every speaker | very poor Wi‑Fi and quality matters less |
-| `ogg` | lossy | about 0.2 to 0.3 Mbit/s | decode on every speaker | same as `opus`; prefer `opus` |
+| `flac` (default) | lossless | varies with the music, below `pcm` | decode on every speaker | Pi 4 or better everywhere, or weak Wi‑Fi |
+| `pcm` | lossless | 3.1 Mbit/s at 24 or 32-bit, 1.5 Mbit/s at 16-bit, constant | none | there is a Raspberry Pi 3 in the group |
+| `opus` | lossy, always 16-bit | about 0.2 Mbit/s | decode on every speaker | very poor Wi‑Fi and quality matters less |
+| `ogg` | lossy, always 16-bit | about 0.2 to 0.3 Mbit/s | decode on every speaker | same as `opus`; prefer `opus` |
+
+**Bit depth.** `SOUND_MULTIROOM_BITS` (`16`, `24` or `32`, default `32`) sets the stream's bit
+depth. Spotify lossless reaches 24-bit, so 16 would cut it. Snapcast carries 24-bit samples in
+a 32-bit container, so with `pcm` 24 and 32 use the same bandwidth. With `flac`, `24` is
+cheaper than `32` for the same audio; use it if Wi‑Fi is tight. Like the codec, set it for the
+whole fleet: the master decides.
 
 **Raspberry Pi 3 and `flac`.** On a Pi 3 we have seen `snapclient` crash and restart roughly once
 a minute while decoding the `flac` stream, which is heard as a short skip on that speaker (and

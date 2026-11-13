@@ -61,6 +61,7 @@ Use this when deciding where a bug or feature belongs. The goal is to avoid broa
 | `SOUND_GROUP_NAME` | `SnapserverMonitor.ts`, `AvahiBrowser.ts` | mDNS group filtering and advertisement TXT. |
 | `SOUND_MULTIROOM_MASTER` | `SnapserverMonitor.ts` | Explicit Snapcast master IP, bypasses discovery. |
 | `SOUND_MULTIROOM_CODEC` | `core/multiroom/server/start.sh` | Snapcast stream codec (default `flac`). |
+| `SOUND_MULTIROOM_BITS` | `core/multiroom/server/start.sh` | Stream bit depth (16/24/32, default 32) and the matching `pacat` capture format. |
 | `SOUND_MULTIROOM_BUFFER_MS` | `core/multiroom/server/start.sh` | Snapserver stream buffer. |
 | `SOUND_MULTIROOM_CAPTURE_MS` | `core/multiroom/server/start.sh` | `pacat` capture latency. |
 | `SOUND_MULTIROOM_LATENCY` | `core/multiroom/client/start.sh` | `snapclient --latency`. |
