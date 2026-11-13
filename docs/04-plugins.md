@@ -50,6 +50,9 @@ How IoTSound handles it:
   speaker name. Soloist is tried again after `SOUND_SPOTIFY_SOLOIST_RETRY_MIN` minutes
   (default 30) once nothing is playing.
 - Both engines run in the same container, so only one advertises the speaker at a time.
+- Soloist caches every track it plays. On devices with 1.5 GB of memory or more the cache
+  lives in RAM (100 MB limit) so lossless playback does not wear the SD card; smaller devices
+  cache on disk. Force either with `SOUND_SPOTIFY_SOLOIST_CACHE=ram` or `disk`.
 - Soloist receives the key as a command-line argument, so it is visible in the process
   list on the device.
 

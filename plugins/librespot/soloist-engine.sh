@@ -32,6 +32,45 @@ SOLOIST_CACHE_MB=$(printf '%s' "${SOUND_SPOTIFY_SOLOIST_CACHE_MB:-500}" | tr -cd
 SOLOIST_CACHE_MB=${SOLOIST_CACHE_MB:-500}
 [ "$SOLOIST_CACHE_MB" -ne 0 ] && [ "$SOLOIST_CACHE_MB" -lt 100 ] && SOLOIST_CACHE_MB=100
 
+# Where Soloist keeps downloaded audio. Lossless tracks are 30 to 50 MB each and every one played
+# is written to the cache, so on the SD card that is steady wear (and card I/O that competes
+# with everything else). In RAM the cache is a tmpfs capped at SOLOIST_RAM_TMPFS_MB with
+# Soloist's own limit at its minimum (100 MB), so it can never fill the tmpfs.
+#   SOUND_SPOTIFY_SOLOIST_CACHE=auto (default): ram on devices with 1.5 GB of memory or more
+#   SOUND_SPOTIFY_SOLOIST_CACHE=ram | disk: force one
+# Login and settings (-D) always stay on disk so the speaker keeps its account.
+SOLOIST_CACHE_MODE=$(printf '%s' "${SOUND_SPOTIFY_SOLOIST_CACHE:-auto}" | tr '[:upper:]' '[:lower:]')
+SOLOIST_RAM_DIR=/run/soloist-cache
+SOLOIST_RAM_TMPFS_MB=192
+SOLOIST_RAM_CACHE_MB=100
+SOLOIST_CACHE_DIR="$SOLOIST_DIR/cache"
+
+soloist_prepare_cache() {
+  local mode="$SOLOIST_CACHE_MODE" mem_kb
+  case "$mode" in ram|disk) ;; *)
+    mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+    if [ "${mem_kb:-0}" -ge 1500000 ]; then mode=ram; else mode=disk; fi ;;
+  esac
+  if [ "$mode" = "ram" ]; then
+    mkdir -p "$SOLOIST_RAM_DIR"
+    if mountpoint -q "$SOLOIST_RAM_DIR" \
+       || mount -t tmpfs -o "size=${SOLOIST_RAM_TMPFS_MB}m,mode=0700" tmpfs "$SOLOIST_RAM_DIR" 2>/dev/null; then
+      SOLOIST_CACHE_DIR="$SOLOIST_RAM_DIR"
+      SOLOIST_CACHE_MB=$SOLOIST_RAM_CACHE_MB
+      # The old on-disk cache is dead weight once the cache is in RAM.
+      if [ -d "$SOLOIST_DIR/cache" ]; then
+        rm -rf "$SOLOIST_DIR/cache" && echo "[spotify] Soloist: removed the old on-disk cache"
+      fi
+      echo "[spotify] Soloist: cache in RAM (${SOLOIST_RAM_CACHE_MB} MB limit, ${SOLOIST_RAM_TMPFS_MB} MB tmpfs)"
+      return 0
+    fi
+    echo "[spotify] Soloist: could not mount a RAM cache, using the disk cache"
+  fi
+  SOLOIST_CACHE_DIR="$SOLOIST_DIR/cache"
+  mkdir -p "$SOLOIST_CACHE_DIR"
+  echo "[spotify] Soloist: cache on disk (${SOLOIST_CACHE_MB} MB limit)"
+}
+
 LIBRESPOT_BIN="${LIBRESPOT_BIN:-/usr/src/daemon}"
 ENGINE_CHILD=""
 WATCHER_PID=""
@@ -67,7 +106,7 @@ soloist_remote_etag() {
 soloist_install() {
   local force="$1" url remote local_etag tmp version
   url=$(soloist_url) || { slog "Soloist has no build for this CPU architecture"; return 1; }
-  mkdir -p "$SOLOIST_DIR/bin" "$SOLOIST_DIR/data" "$SOLOIST_DIR/cache"
+  mkdir -p "$SOLOIST_DIR/bin" "$SOLOIST_DIR/data"
 
   remote=$(soloist_remote_etag "$url")
   local_etag=$(cat "$SOLOIST_ETAG_FILE" 2>/dev/null || true)
@@ -151,8 +190,9 @@ run_soloist_supervised() {
       code=1
       start=$SECONDS
       if soloist_install; then
+        soloist_prepare_cache
         local args=(-n "$SOUND_DEVICE_NAME" -k "$SOLOIST_API_KEY"
-                    -D "$SOLOIST_DIR/data" -C "$SOLOIST_DIR/cache" -z "$SOLOIST_CACHE_MB"
+                    -D "$SOLOIST_DIR/data" -C "$SOLOIST_CACHE_DIR" -z "$SOLOIST_CACHE_MB"
                     -i "$SOUND_SPOTIFY_INITIAL_VOLUME")
         [ "${LOG_LEVEL,,}" = "debug" ] && args+=(-v)
         [ -n "${SOUND_SPOTIFY_SOLOIST_WS:-}" ] && args+=(-w "$SOUND_SPOTIFY_SOLOIST_WS")
