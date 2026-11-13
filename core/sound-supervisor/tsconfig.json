@@ -9,6 +9,7 @@
 		"noUnusedParameters": true,
 		"noUnusedLocals": true,
 		"outDir": "build/",
+		"rootDir": "./src",
 		"preserveConstEnums": true,
 		"removeComments": true,
 		"resolveJsonModule": true,

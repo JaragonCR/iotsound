@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libflac14 \
     libmpg123-0t64 \
     libpulse0 \
+    pulseaudio-utils \
     libatomic1 \
   && rm -rf /var/lib/apt/lists/*
 

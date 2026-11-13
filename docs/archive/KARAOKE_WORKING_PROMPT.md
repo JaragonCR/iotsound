@@ -1,5 +1,7 @@
 # Fast Working Prompt for IoTSound Karaoke Branch
 
+> **Historical handoff notes** from the karaoke MVP work (mid 2026). Paths, IPs and branch names are from that time. For current architecture read `AGENTS.md` and `docs/architecture/`.
+
 Use this prompt when starting a new Codex/Claude session on `/home/jaragon/iotsound`, especially on `feat/karaoke-mvp`.
 
 ```text
@@ -36,7 +38,6 @@ Start every session with:
    - `plugins/karaoke/app/static/stream.html`
    - `docker-compose.yml`
    - `plugins/karaoke/app/Dockerfile.template`
-   - `plugins/karaoke/fetcher/fetcher.py`
 
 Project identity:
 
@@ -54,12 +55,12 @@ Architecture summary:
 - Multiroom services: `multiroom-server`, `multiroom-client`.
 - Plugins: `bluetooth`, `airplay`, `librespot`.
 - Karaoke adds the `plugins/karaoke/app` single-container Go service (`karaoke`), plus volumes `karaoke-media` and `karaoke-data` (the legacy `karaoke-fetcher` sidecar was removed; `yt-dlp` and `ffmpeg` run directly inside `karaoke` with a daily `yt-dlp -U` background updater).
-- Audio stack is PipeWire + WirePlumber + `pipewire-pulse` exposing PulseAudio TCP on port `4317`.
+- Audio stack is PipeWire + WirePlumber + `pipewire-pulse` exposing PulseAudio TCP on port `4317` (host loopback only; karaoke uses `tcp:audio:4317`).
 - `audio` creates virtual routing layers:
   - `balena-sound.input`: default plugin/input mix.
   - `balena-sound.output`: selected hardware output.
   - In multiroom roles, input routes to Snapcast; in disabled/standalone, input routes directly to output.
-- `sound-supervisor` is Node 24 + TypeScript + Express 5 on port 80. It owns role/multiroom orchestration and volume APIs.
+- `sound-supervisor` is Node 26 + TypeScript + Express 5 on port 80. It owns role/multiroom orchestration and volume APIs.
 - Supervisor service calls must be wrapped with `safeService()` so supervisor API failures do not crash the process.
 - `applyCurrentRole()`/startup orchestration matters because balenaOS persists manually stopped service state across reboots.
 
@@ -126,7 +127,6 @@ Important files:
 - `plugins/karaoke/app/static/stream.html`
 - `plugins/karaoke/app/static/singer.html`
 - `plugins/karaoke/app/Dockerfile.template`
-- `plugins/karaoke/fetcher/fetcher.py`
 
 Standing engineering rules:
 
@@ -138,7 +138,6 @@ Standing engineering rules:
 - If adding or renaming compose services managed by sound-supervisor, update `SoundConfig.ts` service orchestration too.
 - If changing TypeScript under `core/sound-supervisor`, run `cd core/sound-supervisor && node_modules/.bin/tsc --noEmit` if dependencies are present.
 - If changing Go karaoke code, run `go test ./...` in `plugins/karaoke/app` if practical; at minimum run `go test` or `go build` for the touched module.
-- If changing fetcher, run Python syntax/compile checks if practical.
 - For deploy/hardware validation, use `/home/jaragon/balena/balena/bin/balena`, not the system `balena`.
 
 Commit and PR discipline:
@@ -163,10 +162,10 @@ Current known risks/open items:
 - Runtime config persists in karaoke SQLite on `/data/app`; Balena env vars seed defaults, but the UI does not write back to Balena device variables.
 - Mic loopback is now implemented for local speaker mode, but should be tested with real microphones after any audio-stack change.
 - Karaoke must release source ownership when idle so librespot/AirPlay/Bluetooth can use `balena-sound.input` without karaoke holding play detection or adding multiroom delay.
-- Spotify/librespot cutoff investigation: current code uses `SOUND_MULTIROOM_BUFFER_MS` for the snapserver stream buffer and defaults it to 400 ms. `SOUND_STANDALONE_BUFFER_MS` is not read by the current code.
+- Spotify/librespot cutoff investigation: current code uses `SOUND_MULTIROOM_BUFFER_MS` for the snapserver stream buffer and defaults it to 600 ms. `SOUND_STANDALONE_BUFFER_MS` is not read by the current code.
 - Full end-to-end karaoke validation after UI/audio changes should include: queue song, local speakers, mic loopback, sync adjustment, switch to stream mode, stream volume, history delete.
 - Snapcast stale group ID after deploy can break volume with "Group not found"; that is a sound-supervisor/multiroom issue, not necessarily karaoke.
-- YouTube/yt-dlp behavior changes often; prefer isolating downloader behavior in `karaoke-fetcher`.
+- YouTube/yt-dlp behavior changes often; the downloader lives in the single `karaoke` Go app (`plugins/karaoke/app/main.go`) and `yt-dlp` self-updates daily.
 - LAN APIs are unauthenticated by design. Do not expose sound-supervisor, PipeWire/Pulse TCP, Snapcast, or karaoke controls to the internet.
 
 Latest known done state:

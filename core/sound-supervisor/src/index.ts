@@ -113,49 +113,51 @@ async function reconcileRouting(): Promise<void> {
     await audioBlock.restoreSnapcastRouting()
   }
   reconcileVolumeMode()
-  await restartSpotifyIfStale().catch(err =>
-    console.log(`[spotify-restart] check failed: ${(err as Error).message}`))
+  await restartSourcesIfStale().catch(err =>
+    console.log(`[source-restart] check failed: ${(err as Error).message}`))
 }
 
-// Restart the Spotify service when PulseAudio has been replaced underneath it.
+// Restart source plugins when PulseAudio has been replaced underneath them.
 //
-// go-librespot keeps its PulseAudio connection for as long as its output exists and does not
-// notice when the server goes away: it carries on "playing" into a dead connection (seen on
-// device: `failed to set volume error=EOF`, no sound, no play event) until the service is
-// restarted. The audio container can be restarted or replaced on its own (a crash, a release
-// that only changes the audio image), so someone has to restart Spotify afterwards.
+// go-librespot and Shairport Sync keep their PulseAudio connection for as long as their
+// output exists and do not notice when the server goes away: they carry on "playing" into a
+// dead connection (seen on device: go-librespot `failed to set volume error=EOF`; Shairport
+// `Delay error -5 when checking running latency`, no sink-input, no sound, no play event) until
+// the service is restarted. The audio container can be restarted or replaced on its own (a
+// crash, a release that only changes the audio image), so someone has to restart them.
 //
 // Two cases, both checked once PulseAudio is up and routed:
 //  - We were running across the restart: the PipeWire instance cookie in `pactl info`
 //    changed. A supervisor-side pactl timeout does not change the cookie, so a blip never
-//    restarts Spotify mid-song.
-//  - We started after it (release update replaced audio and this service together): the
-//    audio container is newer than the Spotify container.
-const SPOTIFY_SERVICE = 'librespot'
+//    restarts a source mid-song.
+//  - We started after it (release update replaced audio and these services together): the
+//    audio container is newer than the source's container.
+const PULSE_SOURCE_SERVICES = ['librespot', 'airplay']
 let lastPulseCookie: string | null = null
 
-async function restartSpotifyIfStale(): Promise<void> {
-  // JOIN keeps source plugins stopped; a restart call would start Spotify.
+async function restartSourcesIfStale(): Promise<void> {
+  // JOIN keeps source plugins stopped; a restart call would start them.
   if (config.role === MultiroomRole.JOIN) return
 
   const cookie = (await audioBlock.getInfo())['Cookie'] ?? ''
   const previous = lastPulseCookie
   if (cookie) lastPulseCookie = cookie
 
-  let reason: string | null = null
+  let stale: Array<{ service: string; reason: string }> = []
   if (previous === null) {
-    reason = await spotifyOlderThanAudio()
+    stale = await sourcesOlderThanAudio()
   } else if (cookie && cookie !== previous) {
-    reason = 'PulseAudio restarted'
+    stale = PULSE_SOURCE_SERVICES.map(service => ({ service, reason: 'PulseAudio restarted' }))
   }
-  if (!reason) return
-
-  console.log(`[spotify-restart] ${reason}: restarting ${SPOTIFY_SERVICE} so it reconnects to PulseAudio`)
-  await restartBalenaService(SPOTIFY_SERVICE)
+  for (const { service, reason } of stale) {
+    console.log(`[source-restart] ${reason}: restarting ${service} so it reconnects to PulseAudio`)
+    await restartBalenaService(service).catch(err =>
+      console.log(`[source-restart] restarting ${service} failed: ${(err as Error).message}`))
+  }
 }
 
-// Returns a reason string if the Spotify container was created before the audio container.
-async function spotifyOlderThanAudio(): Promise<string | null> {
+// Running source services whose container was created before the audio container.
+async function sourcesOlderThanAudio(): Promise<Array<{ service: string; reason: string }>> {
   const url = `${process.env.BALENA_SUPERVISOR_ADDRESS}/v2/state/status?apikey=${process.env.BALENA_SUPERVISOR_API_KEY}`
   const res = await axios.get(url, { timeout: 5000 })
   const containers: Array<{ serviceName?: string; createdAt?: string; status?: string }> = res.data?.containers ?? []
@@ -163,14 +165,18 @@ async function spotifyOlderThanAudio(): Promise<string | null> {
     const c = containers.find(x => x.serviceName === name)
     return c?.createdAt ? Date.parse(c.createdAt) : NaN
   }
-  const spotify = containers.find(x => x.serviceName === SPOTIFY_SERVICE)
-  if (!spotify || spotify.status !== 'Running') return null
   const audioAt = created('audio')
-  const spotifyAt = created(SPOTIFY_SERVICE)
-  if (Number.isFinite(audioAt) && Number.isFinite(spotifyAt) && audioAt > spotifyAt + 5000) {
-    return 'audio container is newer than the Spotify container'
+  if (!Number.isFinite(audioAt)) return []
+  const out: Array<{ service: string; reason: string }> = []
+  for (const service of PULSE_SOURCE_SERVICES) {
+    const c = containers.find(x => x.serviceName === service)
+    if (!c || c.status !== 'Running') continue
+    const at = created(service)
+    if (Number.isFinite(at) && audioAt > at + 5000) {
+      out.push({ service, reason: `audio container is newer than the ${service} container` })
+    }
   }
-  return null
+  return out
 }
 
 function reconcileVolumeMode(): void {

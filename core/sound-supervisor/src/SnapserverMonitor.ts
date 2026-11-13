@@ -241,14 +241,22 @@ export default class SnapserverMonitor {
 
     try {
       const status = await this.fetchServerStatus(host)
-      const groups: Array<{ id?: string; clients?: Array<{ id?: string }> }> = status?.server?.groups ?? []
+      const groups: Array<{ id?: string; clients?: Array<{ id?: string; config?: { volume?: { percent?: number; muted?: boolean } } }> }> = status?.server?.groups ?? []
       const clientIds = new Set<string>()
+      let known = 0
       for (const g of groups) {
         for (const c of g?.clients ?? []) {
-          if (c?.id) clientIds.add(c.id)
+          if (!c?.id) continue
+          known++
+          // Only touch clients that are off target. Every Client.SetVolume makes snapserver
+          // rewrite its state file, and this runs on a timer: on a slow or busy SD card that
+          // write stalled snapserver and dropped audio on every speaker.
+          const v = c.config?.volume
+          if (v?.percent === clamped && v?.muted === false) continue
+          clientIds.add(c.id)
         }
       }
-      if (clientIds.size === 0 && this.deviceUuid) {
+      if (known === 0 && this.deviceUuid) {
         clientIds.add(this.deviceUuid)
       }
       for (const id of clientIds) {

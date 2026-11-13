@@ -50,6 +50,18 @@ How IoTSound handles it:
   speaker name. Soloist is tried again after `SOUND_SPOTIFY_SOLOIST_RETRY_MIN` minutes
   (default 30) once nothing is playing.
 - Both engines run in the same container, so only one advertises the speaker at a time.
+- `SOUND_SPOTIFY_BITRATE`, `SOUND_SPOTIFY_DISABLE_NORMALISATION`, `SOUND_SPOTIFY_USERNAME` and
+  `SOUND_SPOTIFY_PASSWORD` apply to go-librespot only. With Soloist, quality and normalization
+  follow the Spotify app.
+- Soloist answers Spotify Connect discovery with its own mDNS responder on UDP 5353, next to
+  the shared avahi-daemon; it has no option to use Avahi. If the speaker stops showing up in
+  Spotify while Soloist is the engine, switch back to `librespot` to compare.
+- Soloist caches every track it plays. On devices with 1.5 GB of memory or more the cache
+  lives in RAM (100 MB limit) so lossless playback does not wear the SD card; smaller devices
+  cache on disk. Force either with `SOUND_SPOTIFY_SOLOIST_CACHE=ram` or `disk`.
+- A speaker that is not the active Spotify Connect device must be silent. Soloist has been
+  seen to keep playing after the app disconnected, so IoTSound checks every few
+  seconds and restarts Soloist when it is sending audio without being the active device.
 - Soloist receives the key as a command-line argument, so it is visible in the process
   list on the device.
 

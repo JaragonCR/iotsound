@@ -32,11 +32,88 @@ SOLOIST_CACHE_MB=$(printf '%s' "${SOUND_SPOTIFY_SOLOIST_CACHE_MB:-500}" | tr -cd
 SOLOIST_CACHE_MB=${SOLOIST_CACHE_MB:-500}
 [ "$SOLOIST_CACHE_MB" -ne 0 ] && [ "$SOLOIST_CACHE_MB" -lt 100 ] && SOLOIST_CACHE_MB=100
 
+# Where Soloist keeps downloaded audio. Lossless tracks are 30 to 50 MB each and every one played
+# is written to the cache, so on the SD card that is steady wear (and card I/O that competes
+# with everything else). In RAM the cache is a tmpfs capped at SOLOIST_RAM_TMPFS_MB with
+# Soloist's own limit at its minimum (100 MB), so it can never fill the tmpfs.
+#   SOUND_SPOTIFY_SOLOIST_CACHE=auto (default): ram on devices with 1.5 GB of memory or more
+#   SOUND_SPOTIFY_SOLOIST_CACHE=ram | disk: force one
+# Login and settings (-D) always stay on disk so the speaker keeps its account.
+SOLOIST_CACHE_MODE=$(printf '%s' "${SOUND_SPOTIFY_SOLOIST_CACHE:-auto}" | tr '[:upper:]' '[:lower:]')
+SOLOIST_RAM_DIR=/run/soloist-cache
+SOLOIST_RAM_TMPFS_MB=192
+SOLOIST_RAM_CACHE_MB=100
+SOLOIST_CACHE_DIR="$SOLOIST_DIR/cache"
+
+soloist_prepare_cache() {
+  local mode="$SOLOIST_CACHE_MODE" mem_kb
+  case "$mode" in ram|disk) ;; *)
+    mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+    if [ "${mem_kb:-0}" -ge 1500000 ]; then mode=ram; else mode=disk; fi ;;
+  esac
+  if [ "$mode" = "ram" ]; then
+    mkdir -p "$SOLOIST_RAM_DIR"
+    if mountpoint -q "$SOLOIST_RAM_DIR" \
+       || mount -t tmpfs -o "size=${SOLOIST_RAM_TMPFS_MB}m,mode=0700" tmpfs "$SOLOIST_RAM_DIR" 2>/dev/null; then
+      SOLOIST_CACHE_DIR="$SOLOIST_RAM_DIR"
+      SOLOIST_CACHE_MB=$SOLOIST_RAM_CACHE_MB
+      # The old on-disk cache is dead weight once the cache is in RAM.
+      if [ -d "$SOLOIST_DIR/cache" ]; then
+        rm -rf "$SOLOIST_DIR/cache" && echo "[spotify] Soloist: removed the old on-disk cache"
+      fi
+      echo "[spotify] Soloist: cache in RAM (${SOLOIST_RAM_CACHE_MB} MB limit, ${SOLOIST_RAM_TMPFS_MB} MB tmpfs)"
+      return 0
+    fi
+    echo "[spotify] Soloist: could not mount a RAM cache, using the disk cache"
+  fi
+  SOLOIST_CACHE_DIR="$SOLOIST_DIR/cache"
+  mkdir -p "$SOLOIST_CACHE_DIR"
+  echo "[spotify] Soloist: cache on disk (${SOLOIST_CACHE_MB} MB limit)"
+}
+
 LIBRESPOT_BIN="${LIBRESPOT_BIN:-/usr/src/daemon}"
 ENGINE_CHILD=""
 WATCHER_PID=""
 
 slog() { echo "[spotify] $*"; }
+
+# Soloist can keep playing after it stops being the active Spotify Connect device (seen on
+# device: the app disconnected, Soloist logged "no longer active device", audio kept coming
+# out of the speakers and it took the session back a minute later). A speaker that is not the
+# active device must be silent.
+#
+# "Playing" is judged from Soloist's own PulseAudio stream, never from `ctl now`: on an
+# inactive device that reports the account's playback, i.e. what is playing somewhere else.
+# For the same reason the remedy is to restart Soloist, not `ctl pause`, which from an
+# inactive device would pause the music on whichever device is active.
+# The state has to hold on three looks in a row, so a hand-over in progress is left alone.
+soloist_stream_running() {
+  PULSE_SERVER="${PULSE_SERVER:-tcp:127.0.0.1:4317}" pactl list sink-inputs 2>/dev/null | awk '
+    /^Sink Input #/ { if (name && !corked) found = 1; name = 0; corked = 0 }
+    /Corked: yes/ { corked = 1 }
+    /application.name = "spotify"/ { name = 1 }
+    END { if (name && !corked) found = 1; exit(found ? 0 : 1) }'
+}
+
+soloist_inactive_guard() {
+  local pid="$1" state strikes=0
+  local ctl=("$SOLOIST_BIN" ctl -D "$SOLOIST_DIR/data")
+  command -v pactl >/dev/null 2>&1 || return 0
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 4
+    state=$("${ctl[@]}" now --json 2>/dev/null) || { strikes=0; continue; }
+    if [[ "$state" == *'"is_active":false'* ]] && soloist_stream_running; then
+      strikes=$((strikes + 1))
+      if [ "$strikes" -ge 3 ]; then
+        slog "Soloist is sending audio but is not the active device: restarting it"
+        kill -TERM "$pid" 2>/dev/null
+        return 0
+      fi
+    else
+      strikes=0
+    fi
+  done
+}
 
 run_librespot_foreground() {
   # Default path, unchanged from before Soloist existed: replace this shell with the daemon.
@@ -67,7 +144,7 @@ soloist_remote_etag() {
 soloist_install() {
   local force="$1" url remote local_etag tmp version
   url=$(soloist_url) || { slog "Soloist has no build for this CPU architecture"; return 1; }
-  mkdir -p "$SOLOIST_DIR/bin" "$SOLOIST_DIR/data" "$SOLOIST_DIR/cache"
+  mkdir -p "$SOLOIST_DIR/bin" "$SOLOIST_DIR/data"
 
   remote=$(soloist_remote_etag "$url")
   local_etag=$(cat "$SOLOIST_ETAG_FILE" 2>/dev/null || true)
@@ -151,20 +228,25 @@ run_soloist_supervised() {
       code=1
       start=$SECONDS
       if soloist_install; then
+        soloist_prepare_cache
         local args=(-n "$SOUND_DEVICE_NAME" -k "$SOLOIST_API_KEY"
-                    -D "$SOLOIST_DIR/data" -C "$SOLOIST_DIR/cache" -z "$SOLOIST_CACHE_MB"
+                    -D "$SOLOIST_DIR/data" -C "$SOLOIST_CACHE_DIR" -z "$SOLOIST_CACHE_MB"
                     -i "$SOUND_SPOTIFY_INITIAL_VOLUME")
         [ "${LOG_LEVEL,,}" = "debug" ] && args+=(-v)
-        [ -n "${SOUND_SPOTIFY_SOLOIST_WS:-}" ] && args+=(-w "$SOUND_SPOTIFY_SOLOIST_WS")
+        # Local control API, loopback only by default. The inactive guard below needs it.
+        args+=(-w "${SOUND_SPOTIFY_SOLOIST_WS:-127.0.0.1:0}")
         slog "Starting Soloist as \"$SOUND_DEVICE_NAME\" (initial volume $SOUND_SPOTIFY_INITIAL_VOLUME)"
         "$SOLOIST_BIN" "${args[@]}" &
         ENGINE_CHILD=$!
         soloist_update_watcher "$ENGINE_CHILD" &
         WATCHER_PID=$!
+        soloist_inactive_guard "$ENGINE_CHILD" &
+        GUARD_PID=$!
         wait "$ENGINE_CHILD"
         code=$?
         ENGINE_CHILD=""
         kill "$WATCHER_PID" 2>/dev/null; WATCHER_PID=""
+        kill "$GUARD_PID" 2>/dev/null; GUARD_PID=""
       fi
       duration=$((SECONDS - start))
 

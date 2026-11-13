@@ -10,7 +10,7 @@ To connect to your IoTSound device:
 - If using Airplay: select the IoTSound device from your audio output options.
 - If using Spotify Connect: open Spotify and choose the IoTSound device as an alternate output.
 
-The `iotsound` name is used by default. Set `SOUND_DEVICE_NAME` to customize the name broadcast by AirPlay and Spotify Connect. Bluetooth uses `BLUETOOTH_DEVICE_NAME`.
+By default the speaker shows up as `balenaSound Spotify <xxxx>` and `balenaSound AirPlay <xxxx>` (the first 4 characters of the device UUID) and its hostname is `iotsound`. Set `SOUND_DEVICE_NAME` to use one name for all three. Bluetooth uses `BLUETOOTH_DEVICE_NAME`.
 
 Let the music play!
 
@@ -51,6 +51,8 @@ IoTSound has been re-designed to easily allow integration with audio streaming s
 | AirPlay2        | [shairport-sync](https://github.com/mikebrady/shairport-sync/)                                                                                                                                                                                                                                  |
 | Bluetooth       | Custom bluetooth-agent (vendored) for pairing; A2DP audio routed by the PipeWire BlueZ backend                                                                                                                                                                                                  |
 | Soundcard input | Experimental — enable via `AUDIO_INPUT_LOOPBACK=true`. See [customization](customization#plugins) section.                                                                                                                                                                                      |
+
+Spotify Connect can also run on Spotify's own Soloist client for lossless playback: see [plugins](plugins#lossless-with-spotify-soloist-optional). Karaoke ships as a plugin too.
 
 If your desired audio source is not supported feel free to [reach out](support#contact-us) and leave us a comment. We've also considerably simplified the process of adding new plugins, so [PR's are welcome](../CONTRIBUTING.md) too (be sure to check out our IoTSound [architecture](ARCHITECTURE.md) guide)!
 

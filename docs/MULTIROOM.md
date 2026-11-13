@@ -11,10 +11,10 @@ IoTSound turns multiple Raspberry Pis into a perfectly-synchronized whole-home a
 ### Audio pipeline
 
 ```
-Bluetooth / AirPlay / Spotify / UPnP
+Bluetooth / AirPlay / Spotify / Karaoke
             │
             ▼
-    PipeWire (audio block, TCP :4317)
+    PipeWire (audio block, local TCP :4317)
      sink: balena-sound.input
             │
             ▼
@@ -41,7 +41,7 @@ There is no permanent master device. The device you play to becomes the group ma
 1. You stream to any device (Bluetooth, AirPlay, Spotify, etc.)
 2. The audio block detects audio on `balena-sound.input` via `pactl subscribe`
 3. That device promotes itself in place — starts capturing into snapserver and advertises via mDNS (`_snapcast._tcp`)
-4. All other devices in the same group discover the master and connect their snapclient
+4. All other devices in the same group discover the master and connect their snapclient. The master also broadcasts a small heartbeat every 10 seconds (UDP `1706`), so a speaker that missed the mDNS announcement still joins within about 10 seconds
 5. All devices sync within a few seconds and play the same audio
 
 When you stop playing for 30 seconds, the master demotes in place — capture stops and its advertisement is withdrawn; containers are not restarted. The next play event promotes it again instantly.
@@ -158,10 +158,19 @@ set it as a **fleet** variable: any speaker can become the master, and they shou
 
 | Codec | Quality | Bandwidth (48 kHz stereo) | CPU on each speaker | Use it when |
 |---|---|---|---|---|
-| `flac` (default) | lossless | about 0.7 to 1 Mbit/s | decode on every speaker | Pi 4 or better everywhere, or weak Wi‑Fi |
-| `pcm` | lossless | about 1.5 Mbit/s, constant | none | there is a Raspberry Pi 3 in the group |
-| `opus` | lossy | about 0.2 Mbit/s | decode on every speaker | very poor Wi‑Fi and quality matters less |
-| `ogg` | lossy | about 0.2 to 0.3 Mbit/s | decode on every speaker | same as `opus`; prefer `opus` |
+| `flac` (default) | lossless | varies with the music, below `pcm` | decode on every speaker | Pi 4 or better everywhere, or weak Wi‑Fi |
+| `pcm` | lossless | 1.5 Mbit/s at 16-bit, 3.1 Mbit/s at 24 or 32-bit, constant | none | there is a Raspberry Pi 3 in the group |
+| `opus` | lossy, always 16-bit | about 0.2 Mbit/s | decode on every speaker | very poor Wi‑Fi and quality matters less |
+| `ogg` | lossy, always 16-bit | about 0.2 to 0.3 Mbit/s | decode on every speaker | same as `opus`; prefer `opus` |
+
+**Bit depth.** `SOUND_MULTIROOM_BITS` (`16`, `24` or `32`, default `32`) sets the stream's bit
+depth. Spotify lossless reaches 24-bit, so 16 would cut it. Snapcast carries 24-bit samples in
+a 32-bit container, so with `pcm` 24 and 32 use the same bandwidth (3.1 Mbit/s; 16-bit is 1.5).
+A Raspberry Pi 3 on 2.4 GHz Wi‑Fi carried 3.1 Mbit/s both ways in testing. Drop to `16` only if a
+speaker's network cannot. Like the codec, set it for the whole fleet: the master decides. Snapcast carries 24-bit samples in
+a 32-bit container, so with `pcm` 24 and 32 use the same bandwidth. With `flac`, `24` is
+cheaper than `32` for the same audio; use it if Wi‑Fi is tight. Like the codec, set it for the
+whole fleet: the master decides.
 
 **Raspberry Pi 3 and `flac`.** On a Pi 3 we have seen `snapclient` crash and restart roughly once
 a minute while decoding the `flac` stream, which is heard as a short skip on that speaker (and
@@ -202,7 +211,8 @@ CPU, and on a speaker that can be heard as a skip. IoTSound therefore installs w
 - Check networking. The Snapcast master IP advertised by mDNS must be reachable from each `multiroom-client` container on TCP `1704`.
 
 **Devices don't sync after streaming starts**
-- Wait up to 10 seconds — mDNS discovery can take a moment on first connection
+- Wait up to 10 seconds — discovery uses mDNS plus a 10 second master heartbeat on UDP `1706`
+- Make sure nothing on the network blocks UDP broadcast on port `1706` between speakers (client isolation on guest Wi‑Fi does)
 - Confirm `SOUND_GROUP_NAME` is the same on all devices you expect to sync
 - Ensure all devices are on the same subnet (no VLAN separation without a reflector)
 

@@ -7,10 +7,9 @@ AI-efficient map of the running containers and their responsibilities.
 ```mermaid
 flowchart LR
   subgraph Sources["Source plugins"]
-    Spotify["librespot\nSpotify Connect"]
+    Spotify["librespot\nSpotify Connect\n(go-librespot or Soloist)"]
     AirPlay["airplay\nShairport Sync"]
     Bluetooth["bluetooth\nbluetooth-agent"]
-    UPnP["upnp\ngmediarender"]
     Karaoke["karaoke\nGo web app + ffmpeg + yt-dlp"]
   end
 
@@ -29,7 +28,7 @@ flowchart LR
   Audio -->|pactl subscribe play/stop events| Supervisor
   Supervisor -->|Balena Supervisor API| Server
   Supervisor -->|Balena Supervisor API| Client
-  Supervisor -->|mDNS advertise/browse _snapcast._tcp| Supervisor
+  Supervisor -->|mDNS advertise/browse _snapcast._tcp\nUDP 1706 master heartbeat| Supervisor
   Audio -->|snapcast.monitor via pacat| Server
   Server -->|Snapcast TCP 1704| Client
   Client -->|Option C: PULSE_SINK=HW_SINK| Audio
@@ -45,21 +44,22 @@ flowchart LR
 | `multiroom-client` | `core/multiroom/client/` | host | `on-failure` | `snapclient --player pulse`, master-watchdog reconnect | Waits for `/multiroom/client-ready`; outputs directly to detected hardware sink via `/audio/output-sink`. |
 | `wifi-watchdog` | `core/watchdog/` | host (`pid: host`) | `unless-stopped` | WiFi recovery and optional reboot | Skips when Ethernet is active; checks default gateway before `8.8.8.8`. |
 | `hostname` | `core/hostname/` | default | `unless-stopped` | Device hostname setup through supervisor API | Not in audio path. |
-| `librespot` | `plugins/librespot/` | host | `on-failure` | Spotify Connect source | Waits for PulseAudio, network, and Avahi sentinel. |
-| `airplay` | `plugins/airplay/` | host | `on-failure` | AirPlay source | Uses Shairport Sync with PulseAudio output. |
+| `librespot` | `plugins/librespot/` | host | `on-failure` | Spotify Connect source: go-librespot or Spotify Soloist (`SOUND_SPOTIFY_ENGINE`) | Waits for PulseAudio, network, and Avahi sentinel. Privileged (mounts a tmpfs for the Soloist cache). Restarted by `sound-supervisor` when PulseAudio is replaced. |
+| `airplay` | `plugins/airplay/` | host | `on-failure` | AirPlay source | Uses Shairport Sync with PulseAudio output. Restarted by `sound-supervisor` when PulseAudio is replaced. |
 | `bluetooth` | `plugins/bluetooth/` | host | `on-failure` | Bluetooth source | Delegates to `bluetooth-agent`. |
 | `upnp` | `plugins/upnp/` | default | not in compose currently | UPnP source | Present in repo but not listed in current `docker-compose.yml`. |
-| `karaoke` | `plugins/karaoke/app/` | bridge, publishes `8080` | `on-failure` | Karaoke UI/API, `yt-dlp` download worker, queue DB, local ffmpeg player, mic loopback | Talks to supervisor at `http://172.17.0.1:80` and PulseAudio at `tcp:172.17.0.1:4317`. |
+| `karaoke` | `plugins/karaoke/app/` | bridge, publishes `8080` | `on-failure` | Karaoke UI/API, `yt-dlp` download worker, queue DB, local ffmpeg player, mic loopback | Talks to supervisor at `http://172.17.0.1:80` and PulseAudio at `tcp:audio:4317`. |
 
 ## Important ports and sockets
 
 | Endpoint | Owner | Consumers |
 |---|---|---|
-| TCP `4317` | `audio` / `pipewire-pulse` | Plugins, `multiroom-server` (`pacat`), `multiroom-client` (`snapclient`), supervisor `pactl` commands |
+| TCP `4317` | `audio` / `pipewire-pulse` | Plugins, `multiroom-server` (`pacat`), `multiroom-client` (`snapclient`), supervisor `pactl` commands. Published on host loopback only (`127.0.0.1:4317`); bridge containers use `audio:4317`. Not reachable from the LAN. |
 | HTTP `80` | `sound-supervisor` | Web UI, multiroom containers, karaoke app, humans |
 | TCP `1704` | `multiroom-server` / `snapserver` | `multiroom-client` on local or remote devices |
 | HTTP `1780` | `multiroom-server` / Snapcast JSON-RPC | `sound-supervisor` status, latency, and group volume control |
-| UDP `5353` | Avahi/mDNS stack | Spotify Connect advertisement and Snapcast discovery |
+| UDP `5353` | Avahi/mDNS stack (and Soloist's own responder when it is the Spotify engine) | Spotify Connect advertisement and Snapcast discovery |
+| UDP `1706` | `sound-supervisor` (`MasterBeacon.ts`) | Master heartbeat: broadcast by the sourcing master every 10 s, heard by every other `sound-supervisor` |
 | HTTP `8080` | `karaoke` | Singer/audience/admin browsers |
 
 ## Shared volumes
@@ -67,7 +67,7 @@ flowchart LR
 | Volume | Used by | Purpose |
 |---|---|---|
 | `iotsound-dbus` | `sound-supervisor`, `airplay`, `librespot` | Shared Avahi/D-Bus readiness and socket data. |
-| `librespot-config` | `librespot` | Spotify config and credentials. |
+| `librespot-config` | `librespot` | Spotify config and credentials; the downloaded Soloist binary and its login data. |
 | `karaoke-media` | `karaoke` | Downloaded media files. |
 | `karaoke-data` | `karaoke` | SQLite app data and settings. |
 

@@ -85,8 +85,7 @@ _spawn_snapclient() {
     --host "$target" \
     --latency "$latency_ms" \
     --hostID "$SNAPCAST_CLIENT_ID" \
-    --logfilter '*:error' \
-    >/dev/null &
+    --logfilter '*:error' &
   echo $! > "$SNAPCLIENT_PID_FILE"
 }
 

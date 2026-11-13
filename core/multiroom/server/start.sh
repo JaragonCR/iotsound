@@ -66,10 +66,38 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
   esac
   echo "- Snapcast codec: ${CODEC}"
 
+  # Stream bit depth. Sources go up to 24-bit (Spotify lossless) and PipeWire mixes in 32-bit
+  # float, so 32 is the default. Snapcast carries 24-bit in a 32-bit container, so on pcm 24
+  # and 32 cost the same (3.1 Mbit/s; 16-bit is 1.5). A Raspberry Pi 3 on 2.4 GHz Wi-Fi carried
+  # 3.1 Mbit/s both ways in testing. The lossy codecs always encode 16-bit.
+  BITS=$(printf '%s' "${SOUND_MULTIROOM_BITS:-32}" | tr -cd '0-9')
+  case "$BITS" in
+    16|24|32) ;;
+    *) echo "[multiroom-server] WARN: invalid SOUND_MULTIROOM_BITS '${SOUND_MULTIROOM_BITS:-}', using 32"; BITS=32 ;;
+  esac
+  case "$CODEC" in
+    opus|ogg) [ "$BITS" != 16 ] && echo "- ${CODEC} is lossy and encodes 16-bit: using 16-bit"; BITS=16 ;;
+  esac
+  case "$BITS" in
+    16) PACAT_FORMAT=s16le ;;
+    24) PACAT_FORMAT=s24-32le ;;
+    32) PACAT_FORMAT=s32le ;;
+  esac
+  SAMPLE_FORMAT="48000:${BITS}:2"
+  echo "- Snapcast sample format: ${SAMPLE_FORMAT}"
+
+  # snapserver rewrites server.json in datadir, synchronously on its only I/O thread, on every
+  # client connect and volume change. On the container filesystem that is an SD card write: when
+  # the card was busy (image pull, log rotation, Spotify caching a lossless track) the write
+  # blocked for seconds, snapserver stopped reading audio and every speaker went silent. Keep
+  # the state in RAM. Nothing in it needs to survive a restart: the supervisor re-applies volume.
+  SNAP_DATADIR=/dev/shm/snapcast
+  mkdir -p "$SNAP_DATADIR"
+
   # Write dynamic snapserver config with the current effective buffer
   cat > /tmp/snapserver.conf << SNAPEOF
 [server]
-datadir = /var/cache/snapcast/
+datadir = ${SNAP_DATADIR}/
 
 [http]
 enabled = true
@@ -78,8 +106,8 @@ port = 1780
 doc_root = /var/www/
 
 [stream]
-stream = pipe:///tmp/snapserver-audio?name=balenaSound&sampleformat=48000:16:2&codec=${CODEC}&bufferMs=${BUFFER_MS}
-sampleformat = 48000:16:2
+stream = pipe:///tmp/snapserver-audio?name=balenaSound&sampleformat=${SAMPLE_FORMAT}&codec=${CODEC}&bufferMs=${BUFFER_MS}
+sampleformat = ${SAMPLE_FORMAT}
 
 [logging]
 filter = *:error,ControlSessionHTTP:fatal
@@ -109,7 +137,7 @@ SNAPEOF
     PULSE_SERVER="tcp:127.0.0.1:4317" pacat \
       --record \
       --device=snapcast.monitor \
-      --format=s16le \
+      --format=${PACAT_FORMAT} \
       --rate=48000 \
       --channels=2 \
       --raw \

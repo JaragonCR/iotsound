@@ -36,9 +36,11 @@ Report vulnerabilities privately via one of these channels:
 This project runs on a local network as a personal audio fleet. The primary attack surface is:
 
 - **`sound-supervisor` HTTP API** — unauthenticated, intended for LAN use only; do not expose to the internet
-- **PulseAudio/PipeWire TCP port 4317** — LAN-only; same caution applies
-- **Snapcast ports 1704/1780** — LAN-only
-- **Plugin credentials** — Spotify, Bluetooth pairing, etc.
+- **PulseAudio/PipeWire TCP port 4317** — published on the device's loopback interface only; not reachable from the LAN
+- **Snapcast ports 1704/1780** — unauthenticated, LAN-only
+- **Karaoke web app on port 8080** — unauthenticated, LAN-only
+- **Master heartbeat on UDP 1706** — unauthenticated broadcast on the LAN; a forged beacon can make speakers try to join a fake master
+- **Plugin credentials** — Spotify, Bluetooth pairing, etc. The Spotify Soloist API key is passed on the command line and is visible in the device's process list
 
 Out of scope: vulnerabilities that require physical access to the device or that only affect the upstream [iotsound/iotsound](https://github.com/iotsound/iotsound) project (report those upstream).
 

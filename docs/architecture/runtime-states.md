@@ -24,7 +24,7 @@ flowchart LR
 
 Owner notes:
 
-- Configured by `core/audio/start.sh` when role is `disabled`.
+- Configured by `core/audio/start.sh` when role is `disabled`. The same script also falls back to this route when `sound-supervisor` does not answer within 60 s at boot; the supervisor corrects it as soon as it connects to PulseAudio (`reconcileRouting()` in `index.ts`).
 - `sound-supervisor` stops both multiroom services and starts source plugins.
 
 ### Multiroom master with local playback (`SOURCING`)
@@ -93,10 +93,11 @@ sequenceDiagram
   API->>Config: enterSourcing()
   API->>Monitor: setMaster(true, epoch)
   Monitor->>Monitor: advertise _snapcast._tcp (epoch, master_uuid)
+  Monitor->>Monitor: start UDP 1706 heartbeat (every 10s)
   Server->>API: poll /multiroom/active -> true
   Server->>Server: start pacat (snapcast.monitor -> FIFO)
   Client->>API: poll /multiroom/client-ready -> true
-  Client->>API: GET /multiroom/master -> 127.0.0.1
+  Client->>API: GET /multiroom/master -> this device's LAN IP
   Client->>Server: connect snapclient (PULSE_SINK=HW_SINK)
 ```
 
@@ -117,7 +118,7 @@ sequenceDiagram
     API->>API: cancel demotion timer
   else no replay after 30s
     API->>Config: enterWarm() (or enterSlave if remote master present)
-    API->>Monitor: setMaster(false) (unpublish mDNS advert)
+    API->>Monitor: setMaster(false) (unpublish mDNS advert, send heartbeat bye)
     Server->>API: poll /multiroom/active -> false
     Server->>Server: kill pacat, keep snapserver + FIFO warm
   end
@@ -133,8 +134,9 @@ flowchart TD
   TieBreak --> Found["discoveredMasterIp set"]
   Found --> Ready["/multiroom/client-ready true"]
   Ready --> Snapclient["snapclient connects to /multiroom/master\n(outputs directly to HW_SINK)"]
-  Found --> TTL["probe TCP 1704 every 30s"]
-  TTL -->|90s unreachable| Clear["clear master and let client watchdog reconnect"]
+  Found --> TTL["probe TCP 1704 every 10s\nunreachable = kept but not selected"]
+  Found --> Beat["UDP 1706 heartbeat every 10s"]
+  Beat -->|"~35s silent: GET /multiroom/active on the master\nnot sourcing, or 3 checks unanswered"| Clear["drop master and let the client re-evaluate"]
 ```
 
 ## State names to use in issues

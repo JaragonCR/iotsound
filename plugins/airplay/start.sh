@@ -30,7 +30,27 @@ if [ -n "$DBUS_SYSTEM_BUS_ADDRESS" ]; then
   echo "avahi-daemon ready"
 fi
 
-echo "Starting Shairport Sync"
+# Shairport Sync settings.
+# - volume_range_db: with no hardware mixer Shairport spreads the AirPlay volume slider over a
+#   very wide software range, so the lower half of the slider is inaudible. 30 dB (its
+#   minimum) is too loud and jumpy at the bottom. 45 dB with the flat profile (the same
+#   loudness change per step) was tuned by ear on an iPhone.
+#   Override with SOUND_AIRPLAY_VOLUME_RANGE_DB (30-150).
+# Output format is left at Shairport's AirPlay 2 default (S32_LE).
+AIRPLAY_RANGE_DB=$(printf '%s' "${SOUND_AIRPLAY_VOLUME_RANGE_DB:-45}" | tr -cd '0-9')
+AIRPLAY_RANGE_DB=${AIRPLAY_RANGE_DB:-45}
+[ "$AIRPLAY_RANGE_DB" -lt 30 ] && AIRPLAY_RANGE_DB=30
+[ "$AIRPLAY_RANGE_DB" -gt 150 ] && AIRPLAY_RANGE_DB=150
+cat > /tmp/shairport-sync.conf <<EOF
+general =
+{
+  volume_range_db = $AIRPLAY_RANGE_DB;
+  volume_control_profile = "flat";
+};
+EOF
+
+echo "Starting Shairport Sync (volume range ${AIRPLAY_RANGE_DB} dB)"
 exec shairport-sync \
+  --configfile=/tmp/shairport-sync.conf \
   --name="$SOUND_DEVICE_NAME" \
   --output=pulseaudio
