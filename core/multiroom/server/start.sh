@@ -66,10 +66,18 @@ if [[ "$MODE" == "MULTI_ROOM" ]]; then
   esac
   echo "- Snapcast codec: ${CODEC}"
 
+  # snapserver rewrites server.json in datadir, synchronously on its only I/O thread, on every
+  # client connect and volume change. On the container filesystem that is an SD card write: when
+  # the card was busy (image pull, log rotation, Spotify caching a lossless track) the write
+  # blocked for seconds, snapserver stopped reading audio and every speaker went silent. Keep
+  # the state in RAM. Nothing in it needs to survive a restart: the supervisor re-applies volume.
+  SNAP_DATADIR=/dev/shm/snapcast
+  mkdir -p "$SNAP_DATADIR"
+
   # Write dynamic snapserver config with the current effective buffer
   cat > /tmp/snapserver.conf << SNAPEOF
 [server]
-datadir = /var/cache/snapcast/
+datadir = ${SNAP_DATADIR}/
 
 [http]
 enabled = true
