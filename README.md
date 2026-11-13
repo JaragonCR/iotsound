@@ -123,6 +123,7 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 | `SOUND_SPOTIFY_SOLOIST_RETRY_MIN` | Minutes to stay on go-librespot after Soloist fails to start 3 times in 5 minutes, before trying Soloist again | `30` |
 | `SOUND_SPOTIFY_SOLOIST_CACHE` | Where Soloist caches audio: `ram` (tmpfs, 100 MB limit, no SD card wear), `disk`, or `auto` (`ram` on devices with 1.5 GB of memory or more) | `auto` |
 | `SOUND_SPOTIFY_SOLOIST_CACHE_MB` | Soloist cache limit in MB when the cache is on disk (`0` = no limit, otherwise at least 100) | `500` |
+| `SOUND_SPOTIFY_SOLOIST_WS` | Address and port of Soloist's local control API. The default is loopback-only on a free port | `127.0.0.1:0` |
 | `SOUND_SPOTIFY_ZEROCONF_BACKEND` | go-librespot's mDNS backend: `avahi` (shared avahi-daemon) or `builtin` (its own responder). Soloist always uses its own responder | `avahi` |
 | `SOUND_SPOTIFY_USERNAME` | Spotify username for credential auth (use with `SOUND_SPOTIFY_PASSWORD`). go-librespot only | unset |
 | `SOUND_SPOTIFY_PASSWORD` | Spotify access token for credential auth. go-librespot only | unset |
@@ -142,6 +143,7 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 | Variable | Description | Default |
 |---|---|---|
 | `SOUND_DISABLE_AIRPLAY` | Disable AirPlay entirely (set to any value) | unset |
+| `SOUND_AIRPLAY_VOLUME_RANGE_DB` | How many dB the AirPlay volume slider covers, `30` to `150`. A small range keeps the whole slider audible | `30` |
 
 #### Karaoke
 
