@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 Releases are automated by [Versionist](https://github.com/product-os/versionist).
 
+# v5.2.1
+## (2026-11-13)
+
+* fix(supervisor): restart AirPlay too when PulseAudio is replaced underneath it [JaragonCR]
+* chore(multiroom): keep snapclient's error output in the container log [JaragonCR]
+* fix(multiroom): default the stream back to 32-bit [JaragonCR]
+* fix(audio): a paused stream does not count as playing [JaragonCR]
+* fix(multiroom): default the stream to 16-bit, keep 24 and 32 as opt-in [JaragonCR]
+* feat(multiroom): carry the Snapcast stream at 32-bit by default, set by SOUND_MULTIROOM_BITS [JaragonCR]
+* fix(airplay): keep Shairport's default 32-bit output [JaragonCR]
+* fix(spotify): judge the Soloist inactive guard by its audio stream and restart instead of pausing [JaragonCR]
+* fix(airplay): use a 45 dB flat volume curve [JaragonCR]
+* fix(airplay): make the whole AirPlay volume slider audible [JaragonCR]
+* fix(spotify): pause Soloist when it plays without being the active Connect device [JaragonCR]
+* docs: move dated design notes and the karaoke handoff prompt to docs/archive [JaragonCR]
+* docs: bring every guide in line with the code [JaragonCR]
+* feat(spotify): keep the Soloist audio cache in RAM on devices with enough memory [JaragonCR]
+* fix(multiroom): keep snapserver state off the SD card and stop rewriting it every 30s [JaragonCR]
+* fix(audio): drop the snapclient stream rule, it mutes snapclient on WirePlumber 0.5.15 [JaragonCR]
+* docs: update Alpine and Node versions named in the guides [JaragonCR]
+* docs(deps): regenerate the dependency table after the bumps [JaragonCR]
+* build(deps): bump Alpine from 3.23 to 3.24 in audio, hostname and bluetooth [JaragonCR]
+* build(deps): bump shairport-sync from 5.2.2.2 to 5.6.3 [JaragonCR]
+* build(deps): bump modernc.org/sqlite from 1.34.5 to 1.62.0 [JaragonCR]
+* build(deps): bump Python from 3.13 to 3.15 in wifi-watchdog [JaragonCR]
+* build(deps): bump Node.js from 24 to 26 and npm from 11.19.0 to 12.2.2 [JaragonCR]
+* build(deps): bump typescript from 5.9.3 to 7.0.2 [JaragonCR]
+* build(deps): bump balena-sdk from 23.2.15 to 23.2.24 [JaragonCR]
+* build(deps): bump express from 5.2.1 to 5.3.0 [JaragonCR]
+* chore(deps): add a dependency inventory, an upstream check script and a per-PR freshness rule [JaragonCR]
+
 # v5.2.0
 ## (2026-11-12)
 

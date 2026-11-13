@@ -1,4 +1,423 @@
 - commits:
+    - subject: "fix(supervisor): restart AirPlay too when PulseAudio is replaced
+        underneath it"
+      hash: ddea2fc6fed388cf4f06eeb0d0b2c160ed15b47a
+      body: >
+        Shairport Sync behaves like go-librespot: after an audio container
+        restart it stays connected to the dead PulseAudio and plays into nothing
+        (seen on the Pi 3 after the last deploy: 'Delay error -5 when checking
+        running latency', no sink-input, silent). The stale-source restart now
+        covers librespot and airplay, each checked against the audio container's
+        age on first connect and both restarted when the PipeWire cookie
+        changes.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "chore(multiroom): keep snapclient's error output in the container log"
+      hash: 7e20262b1e508eff2d36d7951ac54884939a2bc5
+      body: >
+        snapclient's output went to /dev/null, so its segfaults left no trace
+        beyond the exit. It already logs errors only.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(multiroom): default the stream back to 32-bit"
+      hash: dc890eff14a7c4b39607dc6bca082c9a760e3b16
+      body: >
+        The 16-bit default was set on the guess that the Pi 3's Wi-Fi could not
+        carry 32-bit pcm. Measured since: 3.1 Mbit/s both ways between the Pi 3
+        and Pi 4 with no gap over 0.4 s, and the Pi 3 crashes seen at 32-bit
+        also happen at 16-bit. 32 is the default again.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(audio): a paused stream does not count as playing"
+      hash: 22b42ee9d7774b25098e34133b1076d76c07f856
+      body: >
+        Moving Spotify or AirPlay from one speaker to another leaves the old
+        speaker's stream paused (corked) on balena-sound.input. play-detect
+        counted it, so that speaker stayed SOURCING or SOLO, never rejoined the
+        new master, and went silent. Seen on device: Pi 4 in SOLO with only
+        corked spotify and Shairport Sync streams while the Pi 3 played.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(multiroom): default the stream to 16-bit, keep 24 and 32 as opt-in"
+      hash: 6fc4ba9b33eb4e320415c3e696ff0649819337cb
+      body: >
+        At 32-bit pcm (3.1 Mbit/s) the Raspberry Pi 3 on 2.4 GHz Wi-Fi dropped
+        out whenever another speaker was master; as master it was fine, since
+        its own client does not use Wi-Fi. 16 is the safe default; 24 or 32 keep
+        Spotify lossless intact on speakers with a DAC and a good network.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "feat(multiroom): carry the Snapcast stream at 32-bit by default, set
+        by SOUND_MULTIROOM_BITS"
+      hash: e2c74554b3fa40f1fcc17fa8a7201f58172774a6
+      body: >
+        The stream was fixed at 48000:16:2, which cut Spotify lossless (up to
+        24-bit) and everything PipeWire mixes in 32-bit float.
+        SOUND_MULTIROOM_BITS takes 16, 24 or 32 (default 32) and sets both the
+        snapserver sample format and the pacat capture format (s16le, s24-32le,
+        s32le). Snapcast carries 24-bit in a 32-bit container, so on pcm 24 and
+        32 cost the same. opus and ogg encode 16-bit internally and are forced
+        to 16.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(airplay): keep Shairport's default 32-bit output"
+      hash: 0885d1e8534f1abbac5608a4db6953f299b9cf06
+      body: >
+        Forcing S16_LE was not part of the volume fix and only cut precision on
+        standalone speakers.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+        co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(spotify): judge the Soloist inactive guard by its audio stream and
+        restart instead of pausing"
+      hash: 9a1e1e4a459c0e0131e00507783e5900dafb1d41
+      body: >
+        The first version of the guard read 'ctl now', which on an inactive
+        device reports the account's playback elsewhere, and answered with 'ctl
+        pause', which from an inactive device acts on whichever device is
+        active. On the idle Pi 3 it fired every 16 seconds while the Pi 4 was
+        playing. The guard now requires Soloist's own PulseAudio stream to be
+        running while the device is inactive, three looks in a row, and restarts
+        Soloist. Adds pulseaudio-utils to the image for pactl.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(airplay): use a 45 dB flat volume curve"
+      hash: a11ff36fb69ba9ac91f907754f62d0b1d607270e
+      body: >
+        30 dB left the bottom of the slider too loud. 45 dB with Shairport's
+        flat profile was confirmed by ear from an iPhone.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(airplay): make the whole AirPlay volume slider audible"
+      hash: cd2323d179572adce1ce837ed2d561df0edc1291
+      body: >
+        Without a hardware mixer Shairport Sync spreads the AirPlay volume over
+        a very wide software range, so the lower half of the iPhone slider was
+        silent. Set volume_range_db to 30 (override with
+        SOUND_AIRPLAY_VOLUME_RANGE_DB) and request 16-bit output, which is what
+        the multiroom path carries anyway.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(spotify): pause Soloist when it plays without being the active
+        Connect device"
+      hash: 5a26745d56d9574d514c83467252f58404bacee0
+      body: >
+        Seen on device: the app disconnected, Soloist logged 'no longer active
+        device' and kept playing for 64 seconds, then took the session back.
+        Soloist's local control API is now always on (loopback, free port) and a
+        guard polls it every 4 seconds; playing while inactive on two
+        consecutive looks gets a pause.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "docs: move dated design notes and the karaoke handoff prompt to
+        docs/archive"
+      hash: 65f46352a2228889b6c6719968a138679e8a1deb
+      body: >
+        They describe past states of the system and are not maintained.
+        docs/archive/README.md says so and points at the current docs.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "docs: bring every guide in line with the code"
+      hash: 1735515828dffb70211e47acc2c05d73e994dc8d
+      body: >
+        Audited all docs against the code and the running devices. Removed UPnP
+        from shipped-feature lists (the plugin is not in docker-compose), fixed
+        default broadcast names, the web UI feature list, the karaoke PulseAudio
+        address, the /multiroom/master value, the reachability and demotion
+        timings, and loopbacks described as WirePlumber rules. Port 4317 is
+        documented as loopback-only everywhere. Added what was missing: master
+        heartbeat and its port, routing reconcile, the Spotify engine and its
+        variables, Soloist's own mDNS responder, snapserver state in RAM, the
+        no-SD-writes rule, avoid_warnings, and a v5.2 validation table. Marked
+        the karaoke handoff notes as historical and fixed their stale
+        references.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "feat(spotify): keep the Soloist audio cache in RAM on devices with
+        enough memory"
+      hash: 652107e9df06186638c013ab9c3d1834b6c0430f
+      body: >
+        Soloist writes every track it plays to its cache (573 MB on the test Pi
+        4 with the 500 MB limit), which is constant SD card wear with lossless
+        and competes for card I/O. SOUND_SPOTIFY_SOLOIST_CACHE=auto|ram|disk:
+        auto uses a 192 MB tmpfs with Soloist's limit at its 100 MB minimum on
+        devices with 1.5 GB of memory or more, and the disk cache below that.
+        Login data stays on disk. The old on-disk cache is removed when the RAM
+        cache is in use.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(multiroom): keep snapserver state off the SD card and stop
+        rewriting it every 30s"
+      hash: 0886b1c89e5c0fb4b1c9b713e6151997b123f73e
+      body: >
+        Mid-song drops on every speaker at once traced to snapserver stalling:
+        it rewrites server.json synchronously on each Client.SetVolume, the
+        supervisor re-sent the group volume on a timer, and datadir was on the
+        container filesystem (SD card). Reproduced on the Pi 4: 150 MB of synced
+        writes to the card stopped snapserver reading audio within a second and
+        kept it stalled until its watchdog restarted the container. datadir
+        moves to /dev/shm, and the supervisor only sends SetVolume to clients
+        that are off target.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "fix(audio): drop the snapclient stream rule, it mutes snapclient on
+        WirePlumber 0.5.15"
+      hash: 22cc0b0e4b9585c6e4bab05b82c662eb273b7ecd
+      body: >
+        Alpine 3.24 ships WirePlumber 0.5.15. There a stream with
+        state.restore-props=false never gets a default volume and starts at 0%,
+        so every speaker was silent in multiroom (found in the post-bump
+        regression with a test stream: stream playing, clients connected,
+        snapclient sink input at 0%). 0.5.15 also no longer keys saved volumes
+        by media.role, which was the reason for the rule: snapclient and Spotify
+        now have separate saved volumes without it.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "docs: update Alpine and Node versions named in the guides"
+      hash: e3680bf73e39730e44b335017a265dc9ec46da0c
+      body: |
+        Follows the base image bumps.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "docs(deps): regenerate the dependency table after the bumps"
+      hash: 1411d527a87cb45f0028d5d9cbc1c378c332ddfb
+      body: |
+        Generated by scripts/check-deps.py --write.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump Alpine from 3.23 to 3.24 in audio, hostname and
+        bluetooth"
+      hash: 11f6d264b04ab2bc3e9367b2cf7f93cd7d19254d
+      body: >
+        Moves PipeWire, WirePlumber, BlueZ and bluez-alsa to the versions
+        packaged in Alpine 3.24.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump shairport-sync from 5.2.2.2 to 5.6.3"
+      hash: 16e48fd8e6e4524ab2367fee870a6e176021712b
+      body: >
+        Picks up the AirPlay 2 security fixes in 5.5, 5.6 and 5.6.2 (malformed
+        SETUP and DACP input, FFmpeg ALAC decoder by default), iOS/macOS 27
+        compatibility from 5.5.2, and the matching NQPTP shipped in the image.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump modernc.org/sqlite from 1.34.5 to 1.62.0"
+      hash: 7ee05fe998d7a4fd353782cab40b6fbe977e5b94
+      body: >
+        Karaoke queue database driver, with its indirect modules. go.mod now
+        requires Go 1.26; the builder image is golang:1.27.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump Python from 3.13 to 3.15 in wifi-watchdog"
+      hash: f507ed4c2df4141c3ae74cf01759f0641b6124b2
+      body: |
+        The watchdog uses the standard library only.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump Node.js from 24 to 26 and npm from 11.19.0 to 12.2.2"
+      hash: f61ef17d72e45c1c9e34e4ea7a71e6711375a196
+      body: >
+        sound-supervisor build and runtime image move to the current LTS;
+        @types/node follows to 26.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump typescript from 5.9.3 to 7.0.2"
+      hash: af48f19300bd2bd00e80f8466a9366ae0311d96a
+      body: >
+        TypeScript 7 needs two source changes: rootDir must be explicit, and
+        esModuleInterop is always on, so express is imported as a default import
+        instead of a namespace. Output layout (build/index.js) is unchanged.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump balena-sdk from 23.2.15 to 23.2.24"
+      hash: f15cd29052518588616ae2e09c0c5b3d7b29b91b
+      body: |
+        sound-supervisor. Patch release.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "build(deps): bump express from 5.2.1 to 5.3.0"
+      hash: 5484032a7b8651ddf005825cea4a3010f6b770cd
+      body: |
+        sound-supervisor HTTP API. Minor release.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+    - subject: "chore(deps): add a dependency inventory, an upstream check script and
+        a per-PR freshness rule"
+      hash: 4329a08fa8ee544393733a0a0d992b87118377e7
+      body: >
+        dependencies.json lists every external piece of software and the files
+        that pin it. scripts/check-deps.py reads the pins from those files,
+        compares them with Docker Hub, GitHub, npm and the Go proxy, and
+        generates docs/DEPENDENCIES.md. AGENTS.md, CLAUDE.md, CONTRIBUTING.md
+        and a PR template now require every PR to run it and record a decision
+        per outdated row.
+      footer:
+        Change-type: patch
+        change-type: patch
+        Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+        co-authored-by: Claude Fable 5.2 <noreply@anthropic.com>
+        Claude-Session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+        claude-session: https://claude.ai/code/session_013Vmqm6jh7Xx2KmmGHqQLu1
+      author: JaragonCR
+  version: 5.2.1
+  title: ""
+  date: 2026-11-13T22:52:48.552Z
+- commits:
     - subject: "feat(install): set avoid_warnings=2 on new fleets and document the
         override"
       hash: 37813d83d544d59525724c7a0974d81c82693fca
