@@ -841,14 +841,18 @@ if [ -n "$SOUND_SUPERVISOR_URL" ]; then
       [ -z "$idx" ] && return 1
       rescue_snapclient_sink_inputs "$idx"
       pactl list sink-inputs 2>/dev/null | awk -v sink_idx="$idx" '
+        # A paused (corked) stream is not playing. Counting it kept a device in SOLO after the
+        # user moved Spotify or AirPlay to another speaker: the paused stream stayed on
+        # balena-sound.input, the device never stopped "sourcing" and never rejoined the group.
         /^Sink Input #[0-9]+/ {
-          if (on_input && !is_snap) { found = 1; exit }
-          on_input = 0; is_snap = 0
+          if (on_input && !is_snap && !corked) { found = 1; exit }
+          on_input = 0; is_snap = 0; corked = 0
         }
         $1 == "Sink:" && $2 == sink_idx { on_input = 1 }
+        $1 == "Corked:" && $2 == "yes" { corked = 1 }
         /application\.process\.binary = "snapclient"/ || /application\.name = "Snapcast"/ { is_snap = 1 }
         END {
-          if (on_input && !is_snap) found = 1
+          if (on_input && !is_snap && !corked) found = 1
           exit(found ? 0 : 1)
         }
       '
