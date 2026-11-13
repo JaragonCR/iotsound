@@ -143,7 +143,7 @@ Role and group name can be changed live from the web UI at `http://<device-ip>/`
 | Variable | Description | Default |
 |---|---|---|
 | `SOUND_DISABLE_AIRPLAY` | Disable AirPlay entirely (set to any value) | unset |
-| `SOUND_AIRPLAY_VOLUME_RANGE_DB` | How many dB the AirPlay volume slider covers, `30` to `150`. A small range keeps the whole slider audible | `30` |
+| `SOUND_AIRPLAY_VOLUME_RANGE_DB` | How many dB the AirPlay volume slider covers, `30` to `150`. Too large and the bottom of the slider is silent, too small and it is loud and jumpy | `45` |
 
 #### Karaoke
 
